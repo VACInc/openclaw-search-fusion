@@ -850,6 +850,7 @@ export async function runSearchFusion(params) {
         providers: runtimeProviders,
         config: sourceConfig,
         fallbackConfig: runtimeConfig,
+        catalogConfig: runtimeConfig,
         selfId: SEARCH_FUSION_PROVIDER_ID,
     });
     const selectedProviders = resolveSelectedProviders({

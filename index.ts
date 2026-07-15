@@ -244,7 +244,7 @@ const plugin = {
       name: "search_fusion_providers",
       label: "Search Fusion Providers",
       description:
-        "List web search providers visible to Search Fusion and catalog providers missing from the runtime, with safe enablement hints.",
+        "List web search providers discovered from the runtime registry and enabled plugin config, with safe configuration and enablement hints.",
       parameters: ProviderListParameters,
       async execute(_id: string, params: ProviderListRequest, signal?: AbortSignal) {
         throwIfSignalAborted(signal);
@@ -255,10 +255,11 @@ const plugin = {
         const providers = discoverProviders({
           providers: runtimeProviders,
           config: runtimeConfig,
+          catalogConfig: runtimeConfig,
           selfId: "search-fusion",
         });
         const missing = findMissingProviders({
-          runtimeProviderIds: runtimeProviders.map((provider) => provider.id),
+          config: runtimeConfig,
         });
         const visibleProviders = params.onlyConfigured
           ? providers.filter((provider) => provider.configured)
@@ -269,12 +270,12 @@ const plugin = {
         );
         const missingLines = missing.map(
           (provider) =>
-            `- ${provider.id}: enable plugin ${provider.pluginId} [keyless: ${provider.keyless}] [env key detected: ${provider.envKeyDetected}]`,
+            `- ${provider.id}: plugin ${provider.pluginId} disabled/not enabled [keyless: ${provider.keyless}] [env key detected: ${provider.envKeyDetected}]`,
         );
         const summary = [
-          lines.length > 0 ? lines.join("\n") : "No runtime web search providers discovered.",
+          lines.length > 0 ? lines.join("\n") : "No enabled web search providers discovered.",
           ...(missingLines.length > 0
-            ? [`Missing catalog providers:\n${missingLines.join("\n")}`]
+            ? [`Catalog providers with plugin disabled/not enabled:\n${missingLines.join("\n")}`]
             : []),
         ].join("\n\n");
 

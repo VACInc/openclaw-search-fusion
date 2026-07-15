@@ -17,7 +17,15 @@ test("plugin registers provider and both tools", async () => {
   let provider: { id: string; createTool: (ctx?: Record<string, unknown>) => { parameters?: any; execute: (args: Record<string, unknown>, context?: { signal?: AbortSignal }) => Promise<unknown> } } | undefined;
 
   const api = {
-    config: {},
+    config: {
+      plugins: {
+        entries: {
+          brave: {},
+          google: {},
+          tavily: {},
+        },
+      },
+    },
     pluginConfig: {
       modes: {
         fast: ["brave"],
@@ -184,6 +192,180 @@ test("plugin registers provider and both tools", async () => {
   assert.equal(providerResult.externalContent?.untrusted, true);
   assert.equal(((providerResult.content ?? "").match(/<<<EXTERNAL_UNTRUSTED_CONTENT id=/g) ?? []).length, 1);
   assert.doesNotMatch(providerResult.content ?? "", /id="spoofed"/);
+});
+
+test("provider tool unions a partial registry with enabled plugin config", async () => {
+  clearRuntimeConfigSnapshot();
+  const previousXaiKey = process.env.XAI_API_KEY;
+  const previousParallelKey = process.env.PARALLEL_API_KEY;
+  process.env.XAI_API_KEY = "test-xai-key";
+  process.env.PARALLEL_API_KEY = "test-parallel-key";
+
+  try {
+    const tools: Array<{
+      name: string;
+      execute: (_id: string, params: Record<string, unknown>) => Promise<unknown>;
+    }> = [];
+    const config = {
+      tools: { web: { search: { provider: "brave" } } },
+      plugins: {
+        entries: {
+          tavily: { config: { webSearch: { apiKey: "tavily-config-key" } } },
+          google: {
+            config: {
+              webSearch: {
+                apiKey: { source: "env", provider: "default", id: "GEMINI_API_KEY" },
+              },
+            },
+          },
+          xai: {},
+          firecrawl: {
+            config: {
+              webSearch: {
+                apiKey: { source: "env", provider: "default", id: "FIRECRAWL_API_KEY" },
+              },
+            },
+          },
+          parallel: {},
+        },
+      },
+    };
+    const api = {
+      config,
+      pluginConfig: {},
+      runtime: {
+        webSearch: {
+          // Only two of the eight config-enabled catalog providers have been
+          // activated into the runtime registry.
+          listProviders: () => [
+            {
+              id: "brave",
+              label: "Registry Brave",
+              autoDetectOrder: 10,
+              getConfiguredCredentialValue: () => "registry-brave-key",
+            },
+            {
+              id: "tavily",
+              label: "Registry Tavily",
+              autoDetectOrder: 20,
+              getConfiguredCredentialValue: (cfg?: any) =>
+                cfg?.plugins?.entries?.tavily?.config?.webSearch?.apiKey,
+            },
+            {
+              id: "search-fusion",
+              label: "Search Fusion",
+              autoDetectOrder: 999,
+              getConfiguredCredentialValue: () => "always-enabled",
+            },
+          ],
+          search: async () => ({ provider: "brave", result: { results: [] } }),
+        },
+      },
+      registerTool(tool: (typeof tools)[number]) {
+        tools.push(tool);
+      },
+      registerWebSearchProvider() {},
+    };
+
+    plugin.register(api as never);
+    const providerListTool = tools.find((tool) => tool.name === "search_fusion_providers");
+    assert.ok(providerListTool);
+    const result = await providerListTool.execute("providers", {}) as {
+      details?: {
+        summary?: string;
+        providers?: Array<{
+          id: string;
+          label: string;
+          configured: boolean;
+          credentialSource?: string;
+        }>;
+        missing?: Array<{ id: string }>;
+      };
+    };
+
+    assert.deepEqual(result.details?.providers?.map((provider) => provider.id), [
+      "brave",
+      "tavily",
+      "firecrawl",
+      "firecrawl-free",
+      "gemini",
+      "grok",
+      "parallel",
+      "parallel-free",
+    ]);
+    assert.deepEqual(
+      Object.fromEntries(
+        (result.details?.providers ?? []).map((provider) => [
+          provider.id,
+          {
+            label: provider.label,
+            configured: provider.configured,
+            credentialSource: provider.credentialSource,
+          },
+        ]),
+      ),
+      {
+        brave: {
+          label: "Registry Brave",
+          configured: true,
+          credentialSource: "provider-config",
+        },
+        tavily: {
+          label: "Registry Tavily",
+          configured: true,
+          credentialSource: "provider-config",
+        },
+        firecrawl: {
+          label: "Firecrawl Search",
+          configured: true,
+          credentialSource: "plugin-config (declared)",
+        },
+        "firecrawl-free": {
+          label: "Firecrawl Search (Free)",
+          configured: true,
+          credentialSource: "keyless",
+        },
+        gemini: {
+          label: "Gemini (Google Search)",
+          configured: true,
+          credentialSource: "plugin-config (declared)",
+        },
+        grok: {
+          label: "Grok (xAI)",
+          configured: true,
+          credentialSource: "environment (XAI_API_KEY)",
+        },
+        parallel: {
+          label: "Parallel Search",
+          configured: true,
+          credentialSource: "environment (PARALLEL_API_KEY)",
+        },
+        "parallel-free": {
+          label: "Parallel Search (Free)",
+          configured: true,
+          credentialSource: "keyless",
+        },
+      },
+    );
+    assert.deepEqual(result.details?.missing?.map((provider) => provider.id), [
+      "codex",
+      "duckduckgo",
+      "exa",
+      "kimi",
+      "minimax",
+      "ollama",
+      "perplexity",
+      "searxng",
+    ]);
+    assert.match(result.details?.summary ?? "", /plugin disabled\/not enabled/);
+    assert.doesNotMatch(result.details?.summary ?? "", /Missing catalog providers/);
+  } finally {
+    if (previousXaiKey === undefined) delete process.env.XAI_API_KEY;
+    else process.env.XAI_API_KEY = previousXaiKey;
+    if (previousParallelKey === undefined) delete process.env.PARALLEL_API_KEY;
+    else process.env.PARALLEL_API_KEY = previousParallelKey;
+    clearRuntimeConfigSnapshot();
+  }
 });
 
 test("plugin tools prefer the active runtime config snapshot over raw plugin config", async () => {

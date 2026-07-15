@@ -87,6 +87,81 @@ test("discoverProviders attaches capability taxonomy tags", () => {
   assert.deepEqual(duckduckgo?.capabilities, ["free-tier", "privacy", "results"]);
 });
 
+test("discoverProviders prefers authoritative registry entries on catalog id collisions", () => {
+  const discovered = discoverProviders({
+    providers: [
+      {
+        id: "brave",
+        label: "Registry Brave",
+        hint: "registry metadata",
+        getConfiguredCredentialValue: () => undefined,
+      },
+    ],
+    config: {
+      plugins: {
+        entries: {
+          brave: { config: { webSearch: { apiKey: "declared-brave-key" } } },
+          tavily: { config: { webSearch: { apiKey: "declared-tavily-key" } } },
+        },
+      },
+    },
+    selfId: "search-fusion",
+  });
+
+  assert.equal(discovered.filter((provider) => provider.id === "brave").length, 1);
+  assert.deepEqual(discovered.find((provider) => provider.id === "brave"), {
+    id: "brave",
+    label: "Registry Brave",
+    hint: "registry metadata",
+    autoDetectOrder: undefined,
+    configured: false,
+    capabilities: ["news", "privacy", "results"],
+  });
+  assert.deepEqual(discovered.find((provider) => provider.id === "tavily"), {
+    id: "tavily",
+    label: "Tavily Search",
+    configured: true,
+    credentialSource: "plugin-config (declared)",
+    capabilities: ["neural", "results"],
+  });
+});
+
+test("discoverProviders synthesizes selected-provider and enabled-plugin catalog entries", () => {
+  const discovered = discoverProviders({
+    providers: [],
+    config: {
+      tools: { web: { search: { provider: "codex" } } },
+      plugins: { entries: { exa: {}, xai: {} } },
+    },
+    env: {},
+    selfId: "search-fusion",
+  });
+
+  assert.deepEqual(discovered, [
+    {
+      id: "codex",
+      label: "Codex Hosted Search",
+      configured: true,
+      credentialSource: "account-auth",
+      capabilities: ["answer", "results"],
+    },
+    {
+      id: "exa",
+      label: "Exa Search",
+      configured: false,
+      hint: "Configure plugins.entries.exa.config.webSearch.apiKey or EXA_API_KEY.",
+      capabilities: ["academic", "code", "extract", "neural", "results"],
+    },
+    {
+      id: "grok",
+      label: "Grok (xAI)",
+      configured: true,
+      credentialSource: "account-auth (unverified)",
+      capabilities: ["answer", "news", "results"],
+    },
+  ]);
+});
+
 test("resolveSelectedProviders falls back to configured providers by default", () => {
   const selected = resolveSelectedProviders({
     availableProviders: getDiscovered(),

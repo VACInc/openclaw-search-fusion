@@ -18,6 +18,8 @@ export declare function discoverProviders(params: {
     providers: RuntimeWebSearchProvider[];
     config: unknown;
     fallbackConfig?: unknown;
+    catalogConfig?: unknown;
+    env?: Readonly<Record<string, string | undefined>>;
     selfId: string;
 }): ResolvedProvider[];
 export declare function resolveSelectedProviders(params: {

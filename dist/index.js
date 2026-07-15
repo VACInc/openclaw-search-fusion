@@ -139,7 +139,7 @@ const plugin = {
         api.registerTool({
             name: "search_fusion_providers",
             label: "Search Fusion Providers",
-            description: "List web search providers visible to Search Fusion and catalog providers missing from the runtime, with safe enablement hints.",
+            description: "List web search providers discovered from the runtime registry and enabled plugin config, with safe configuration and enablement hints.",
             parameters: ProviderListParameters,
             async execute(_id, params, signal) {
                 throwIfSignalAborted(signal);
@@ -150,20 +150,21 @@ const plugin = {
                 const providers = discoverProviders({
                     providers: runtimeProviders,
                     config: runtimeConfig,
+                    catalogConfig: runtimeConfig,
                     selfId: "search-fusion",
                 });
                 const missing = findMissingProviders({
-                    runtimeProviderIds: runtimeProviders.map((provider) => provider.id),
+                    config: runtimeConfig,
                 });
                 const visibleProviders = params.onlyConfigured
                     ? providers.filter((provider) => provider.configured)
                     : providers;
                 const lines = visibleProviders.map((provider) => `- ${provider.id}: ${provider.label}${provider.configured ? " [configured]" : " [not configured]"}${provider.credentialSource ? ` [credential: ${provider.credentialSource}]` : ""}${(provider.capabilities ?? []).length > 0 ? ` [${(provider.capabilities ?? []).join(", ")}]` : ""}${provider.hint ? ` — ${provider.hint}` : ""}`);
-                const missingLines = missing.map((provider) => `- ${provider.id}: enable plugin ${provider.pluginId} [keyless: ${provider.keyless}] [env key detected: ${provider.envKeyDetected}]`);
+                const missingLines = missing.map((provider) => `- ${provider.id}: plugin ${provider.pluginId} disabled/not enabled [keyless: ${provider.keyless}] [env key detected: ${provider.envKeyDetected}]`);
                 const summary = [
-                    lines.length > 0 ? lines.join("\n") : "No runtime web search providers discovered.",
+                    lines.length > 0 ? lines.join("\n") : "No enabled web search providers discovered.",
                     ...(missingLines.length > 0
-                        ? [`Missing catalog providers:\n${missingLines.join("\n")}`]
+                        ? [`Catalog providers with plugin disabled/not enabled:\n${missingLines.join("\n")}`]
                         : []),
                 ].join("\n\n");
                 throwIfSignalAborted(signal);

@@ -8,6 +8,11 @@ import {
   resolveProviderCapabilities,
   type ProviderCapability,
 } from "./provider-capabilities.js";
+import {
+  isKnownProviderPluginEnabled,
+  KNOWN_PROVIDERS,
+  type KnownProviderCatalogEntry,
+} from "./provider-catalog.js";
 
 /** Keyless provider variants that share an index with a higher-limit paid sibling. */
 export const FREE_TIER_PROVIDER_SIBLINGS: Readonly<Record<string, string>> = {
@@ -51,6 +56,77 @@ function hasCredentialValue(value: unknown): boolean {
     return hasValue(process.env[(value as { id: string }).id]);
   }
   return hasValue(value);
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined;
+}
+
+function resolveDeclaredPluginApiKey(config: unknown, pluginId: string): unknown {
+  const root = asRecord(config);
+  const plugins = asRecord(root?.plugins);
+  const entries = asRecord(plugins?.entries);
+  const entry = asRecord(entries?.[pluginId]);
+  const pluginConfig = asRecord(entry?.config);
+  const webSearch = asRecord(pluginConfig?.webSearch);
+  return webSearch?.apiKey;
+}
+
+function hasDeclaredPluginApiKey(value: unknown): boolean {
+  if (typeof value === "string") return value.trim().length > 0;
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function buildUnconfiguredCatalogHint(provider: KnownProviderCatalogEntry): string {
+  const configPath = `plugins.entries.${provider.pluginId}.config.webSearch.apiKey`;
+  return provider.envVars.length > 0
+    ? `Configure ${configPath} or ${provider.envVars.join(" / ")}.`
+    : `Configure credentials for ${provider.label}.`;
+}
+
+function resolveCatalogProviderConfiguration(params: {
+  provider: KnownProviderCatalogEntry;
+  config: unknown;
+  fallbackConfig?: unknown;
+  env: Readonly<Record<string, string | undefined>>;
+}): { configured: boolean; credentialSource?: string; hint?: string } {
+  if (params.provider.keyless) {
+    return { configured: true, credentialSource: "keyless" };
+  }
+
+  const declaredApiKey = resolveDeclaredPluginApiKey(params.config, params.provider.pluginId);
+  const fallbackDeclaredApiKey = resolveDeclaredPluginApiKey(
+    params.fallbackConfig,
+    params.provider.pluginId,
+  );
+  if (
+    hasDeclaredPluginApiKey(declaredApiKey) ||
+    hasDeclaredPluginApiKey(fallbackDeclaredApiKey)
+  ) {
+    return { configured: true, credentialSource: "plugin-config (declared)" };
+  }
+
+  const detectedEnvVar = params.provider.envVars.find((envVar) => hasValue(params.env[envVar]));
+  if (detectedEnvVar) {
+    return { configured: true, credentialSource: `environment (${detectedEnvVar})` };
+  }
+
+  if (params.provider.accountAuth) {
+    // Runtime credential resolution can still succeed through an account/auth
+    // profile the plugin owns; report it configured but flag the uncertainty.
+    return {
+      configured: true,
+      credentialSource:
+        params.provider.id === "codex" ? "account-auth" : "account-auth (unverified)",
+    };
+  }
+
+  return {
+    configured: false,
+    hint: buildUnconfiguredCatalogHint(params.provider),
+  };
 }
 
 function normalizeName(value: string | undefined): string | undefined {
@@ -233,9 +309,11 @@ export function discoverProviders(params: {
   providers: RuntimeWebSearchProvider[];
   config: unknown;
   fallbackConfig?: unknown;
+  catalogConfig?: unknown;
+  env?: Readonly<Record<string, string | undefined>>;
   selfId: string;
 }): ResolvedProvider[] {
-  return params.providers
+  const registryProviders = params.providers
     .filter((provider) => provider.id !== params.selfId)
     .map((provider) => {
       const primaryConfiguration = resolveProviderConfiguration(provider, params.config);
@@ -251,7 +329,29 @@ export function discoverProviders(params: {
         ...configuration,
         capabilities: [...resolveProviderCapabilities(provider.id)],
       };
-    })
+    });
+  const registryProviderIds = new Set(
+    registryProviders.map((provider) => provider.id.toLowerCase()),
+  );
+  const catalogConfig = params.catalogConfig ?? params.fallbackConfig ?? params.config;
+  const env = params.env ?? process.env;
+  const catalogProviders = KNOWN_PROVIDERS
+    .filter((provider) => provider.id !== params.selfId)
+    .filter((provider) => !registryProviderIds.has(provider.id))
+    .filter((provider) => isKnownProviderPluginEnabled(provider, catalogConfig))
+    .map((provider): ResolvedProvider => ({
+      id: provider.id,
+      label: provider.label,
+      ...resolveCatalogProviderConfiguration({
+        provider,
+        config: params.config,
+        fallbackConfig: params.fallbackConfig,
+        env,
+      }),
+      capabilities: [...provider.capabilities],
+    }));
+
+  return [...registryProviders, ...catalogProviders]
     .sort((a, b) => {
       const orderA = a.autoDetectOrder ?? Number.MAX_SAFE_INTEGER;
       const orderB = b.autoDetectOrder ?? Number.MAX_SAFE_INTEGER;

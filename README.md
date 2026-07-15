@@ -251,7 +251,15 @@ Merged payloads include:
 
 ### `search_fusion_providers`
 
-Lists the providers visible to the broker and whether they appear configured. An additive `missing` array reports native catalog providers that are absent from `runtime.webSearch.listProviders`, with:
+Lists the providers visible to the broker and whether they appear configured.
+
+#### How discovery works
+
+Search Fusion unions the active runtime registry with its native provider catalog, adding catalog providers whose owning plugin is enabled in the live config. Runtime entries win on id collisions and keep their full credential accessors; catalog entries cover providers not yet present because OpenClaw activates plugins lazily. The resulting union drives listing, selection, modes, intent routing, sibling dedupe, and fan-out; delegated search still asks the runtime to load the selected provider on demand.
+
+For catalog-derived entries, `credentialSource` reports `keyless`, `plugin-config (declared)`, `environment (<NAME>)`, or `account-auth` for Codex. A declared plugin `webSearch.apiKey` may be a string or SecretRef; Search Fusion reports only that it was declared, never its value. Enabled catalog providers without a detectable configuration remain selectable but report `configured: false` with a setup hint.
+
+The additive `missing` array now reports native catalog providers whose owning plugin is disabled or not enabled in the live config, with:
 
 - `id` — runtime provider id
 - `pluginId` — plugin to enable
@@ -260,7 +268,7 @@ Lists the providers visible to the broker and whether they appear configured. An
 
 `envKeyDetected` is boolean-only. Search Fusion never returns environment credential values. A provider can still be configured through plugin config or account auth when this flag is `false`.
 
-Visible provider entries also include a non-secret `credentialSource` annotation when known. Because the plugin context cannot inspect the account-auth profile store directly, providers that declare `authProviderId` are included with `account-auth (unverified)` rather than being incorrectly omitted; the delegated OpenClaw runtime still performs the authoritative auth check.
+Registry-derived provider entries also include a non-secret `credentialSource` annotation when known. Because the plugin context cannot inspect the account-auth profile store directly, registry providers that declare `authProviderId` are included with `account-auth (unverified)` rather than being incorrectly omitted; the delegated OpenClaw runtime still performs the authoritative auth check.
 
 ### OpenClaw 2026.7.2 provider coverage
 
@@ -325,9 +333,9 @@ pnpm test
 - starter modes are built in for fresh installs (`fast`, `balanced`, `deep`) when `modes` is not configured
 - custom `modes` are authoritative and replace the starter map
 - falls back to all configured providers when nothing else is specified
-- treats keyless providers (DuckDuckGo, Firecrawl Free, and Parallel Free) as configured/available
+- treats discovered keyless providers (DuckDuckGo, Firecrawl Free, and Parallel Free) as configured/available
 - prefers a paid sibling only when it is configured; otherwise keeps the keyless sibling
-- reports runtime-missing native providers with plugin ids and boolean-only credential detection hints
+- reports native providers whose plugins are disabled/not enabled, with plugin ids and boolean-only credential detection hints
 - excludes itself to avoid recursion
 - dedupes by canonical URL
 - retries transient provider failures with global defaults and per-provider overrides via `providerConfig.<id>.retry`

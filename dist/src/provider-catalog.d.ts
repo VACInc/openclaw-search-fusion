@@ -9,9 +9,12 @@ import { type ProviderCapability } from "./provider-capabilities.js";
  */
 export type KnownProviderCatalogEntry = {
     readonly id: string;
+    readonly label: string;
     readonly pluginId: string;
     readonly envVars: readonly string[];
     readonly keyless: boolean;
+    /** Provider can resolve credentials from an account/auth profile at runtime. */
+    readonly accountAuth: boolean;
     readonly capabilities: readonly ProviderCapability[];
 };
 export type MissingProviderHint = {
@@ -25,12 +28,14 @@ export type MissingProviderHint = {
  * The qa-lab-only provider is intentionally excluded.
  */
 export declare const KNOWN_PROVIDERS: readonly KnownProviderCatalogEntry[];
+/** Whether a catalog provider's owning plugin is enabled in the live config. */
+export declare function isKnownProviderPluginEnabled(provider: KnownProviderCatalogEntry, config: unknown): boolean;
 /**
- * Return catalog providers absent from the runtime provider list. Environment
- * inspection is deliberately reduced to a boolean so credential values can
- * never escape through the tool payload.
+ * Return catalog providers whose owning plugin is disabled or not enabled in
+ * the live config. Environment inspection is deliberately reduced to a
+ * boolean so credential values can never escape through the tool payload.
  */
 export declare function findMissingProviders(params: {
-    runtimeProviderIds: readonly string[];
+    config?: unknown;
     env?: Readonly<Record<string, string | undefined>>;
 }): MissingProviderHint[];

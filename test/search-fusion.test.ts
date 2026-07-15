@@ -127,6 +127,63 @@ function createRuntime(overrides?: {
   };
 }
 
+test("runSearchFusion selects config-discovered stubs and delegates by provider id", async () => {
+  clearRuntimeConfigSnapshot();
+  const config = {
+    plugins: {
+      entries: {
+        tavily: { config: { webSearch: { apiKey: "declared-tavily-key" } } },
+      },
+    },
+  };
+  const searchedProviderIds: Array<string | undefined> = [];
+
+  try {
+    const payload = await runSearchFusion({
+      runtime: {
+        webSearch: {
+          listProviders: () => [
+            {
+              id: "search-fusion",
+              label: "Search Fusion",
+              getConfiguredCredentialValue: () => "always-enabled",
+            },
+          ],
+          search: async ({ providerId }: { providerId?: string }) => {
+            searchedProviderIds.push(providerId);
+            return {
+              provider: providerId ?? "tavily",
+              result: {
+                results: [
+                  {
+                    title: "Lazy Tavily result",
+                    url: "https://example.com/lazy-tavily",
+                    description: "loaded on demand",
+                  },
+                ],
+              },
+            };
+          },
+        },
+      } as never,
+      config,
+      pluginConfig: {},
+      request: {
+        query: "lazy activation",
+        providers: ["tavily"],
+      },
+    });
+
+    assert.deepEqual(payload.configuredProviders, ["tavily"]);
+    assert.deepEqual(payload.providersQueried, ["tavily"]);
+    assert.deepEqual(payload.providersSucceeded, ["tavily"]);
+    assert.deepEqual(searchedProviderIds, ["tavily"]);
+    assert.equal(payload.providerRuns[0]?.provider, "tavily");
+  } finally {
+    clearRuntimeConfigSnapshot();
+  }
+});
+
 test("runSearchFusion prefers the active runtime config snapshot for credential-backed providers", async () => {
   clearRuntimeConfigSnapshot();
   const rawConfig = {

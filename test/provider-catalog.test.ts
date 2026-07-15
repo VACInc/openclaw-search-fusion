@@ -56,6 +56,27 @@ test("KNOWN_PROVIDERS matches the OpenClaw 2026.7.2 web-search catalog", () => {
     ],
   );
   assert.equal(KNOWN_PROVIDERS.some((provider) => provider.id === "qa-lab-search"), false);
+  assert.deepEqual(
+    KNOWN_PROVIDERS.map(({ id, label }) => ({ id, label })),
+    [
+      { id: "brave", label: "Brave Search" },
+      { id: "codex", label: "Codex Hosted Search" },
+      { id: "duckduckgo", label: "DuckDuckGo Search (experimental)" },
+      { id: "exa", label: "Exa Search" },
+      { id: "firecrawl", label: "Firecrawl Search" },
+      { id: "firecrawl-free", label: "Firecrawl Search (Free)" },
+      { id: "gemini", label: "Gemini (Google Search)" },
+      { id: "grok", label: "Grok (xAI)" },
+      { id: "kimi", label: "Kimi (Moonshot)" },
+      { id: "minimax", label: "MiniMax Search" },
+      { id: "ollama", label: "Ollama Web Search" },
+      { id: "parallel", label: "Parallel Search" },
+      { id: "parallel-free", label: "Parallel Search (Free)" },
+      { id: "perplexity", label: "Perplexity Search" },
+      { id: "searxng", label: "SearXNG Search" },
+      { id: "tavily", label: "Tavily Search" },
+    ],
+  );
 });
 
 test("KNOWN_PROVIDERS references the shared capability registry", () => {
@@ -64,10 +85,18 @@ test("KNOWN_PROVIDERS references the shared capability registry", () => {
   }
 });
 
-test("findMissingProviders reports safe boolean credential hints only", () => {
+test("findMissingProviders reports only plugins disabled or not enabled with safe hints", () => {
   const secret = "must-not-leak";
   const missing = findMissingProviders({
-    runtimeProviderIds: ["brave", "parallel-free"],
+    config: {
+      tools: { web: { search: { provider: "brave" } } },
+      plugins: {
+        entries: {
+          parallel: {},
+          xai: { enabled: false },
+        },
+      },
+    },
     env: {
       FIRECRAWL_API_KEY: secret,
       GEMINI_API_KEY: "   ",
@@ -75,7 +104,9 @@ test("findMissingProviders reports safe boolean credential hints only", () => {
   });
 
   assert.equal(missing.some((provider) => provider.id === "brave"), false);
+  assert.equal(missing.some((provider) => provider.id === "parallel"), false);
   assert.equal(missing.some((provider) => provider.id === "parallel-free"), false);
+  assert.equal(missing.some((provider) => provider.id === "grok"), true);
   assert.deepEqual(missing.find((provider) => provider.id === "firecrawl"), {
     id: "firecrawl",
     pluginId: "firecrawl",

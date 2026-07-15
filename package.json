@@ -1,6 +1,6 @@
 {
   "name": "@vacinc/search-fusion",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Federated OpenClaw web search fusion that fans out across configured providers, merges results, and preserves attribution.",
   "type": "module",
   "main": "./dist/index.js",
