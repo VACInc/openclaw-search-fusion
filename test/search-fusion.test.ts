@@ -1,7 +1,47 @@
-import test from "node:test";
+import test, { mock } from "node:test";
 import assert from "node:assert/strict";
-import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "openclaw/plugin-sdk/config-runtime";
-import { runSearchFusion } from "../src/search-fusion.js";
+import {
+  clearRuntimeConfigSnapshot,
+  getRuntimeConfigSourceSnapshot,
+  setRuntimeConfigSnapshot,
+} from "openclaw/plugin-sdk/runtime-config-snapshot";
+
+type SecretResolverParams = {
+  config: unknown;
+  env: NodeJS.ProcessEnv;
+  value: unknown;
+  path: string;
+  unresolvedReasonStyle?: "generic" | "detailed";
+};
+
+const mockedSecretResolutions = new Map<
+  string,
+  { value?: string; unresolvedRefReason?: string }
+>();
+const secretResolverCalls: SecretResolverParams[] = [];
+const resolveConfiguredSecretInputString = mock.fn(async (params: SecretResolverParams) => {
+  secretResolverCalls.push(params);
+  const ref = params.value as { source?: unknown; provider?: unknown; id?: unknown };
+  const refKey = `${String(ref.source)}:${String(ref.provider)}:${String(ref.id)}`;
+  const mockedResolution = mockedSecretResolutions.get(refKey);
+  if (mockedResolution) {
+    return mockedResolution;
+  }
+  if (ref.source === "env" && typeof ref.id === "string" && params.env[ref.id]) {
+    return { value: params.env[ref.id] };
+  }
+  return { unresolvedRefReason: `${params.path} mocked SecretRef resolution failed.` };
+});
+
+mock.module("openclaw/plugin-sdk/config-runtime", {
+  cache: true,
+  namedExports: {
+    getRuntimeConfigSourceSnapshot,
+    resolveConfiguredSecretInputString,
+  },
+});
+
+const { runSearchFusion } = await import("../src/search-fusion.js");
 
 function createRuntime(overrides?: {
   providers?: Array<{
@@ -127,7 +167,7 @@ function createRuntime(overrides?: {
   };
 }
 
-test("runSearchFusion selects config-discovered stubs and delegates by provider id", async () => {
+test("runSearchFusion passes catalog-stub plain-string credentials through unchanged", async () => {
   clearRuntimeConfigSnapshot();
   const config = {
     plugins: {
@@ -137,6 +177,7 @@ test("runSearchFusion selects config-discovered stubs and delegates by provider 
     },
   };
   const searchedProviderIds: Array<string | undefined> = [];
+  const searchConfigs: unknown[] = [];
 
   try {
     const payload = await runSearchFusion({
@@ -149,7 +190,8 @@ test("runSearchFusion selects config-discovered stubs and delegates by provider 
               getConfiguredCredentialValue: () => "always-enabled",
             },
           ],
-          search: async ({ providerId }: { providerId?: string }) => {
+          search: async ({ config, providerId }: { config?: unknown; providerId?: string }) => {
+            searchConfigs.push(config);
             searchedProviderIds.push(providerId);
             return {
               provider: providerId ?? "tavily",
@@ -178,8 +220,227 @@ test("runSearchFusion selects config-discovered stubs and delegates by provider 
     assert.deepEqual(payload.providersQueried, ["tavily"]);
     assert.deepEqual(payload.providersSucceeded, ["tavily"]);
     assert.deepEqual(searchedProviderIds, ["tavily"]);
+    assert.deepEqual(searchConfigs, [config]);
     assert.equal(payload.providerRuns[0]?.provider, "tavily");
   } finally {
+    clearRuntimeConfigSnapshot();
+  }
+});
+
+test("runSearchFusion resolves catalog-stub plugin credential SecretRefs before delegation", async () => {
+  clearRuntimeConfigSnapshot();
+  const refKey = "exec:catalog_exec:value";
+  const secretRef = { source: "exec", provider: "catalog_exec", id: "value" };
+  const sourceConfig = {
+    secrets: {
+      providers: {
+        catalog_exec: { source: "exec", command: "/mock/catalog-secret" },
+      },
+    },
+    plugins: {
+      entries: {
+        google: { config: { webSearch: { apiKey: secretRef } } },
+      },
+    },
+  };
+  const runtimeConfig = structuredClone(sourceConfig);
+  const searchConfigs: unknown[] = [];
+  const callCountBefore = secretResolverCalls.length;
+  mockedSecretResolutions.set(refKey, { value: "resolved-catalog-gemini-key" });
+  setRuntimeConfigSnapshot(runtimeConfig as never, sourceConfig as never);
+
+  try {
+    const payload = await runSearchFusion({
+      runtime: {
+        webSearch: {
+          listProviders: () => [
+            {
+              id: "search-fusion",
+              label: "Search Fusion",
+              getConfiguredCredentialValue: () => "always-enabled",
+            },
+          ],
+          search: async ({ config, providerId }: { config?: unknown; providerId?: string }) => {
+            searchConfigs.push(config);
+            return {
+              provider: providerId ?? "gemini",
+              result: {
+                results: [
+                  {
+                    title: "Catalog SecretRef Search OK",
+                    url: "https://example.com/catalog-secret-ref",
+                    description: "search worked",
+                  },
+                ],
+              },
+            };
+          },
+        },
+      } as never,
+      config: sourceConfig,
+      pluginConfig: {},
+      request: {
+        query: "catalog secret ref",
+        providers: ["gemini"],
+      },
+    });
+
+    assert.deepEqual(payload.providersSucceeded, ["gemini"]);
+    assert.equal(searchConfigs.length, 1);
+    assert.notEqual(searchConfigs[0], runtimeConfig);
+    assert.equal(
+      (searchConfigs[0] as any)?.plugins?.entries?.google?.config?.webSearch?.apiKey,
+      "resolved-catalog-gemini-key",
+    );
+    assert.deepEqual(
+      (runtimeConfig as any).plugins.entries.google.config.webSearch.apiKey,
+      secretRef,
+    );
+    assert.equal(secretResolverCalls.length, callCountBefore + 1);
+    assert.equal(secretResolverCalls.at(-1)?.config, sourceConfig);
+    assert.equal(
+      secretResolverCalls.at(-1)?.path,
+      "plugins.entries.google.config.webSearch.apiKey",
+    );
+    assert.deepEqual(secretResolverCalls.at(-1)?.value, secretRef);
+  } finally {
+    mockedSecretResolutions.delete(refKey);
+    clearRuntimeConfigSnapshot();
+  }
+});
+
+test("runSearchFusion resolves catalog-stub scoped credential SecretRefs when plugin credentials are absent", async () => {
+  clearRuntimeConfigSnapshot();
+  const refKey = "exec:scoped_exec:value";
+  const config = {
+    plugins: { entries: { tavily: { enabled: true, config: {} } } },
+    tools: {
+      web: {
+        search: {
+          tavily: {
+            apiKey: { source: "exec", provider: "scoped_exec", id: "value" },
+          },
+        },
+      },
+    },
+  };
+  const searchConfigs: unknown[] = [];
+  mockedSecretResolutions.set(refKey, { value: "resolved-scoped-tavily-key" });
+
+  try {
+    const payload = await runSearchFusion({
+      runtime: {
+        webSearch: {
+          listProviders: () => [
+            {
+              id: "search-fusion",
+              label: "Search Fusion",
+              getConfiguredCredentialValue: () => "always-enabled",
+            },
+          ],
+          search: async ({ config, providerId }: { config?: unknown; providerId?: string }) => {
+            searchConfigs.push(config);
+            return {
+              provider: providerId ?? "tavily",
+              result: {
+                results: [
+                  {
+                    title: "Scoped SecretRef Search OK",
+                    url: "https://example.com/scoped-secret-ref",
+                    description: "search worked",
+                  },
+                ],
+              },
+            };
+          },
+        },
+      } as never,
+      config,
+      pluginConfig: {},
+      request: {
+        query: "scoped secret ref",
+        providers: ["tavily"],
+      },
+    });
+
+    assert.deepEqual(payload.providersSucceeded, ["tavily"]);
+    assert.equal(searchConfigs.length, 1);
+    assert.notEqual(searchConfigs[0], config);
+    assert.equal(
+      (searchConfigs[0] as any)?.tools?.web?.search?.tavily?.apiKey,
+      "resolved-scoped-tavily-key",
+    );
+    assert.equal(secretResolverCalls.at(-1)?.config, config);
+    assert.equal(secretResolverCalls.at(-1)?.path, "tools.web.search.tavily.apiKey");
+  } finally {
+    mockedSecretResolutions.delete(refKey);
+    clearRuntimeConfigSnapshot();
+  }
+});
+
+test("runSearchFusion isolates catalog-stub credential resolution failures", async () => {
+  clearRuntimeConfigSnapshot();
+  const refKey = "exec:failing_exec:value";
+  const resolverMessage = "catalog exec resolver could not read the credential";
+  const config = {
+    plugins: {
+      entries: {
+        duckduckgo: { enabled: true },
+        tavily: {
+          config: {
+            webSearch: {
+              apiKey: { source: "exec", provider: "failing_exec", id: "value" },
+            },
+          },
+        },
+      },
+    },
+  };
+  const searchedProviderIds: Array<string | undefined> = [];
+  mockedSecretResolutions.set(refKey, { unresolvedRefReason: resolverMessage });
+
+  try {
+    const payload = await runSearchFusion({
+      runtime: {
+        webSearch: {
+          listProviders: () => [
+            {
+              id: "search-fusion",
+              label: "Search Fusion",
+              getConfiguredCredentialValue: () => "always-enabled",
+            },
+          ],
+          search: async ({ providerId }: { providerId?: string }) => {
+            searchedProviderIds.push(providerId);
+            return {
+              provider: providerId ?? "duckduckgo",
+              result: {
+                results: [
+                  {
+                    title: "Unaffected provider",
+                    url: "https://example.com/unaffected-provider",
+                    description: "search worked",
+                  },
+                ],
+              },
+            };
+          },
+        },
+      } as never,
+      config,
+      pluginConfig: {},
+      request: {
+        query: "isolated resolution failure",
+        providers: ["tavily", "duckduckgo"],
+      },
+    });
+
+    assert.deepEqual(payload.providersSucceeded, ["duckduckgo"]);
+    assert.deepEqual(payload.providersFailed, [{ provider: "tavily", error: resolverMessage }]);
+    assert.deepEqual(searchedProviderIds, ["duckduckgo"]);
+    assert.equal(payload.providerRuns.find((run) => run.provider === "tavily")?.ok, false);
+  } finally {
+    mockedSecretResolutions.delete(refKey);
     clearRuntimeConfigSnapshot();
   }
 });
@@ -309,6 +570,7 @@ test("runSearchFusion resolves SecretRef credentials before delegating providers
     listProvidersConfigs: [],
     searchConfigs: [],
   };
+  const resolverCallCountBefore = secretResolverCalls.length;
 
   try {
     const payload = await runSearchFusion({
@@ -373,6 +635,11 @@ test("runSearchFusion resolves SecretRef credentials before delegating providers
     assert.equal(
       (seen.searchConfigs[0] as any)?.plugins?.entries?.minimax?.config?.webSearch?.apiKey,
       "resolved-minimax-key",
+    );
+    assert.equal(secretResolverCalls.length, resolverCallCountBefore + 1);
+    assert.equal(
+      secretResolverCalls.at(-1)?.path,
+      "plugins.entries.minimax.config.webSearch.apiKey",
     );
   } finally {
     if (previousKey === undefined) {

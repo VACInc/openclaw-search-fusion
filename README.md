@@ -257,6 +257,8 @@ Lists the providers visible to the broker and whether they appear configured.
 
 Search Fusion unions the active runtime registry with its native provider catalog, adding catalog providers whose owning plugin is enabled in the live config. Runtime entries win on id collisions and keep their full credential accessors; catalog entries cover providers not yet present because OpenClaw activates plugins lazily. The resulting union drives listing, selection, modes, intent routing, sibling dedupe, and fan-out; delegated search still asks the runtime to load the selected provider on demand.
 
+Before delegation, Search Fusion resolves plugin-entry or scoped credential SecretRefs for catalog-derived provider stubs so lazy-loaded providers receive the resolved credential config.
+
 For catalog-derived entries, `credentialSource` reports `keyless`, `plugin-config (declared)`, `environment (<NAME>)`, or `account-auth` for Codex. A declared plugin `webSearch.apiKey` may be a string or SecretRef; Search Fusion reports only that it was declared, never its value. Enabled catalog providers without a detectable configuration remain selectable but report `configured: false` with a setup hint.
 
 The additive `missing` array now reports native catalog providers whose owning plugin is disabled or not enabled in the live config, with:

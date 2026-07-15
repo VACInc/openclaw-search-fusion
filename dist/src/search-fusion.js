@@ -1,5 +1,6 @@
 import { getRuntimeConfigSnapshot } from "openclaw/plugin-sdk/runtime-config-snapshot";
 import { discoverProviders, resolveSelectedProviders } from "./provider-discovery.js";
+import { KNOWN_PROVIDERS } from "./provider-catalog.js";
 import { normalizeProviderPayload } from "./result-normalizer.js";
 import { compareSourceTierDesc, coerceSourceTierMode, pickHigherSourceTier, sourceTierMergedAdjustment, } from "./source-tier.js";
 import { canonicalizeUrl } from "./text.js";
@@ -34,6 +35,29 @@ function cloneConfigForCredentialInjection(config) {
         return config;
     }
     return structuredClone(config);
+}
+function readConfigPath(config, path) {
+    let current = config;
+    for (const segment of path) {
+        if (!isRecord(current)) {
+            return undefined;
+        }
+        current = current[segment];
+    }
+    return current;
+}
+function writeConfigPath(config, path, value) {
+    let current = config;
+    for (const segment of path.slice(0, -1)) {
+        if (!isRecord(current)) {
+            throw new Error(`Unable to inject resolved credential at ${path.join(".")}.`);
+        }
+        current = current[segment];
+    }
+    if (!isRecord(current)) {
+        throw new Error(`Unable to inject resolved credential at ${path.join(".")}.`);
+    }
+    current[path.at(-1)] = value;
 }
 function resolveSearchConfig(config) {
     const tools = isRecord(config) ? config.tools : undefined;
@@ -86,9 +110,52 @@ async function resolveSecretRefValue(params) {
     }
     return resolved.value;
 }
+async function resolveCatalogCredentialPath(params) {
+    const credentialPath = params.path.join(".");
+    for (const config of [params.runtimeConfig, params.sourceConfig]) {
+        const configuredCredential = readConfigPath(config, params.path);
+        if (isSecretRefLike(configuredCredential)) {
+            const clonedConfig = cloneConfigForCredentialInjection(config);
+            const resolvedValue = await resolveSecretRefValue({
+                config: params.sourceConfig,
+                value: configuredCredential,
+                path: credentialPath,
+            });
+            writeConfigPath(clonedConfig, params.path, resolvedValue);
+            return { matched: true, config: clonedConfig };
+        }
+        if (configuredCredential !== undefined) {
+            return { matched: true, config };
+        }
+    }
+    return { matched: false, config: params.runtimeConfig };
+}
+async function resolveCatalogDelegatedRuntimeConfig(params) {
+    const catalogProvider = KNOWN_PROVIDERS.find((entry) => entry.id === params.provider.id);
+    if (!catalogProvider) {
+        return params.runtimeConfig;
+    }
+    const pluginCredential = await resolveCatalogCredentialPath({
+        runtimeConfig: params.runtimeConfig,
+        sourceConfig: params.sourceConfig,
+        path: ["plugins", "entries", catalogProvider.pluginId, "config", "webSearch", "apiKey"],
+    });
+    if (pluginCredential.matched) {
+        return pluginCredential.config;
+    }
+    const scopedCredential = await resolveCatalogCredentialPath({
+        runtimeConfig: params.runtimeConfig,
+        sourceConfig: params.sourceConfig,
+        path: ["tools", "web", "search", params.provider.id, "apiKey"],
+    });
+    return scopedCredential.config;
+}
 async function resolveDelegatedRuntimeConfig(params) {
     const runtimeProvider = params.runtimeProviders.find((entry) => entry.id === params.provider.id);
-    if (!runtimeProvider || runtimeProvider.requiresCredential === false) {
+    if (!runtimeProvider) {
+        return resolveCatalogDelegatedRuntimeConfig(params);
+    }
+    if (runtimeProvider.requiresCredential === false) {
         return params.runtimeConfig;
     }
     const configuredCredential = runtimeProvider.getConfiguredCredentialValue?.(params.runtimeConfig);
