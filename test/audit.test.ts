@@ -109,6 +109,11 @@ function minimalPayload(overrides: Partial<FusionSearchPayload> = {}): FusionSea
       rowCount: 0,
       rows: [],
     },
+    output: {
+      includeRawPayloads: false,
+      includeDiscarded: false,
+      maxSnippetLength: 500,
+    },
     results: [
       {
         title: "SDK Docs",

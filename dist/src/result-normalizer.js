@@ -1,5 +1,12 @@
 import { classifySourceTier, coerceSourceTierMode, sourceTierMultiplier, } from "./source-tier.js";
 import { analyzeUrl, cleanProviderText, resolveSiteName, truncate } from "./text.js";
+const DEFAULT_MAX_SNIPPET_LENGTH = 500;
+function limitText(value, maxLength) {
+    if (!value)
+        return { truncated: false };
+    const limited = truncate(value, maxLength);
+    return { value: limited, truncated: limited !== value };
+}
 function asObject(value) {
     return value && typeof value === "object" && !Array.isArray(value)
         ? value
@@ -108,8 +115,13 @@ function mapResultArray(params) {
         const stringItem = typeof item === "string" ? item.trim() : "";
         const obj = asObject(item);
         const rawUrl = stringItem || firstString(obj, ["url", "link", "href"]);
-        const providerSnippet = cleanProviderText(firstString(obj, ["description", "snippet", "content", "body", "text", "summary"]));
-        const fallbackSnippet = params.fallbackSnippet ? truncate(params.fallbackSnippet) : undefined;
+        const cleanedProviderSnippet = cleanProviderText(firstString(obj, ["description", "snippet", "content", "body", "text", "summary"]));
+        const providerSnippet = limitText(cleanedProviderSnippet || undefined, params.maxSnippetLength);
+        const fallbackSnippet = limitText(params.fallbackSnippet, params.maxSnippetLength);
+        const snippet = providerSnippet.value ?? fallbackSnippet.value;
+        const snippetTruncated = providerSnippet.value
+            ? providerSnippet.truncated
+            : fallbackSnippet.truncated || params.fallbackTruncated === true;
         if (!rawUrl) {
             discardedResults.push({
                 providerId: params.providerId,
@@ -117,7 +129,8 @@ function mapResultArray(params) {
                 rawRank: index + 1,
                 reason: "missing-url",
                 title: firstString(obj, ["title", "name", "headline", "label"]),
-                snippet: providerSnippet || fallbackSnippet,
+                snippet,
+                ...(snippetTruncated ? { truncated: true } : {}),
                 rawItem: item,
             });
             return;
@@ -127,7 +140,6 @@ function mapResultArray(params) {
         const flags = mergeFlags(analyzedUrl.flags, itemFlags);
         const sourceTier = classifySourceTier({ sourceType: params.sourceType, flags });
         const title = firstString(obj, ["title", "name", "headline", "label"]) ?? titleFromUrl(analyzedUrl.url);
-        const snippet = providerSnippet || fallbackSnippet;
         const nativeScore = firstNumber(obj, ["score", "confidence", "relevance"]);
         const baseScore = normalizeNativeScore(nativeScore, index);
         const preTierScore = Math.max(0.05, baseScore * sourceTypeWeight(params.sourceType) - flagPenalty(flags));
@@ -138,6 +150,7 @@ function mapResultArray(params) {
             originalUrl: analyzedUrl.originalUrl,
             canonicalUrl: analyzedUrl.url,
             snippet,
+            ...(snippetTruncated ? { truncated: true } : {}),
             siteName: firstString(obj, ["siteName", "site", "domain"]) ?? resolveSiteName(analyzedUrl.url),
             providerId: params.providerId,
             score,
@@ -145,7 +158,7 @@ function mapResultArray(params) {
             rawRank: index + 1,
             sourceType: params.sourceType,
             sourceTier,
-            snippetSource: providerSnippet ? "provider" : params.fallbackSnippet ? "answer-fallback" : undefined,
+            snippetSource: providerSnippet.value ? "provider" : params.fallbackSnippet ? "answer-fallback" : undefined,
             flags,
             rawItem: item,
         });
@@ -172,24 +185,28 @@ function buildCitationDetails(citationsRaw) {
         ];
     });
 }
-export function extractProviderAnswer(payload, providerId) {
-    const fullContent = cleanProviderText(payload.content ?? payload.answer);
-    if (!fullContent)
+export function extractProviderAnswer(payload, providerId, maxSnippetLength = DEFAULT_MAX_SNIPPET_LENGTH) {
+    const rawFullContent = cleanProviderText(payload.content ?? payload.answer);
+    if (!rawFullContent)
         return undefined;
+    const fullContent = truncate(rawFullContent, maxSnippetLength);
+    const summaryMaxLength = Math.min(320, maxSnippetLength);
     const citationsRaw = Array.isArray(payload.citations) ? payload.citations : [];
     const citationDetails = buildCitationDetails(citationsRaw);
     return {
         providerId,
-        summary: truncate(fullContent, 320),
+        summary: truncate(rawFullContent, summaryMaxLength),
         fullContent,
-        summaryTruncated: fullContent.length > 320,
+        summaryTruncated: rawFullContent.length > summaryMaxLength,
+        ...(rawFullContent.length > maxSnippetLength ? { truncated: true } : {}),
         citations: citationDetails.map((entry) => entry.url),
         citationDetails,
     };
 }
 export function normalizeProviderPayload(params) {
     const payload = params.payload;
-    const answer = extractProviderAnswer(payload, params.providerId);
+    const maxSnippetLength = Math.max(100, Math.min(5000, params.maxSnippetLength ?? DEFAULT_MAX_SNIPPET_LENGTH));
+    const answer = extractProviderAnswer(payload, params.providerId, maxSnippetLength);
     const sourceTierMode = coerceSourceTierMode(params.sourceTierMode);
     const resultArrays = [];
     const discardedArrays = [];
@@ -201,6 +218,8 @@ export function normalizeProviderPayload(params) {
             sourceType: "results",
             sourceTierMode,
             fallbackSnippet: answer?.fullContent,
+            fallbackTruncated: answer?.truncated,
+            maxSnippetLength,
         });
         resultArrays.push(...mapped.results);
         discardedArrays.push(...mapped.discardedResults);
@@ -213,6 +232,8 @@ export function normalizeProviderPayload(params) {
             sourceType: "sources",
             sourceTierMode,
             fallbackSnippet: answer?.fullContent,
+            fallbackTruncated: answer?.truncated,
+            maxSnippetLength,
         });
         resultArrays.push(...mapped.results);
         discardedArrays.push(...mapped.discardedResults);
@@ -227,6 +248,8 @@ export function normalizeProviderPayload(params) {
             sourceType: "results",
             sourceTierMode,
             fallbackSnippet: answer?.fullContent,
+            fallbackTruncated: answer?.truncated,
+            maxSnippetLength,
         });
         resultArrays.push(...mapped.results);
         discardedArrays.push(...mapped.discardedResults);
@@ -239,6 +262,8 @@ export function normalizeProviderPayload(params) {
             sourceType: "citations",
             sourceTierMode,
             fallbackSnippet: answer?.fullContent,
+            fallbackTruncated: answer?.truncated,
+            maxSnippetLength,
         });
         resultArrays.push(...mapped.results);
         discardedArrays.push(...mapped.discardedResults);

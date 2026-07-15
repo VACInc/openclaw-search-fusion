@@ -14,6 +14,17 @@ import {
 } from "./source-tier.js";
 import { analyzeUrl, cleanProviderText, resolveSiteName, truncate } from "./text.js";
 
+const DEFAULT_MAX_SNIPPET_LENGTH = 500;
+
+function limitText(
+  value: string | undefined,
+  maxLength: number,
+): { value?: string; truncated: boolean } {
+  if (!value) return { truncated: false };
+  const limited = truncate(value, maxLength);
+  return { value: limited, truncated: limited !== value };
+}
+
 function asObject(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -126,6 +137,8 @@ function mapResultArray(params: {
   sourceType: SearchResultSourceType;
   sourceTierMode: SourceTierMode;
   fallbackSnippet?: string;
+  fallbackTruncated?: boolean;
+  maxSnippetLength: number;
 }): {
   results: NormalizedSearchResult[];
   discardedResults: DiscardedSearchResult[];
@@ -137,10 +150,15 @@ function mapResultArray(params: {
     const stringItem = typeof item === "string" ? item.trim() : "";
     const obj = asObject(item);
     const rawUrl = stringItem || firstString(obj, ["url", "link", "href"]);
-    const providerSnippet = cleanProviderText(
+    const cleanedProviderSnippet = cleanProviderText(
       firstString(obj, ["description", "snippet", "content", "body", "text", "summary"]),
     );
-    const fallbackSnippet = params.fallbackSnippet ? truncate(params.fallbackSnippet) : undefined;
+    const providerSnippet = limitText(cleanedProviderSnippet || undefined, params.maxSnippetLength);
+    const fallbackSnippet = limitText(params.fallbackSnippet, params.maxSnippetLength);
+    const snippet = providerSnippet.value ?? fallbackSnippet.value;
+    const snippetTruncated = providerSnippet.value
+      ? providerSnippet.truncated
+      : fallbackSnippet.truncated || params.fallbackTruncated === true;
 
     if (!rawUrl) {
       discardedResults.push({
@@ -149,7 +167,8 @@ function mapResultArray(params: {
         rawRank: index + 1,
         reason: "missing-url",
         title: firstString(obj, ["title", "name", "headline", "label"]),
-        snippet: providerSnippet || fallbackSnippet,
+        snippet,
+        ...(snippetTruncated ? { truncated: true as const } : {}),
         rawItem: item,
       } satisfies DiscardedSearchResult);
       return;
@@ -160,7 +179,6 @@ function mapResultArray(params: {
     const flags = mergeFlags(analyzedUrl.flags as SearchResultFlag[], itemFlags);
     const sourceTier = classifySourceTier({ sourceType: params.sourceType, flags });
     const title = firstString(obj, ["title", "name", "headline", "label"]) ?? titleFromUrl(analyzedUrl.url);
-    const snippet = providerSnippet || fallbackSnippet;
     const nativeScore = firstNumber(obj, ["score", "confidence", "relevance"]);
     const baseScore = normalizeNativeScore(nativeScore, index);
     const preTierScore = Math.max(
@@ -178,6 +196,7 @@ function mapResultArray(params: {
       originalUrl: analyzedUrl.originalUrl,
       canonicalUrl: analyzedUrl.url,
       snippet,
+      ...(snippetTruncated ? { truncated: true as const } : {}),
       siteName: firstString(obj, ["siteName", "site", "domain"]) ?? resolveSiteName(analyzedUrl.url),
       providerId: params.providerId,
       score,
@@ -185,7 +204,7 @@ function mapResultArray(params: {
       rawRank: index + 1,
       sourceType: params.sourceType,
       sourceTier,
-      snippetSource: providerSnippet ? "provider" : params.fallbackSnippet ? "answer-fallback" : undefined,
+      snippetSource: providerSnippet.value ? "provider" : params.fallbackSnippet ? "answer-fallback" : undefined,
       flags,
       rawItem: item,
     } satisfies NormalizedSearchResult);
@@ -219,18 +238,22 @@ function buildCitationDetails(citationsRaw: unknown[]): ProviderAnswerCitation[]
 export function extractProviderAnswer(
   payload: Record<string, unknown>,
   providerId: string,
+  maxSnippetLength = DEFAULT_MAX_SNIPPET_LENGTH,
 ): ProviderAnswerDigest | undefined {
-  const fullContent = cleanProviderText(payload.content ?? payload.answer);
-  if (!fullContent) return undefined;
+  const rawFullContent = cleanProviderText(payload.content ?? payload.answer);
+  if (!rawFullContent) return undefined;
+  const fullContent = truncate(rawFullContent, maxSnippetLength);
+  const summaryMaxLength = Math.min(320, maxSnippetLength);
 
   const citationsRaw = Array.isArray(payload.citations) ? payload.citations : [];
   const citationDetails = buildCitationDetails(citationsRaw);
 
   return {
     providerId,
-    summary: truncate(fullContent, 320),
+    summary: truncate(rawFullContent, summaryMaxLength),
     fullContent,
-    summaryTruncated: fullContent.length > 320,
+    summaryTruncated: rawFullContent.length > summaryMaxLength,
+    ...(rawFullContent.length > maxSnippetLength ? { truncated: true as const } : {}),
     citations: citationDetails.map((entry) => entry.url),
     citationDetails,
   };
@@ -240,6 +263,7 @@ export function normalizeProviderPayload(params: {
   providerId: string;
   payload: Record<string, unknown>;
   sourceTierMode?: SourceTierMode;
+  maxSnippetLength?: number;
 }): {
   results: NormalizedSearchResult[];
   discardedResults: DiscardedSearchResult[];
@@ -247,7 +271,11 @@ export function normalizeProviderPayload(params: {
   error?: string;
 } {
   const payload = params.payload;
-  const answer = extractProviderAnswer(payload, params.providerId);
+  const maxSnippetLength = Math.max(
+    100,
+    Math.min(5000, params.maxSnippetLength ?? DEFAULT_MAX_SNIPPET_LENGTH),
+  );
+  const answer = extractProviderAnswer(payload, params.providerId, maxSnippetLength);
   const sourceTierMode = coerceSourceTierMode(params.sourceTierMode);
 
   const resultArrays: NormalizedSearchResult[] = [];
@@ -260,6 +288,8 @@ export function normalizeProviderPayload(params: {
       sourceType: "results",
       sourceTierMode,
       fallbackSnippet: answer?.fullContent,
+      fallbackTruncated: answer?.truncated,
+      maxSnippetLength,
     });
     resultArrays.push(...mapped.results);
     discardedArrays.push(...mapped.discardedResults);
@@ -273,6 +303,8 @@ export function normalizeProviderPayload(params: {
       sourceType: "sources",
       sourceTierMode,
       fallbackSnippet: answer?.fullContent,
+      fallbackTruncated: answer?.truncated,
+      maxSnippetLength,
     });
     resultArrays.push(...mapped.results);
     discardedArrays.push(...mapped.discardedResults);
@@ -288,6 +320,8 @@ export function normalizeProviderPayload(params: {
       sourceType: "results",
       sourceTierMode,
       fallbackSnippet: answer?.fullContent,
+      fallbackTruncated: answer?.truncated,
+      maxSnippetLength,
     });
     resultArrays.push(...mapped.results);
     discardedArrays.push(...mapped.discardedResults);
@@ -301,6 +335,8 @@ export function normalizeProviderPayload(params: {
       sourceType: "citations",
       sourceTierMode,
       fallbackSnippet: answer?.fullContent,
+      fallbackTruncated: answer?.truncated,
+      maxSnippetLength,
     });
     resultArrays.push(...mapped.results);
     discardedArrays.push(...mapped.discardedResults);

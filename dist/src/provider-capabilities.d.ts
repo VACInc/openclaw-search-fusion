@@ -26,11 +26,6 @@
  *   const caps = resolveProviderCapabilities("gemini");
  *   if (hasCapability(caps, "answer")) { ... }
  */
-
-// ---------------------------------------------------------------------------
-// Capability names
-// ---------------------------------------------------------------------------
-
 /**
  * The full set of recognised capability tags.
  *
@@ -59,118 +54,25 @@
  * - `"privacy"`       Provider explicitly avoids user-level tracking.  Examples:
  *                     DuckDuckGo, Brave, SearXNG.
  */
-export type ProviderCapability =
-  | "results"
-  | "answer"
-  | "extract"
-  | "news"
-  | "images"
-  | "video"
-  | "local"
-  | "academic"
-  | "code"
-  | "neural"
-  | "free-tier"
-  | "privacy";
-
+export type ProviderCapability = "results" | "answer" | "extract" | "news" | "images" | "video" | "local" | "academic" | "code" | "neural" | "free-tier" | "privacy";
 /** Immutable ordered list of all known capability tags (useful for validation). */
-export const ALL_PROVIDER_CAPABILITIES: readonly ProviderCapability[] = [
-  "results",
-  "answer",
-  "extract",
-  "news",
-  "images",
-  "video",
-  "local",
-  "academic",
-  "code",
-  "neural",
-  "free-tier",
-  "privacy",
-] as const;
-
-// ---------------------------------------------------------------------------
-// Per-provider capability registry
-// ---------------------------------------------------------------------------
-
-/**
- * Known capabilities for each provider id.
- *
- * Keys are lowercase provider ids as registered with the OpenClaw web search
- * runtime.  Values are sorted arrays of ProviderCapability.  Any provider id
- * NOT in this map is treated as having an empty capability set (i.e. completely
- * general-purpose).
- *
- * This is the single source of truth — keep it alphabetically sorted by key
- * to make diffs reviewable.
- */
-const PROVIDER_CAPABILITY_REGISTRY: Readonly<Record<string, readonly ProviderCapability[]>> = {
-  brave: ["news", "privacy", "results"],
-  codex: ["answer", "results"],
-  duckduckgo: ["free-tier", "privacy", "results"],
-  exa: ["academic", "code", "extract", "neural", "results"],
-  firecrawl: ["results"],
-  "firecrawl-free": ["free-tier", "results"],
-  gemini: ["answer", "results"],
-  grok: ["answer", "news", "results"],
-  kimi: ["answer", "results"],
-  minimax: ["code", "results"],
-  ollama: ["free-tier", "results"],
-  parallel: ["extract", "neural", "results"],
-  "parallel-free": ["extract", "free-tier", "neural", "results"],
-  perplexity: ["answer", "neural", "results"],
-  searxng: ["free-tier", "privacy", "results"],
-  tavily: ["neural", "results"],
-};
-
-// ---------------------------------------------------------------------------
-// Public helpers
-// ---------------------------------------------------------------------------
-
+export declare const ALL_PROVIDER_CAPABILITIES: readonly ProviderCapability[];
 /**
  * Return the registered capability set for the given provider id, normalised
  * to lowercase.  Returns an empty array for unknown providers.
  */
-export function resolveProviderCapabilities(providerId: string): readonly ProviderCapability[] {
-  return PROVIDER_CAPABILITY_REGISTRY[providerId.toLowerCase()] ?? [];
-}
-
+export declare function resolveProviderCapabilities(providerId: string): readonly ProviderCapability[];
 /**
  * Check whether a capability set includes a particular capability.
  */
-export function hasCapability(
-  capabilities: readonly ProviderCapability[],
-  capability: ProviderCapability,
-): boolean {
-  return capabilities.includes(capability);
-}
-
+export declare function hasCapability(capabilities: readonly ProviderCapability[], capability: ProviderCapability): boolean;
 /**
  * Return the subset of providers from `providerIds` that have ALL of the
  * requested capabilities.
  */
-export function filterByCapabilities(
-  providerIds: readonly string[],
-  required: readonly ProviderCapability[],
-): string[] {
-  if (required.length === 0) return [...providerIds];
-  return providerIds.filter((id) => {
-    const caps = resolveProviderCapabilities(id);
-    return required.every((cap) => caps.includes(cap));
-  });
-}
-
+export declare function filterByCapabilities(providerIds: readonly string[], required: readonly ProviderCapability[]): string[];
 /**
  * Return the subset of providers from `providerIds` that have AT LEAST ONE of
  * the requested capabilities.
  */
-export function filterByAnyCapability(
-  providerIds: readonly string[],
-  any: readonly ProviderCapability[],
-): string[] {
-  if (any.length === 0) return [...providerIds];
-  return providerIds.filter((id) => {
-    const caps = resolveProviderCapabilities(id);
-    return any.some((cap) => caps.includes(cap));
-  });
-}
+export declare function filterByAnyCapability(providerIds: readonly string[], any: readonly ProviderCapability[]): string[];

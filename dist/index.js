@@ -1,11 +1,13 @@
 import { Type } from "@sinclair/typebox";
 import { getRuntimeConfigSnapshot } from "openclaw/plugin-sdk/runtime-config-snapshot";
 import { discoverProviders } from "./src/provider-discovery.js";
+import { findMissingProviders, KNOWN_PROVIDERS } from "./src/provider-catalog.js";
 import { ALL_PROVIDER_CAPABILITIES, filterByAnyCapability, filterByCapabilities, hasCapability, resolveProviderCapabilities, } from "./src/provider-capabilities.js";
 import { renderFusionSummary, runSearchFusion } from "./src/search-fusion.js";
+import { wrapModelVisibleSearchPayload } from "./src/external-content.js";
 // Re-export the capability taxonomy so consumers can import directly from the
 // plugin entry point without knowing internal file structure.
-export { ALL_PROVIDER_CAPABILITIES, filterByAnyCapability, filterByCapabilities, hasCapability, resolveProviderCapabilities, };
+export { ALL_PROVIDER_CAPABILITIES, filterByAnyCapability, filterByCapabilities, hasCapability, resolveProviderCapabilities, KNOWN_PROVIDERS, };
 const SearchFusionParameters = Type.Object({
     query: Type.String({ description: "Search query string." }),
     intent: Type.Optional(Type.Union([
@@ -16,20 +18,18 @@ const SearchFusionParameters = Type.Object({
         Type.Literal("local"),
     ], {
         description: "Optional intent hint that biases provider selection without overriding explicit providers or mode. " +
-            "research: prefer answer/grounding providers (Gemini, Perplexity, Tavily). " +
-            "keyword: prefer fast index-based providers (Brave, DuckDuckGo). " +
-            "answer: prefer answer-style providers (Gemini, Grok, Perplexity). " +
-            "news: prefer freshness-optimized providers. " +
-            "local: prefer providers with local/map results.",
+            "When intentProviders is omitted, built-in capability rules route research to academic/extract/neural providers, " +
+            "keyword to classic results providers without answer synthesis, answer to answer providers, and news to news providers. " +
+            "Local has no built-in provider preference and falls through to defaults unless intentProviders.local is set.",
     })),
     mode: Type.Optional(Type.String({ description: "Optional mode name. Uses configured modes, or built-in starter modes (fast, balanced, deep) when custom modes are not set." })),
-    providers: Type.Optional(Type.Array(Type.String({ description: "Provider id, or use 'all' / '*' to fan out to every configured provider." }))),
-    count: Type.Optional(Type.Number({
+    providers: Type.Optional(Type.Array(Type.String({ description: "Explicit provider id, or use 'all' / '*' to fan out to every configured provider. Explicit selections bypass excludeProviders; unknown ids are errors." }))),
+    count: Type.Optional(Type.Integer({
         description: "Number of results to request from each provider (1-10).",
         minimum: 1,
         maximum: 10,
     })),
-    maxMergedResults: Type.Optional(Type.Number({
+    maxMergedResults: Type.Optional(Type.Integer({
         description: "Maximum merged results returned after dedupe (1-50).",
         minimum: 1,
         maximum: 50,
@@ -42,12 +42,29 @@ const SearchFusionParameters = Type.Object({
     search_lang: Type.Optional(Type.String({ description: "Provider-specific search language code when supported." })),
     ui_lang: Type.Optional(Type.String({ description: "Locale code for UI elements when supported." })),
     includeFailures: Type.Optional(Type.Boolean({ description: "Include provider failures in the human-readable summary." })),
+    includeRawPayloads: Type.Optional(Type.Boolean({ description: "Include full provider payloads and raw normalized items. Defaults to false." })),
+    includeDiscarded: Type.Optional(Type.Boolean({ description: "Include missing-URL items discarded from merging. Defaults to false." })),
 }, { additionalProperties: false });
 function asJsonResult(payload) {
     return {
         content: [{ type: "text", text: JSON.stringify(payload, null, 2) }],
         details: payload,
     };
+}
+async function asWrappedJsonResult(payload) {
+    return {
+        content: [{ type: "text", text: await wrapModelVisibleSearchPayload(payload) }],
+        details: payload,
+    };
+}
+function throwIfSignalAborted(signal) {
+    if (!signal?.aborted)
+        return;
+    if (signal.reason instanceof Error)
+        throw signal.reason;
+    const error = new Error(typeof signal.reason === "string" ? signal.reason : "Search aborted");
+    error.name = "AbortError";
+    throw error;
 }
 function resolveRuntimeConfigSnapshot(fallback) {
     return getRuntimeConfigSnapshot() ?? fallback;
@@ -63,23 +80,33 @@ function createSearchFusionProvider(api) {
         credentialLabel: "No credential required",
         envVars: [],
         placeholder: "",
-        signupUrl: "https://github.com/openclaw/search-fusion",
-        docsUrl: "https://github.com/openclaw/search-fusion#readme",
+        signupUrl: "https://github.com/VACInc/openclaw-search-fusion",
+        docsUrl: "https://github.com/VACInc/openclaw-search-fusion#readme",
         autoDetectOrder: 999,
         credentialPath: "plugins.entries.search-fusion.config.__unused",
         getCredentialValue: () => undefined,
         setCredentialValue: () => { },
         getConfiguredCredentialValue: () => "always-enabled",
-        createTool: () => ({
+        createTool: (ctx = {}) => ({
             description: "Search across multiple configured web search providers in parallel, merge duplicate URLs, and preserve provider attribution.",
             parameters: SearchFusionParameters,
-            execute: async (args) => await runSearchFusion({
-                runtime: api.runtime,
-                config: resolveRuntimeConfigSnapshot(api.config),
-                sourceConfig: api.config,
-                pluginConfig: api.pluginConfig,
-                request: args,
-            }),
+            execute: async (args, context) => {
+                const payload = await runSearchFusion({
+                    runtime: api.runtime,
+                    config: api.config,
+                    contextConfig: ctx.config,
+                    searchConfig: ctx.searchConfig,
+                    pluginConfig: api.pluginConfig,
+                    request: args,
+                    signal: context?.signal,
+                    runtimeMetadata: ctx.runtimeMetadata,
+                    agentDir: ctx.agentDir,
+                });
+                return {
+                    content: await wrapModelVisibleSearchPayload(payload),
+                    externalContent: payload.externalContent,
+                };
+            },
         }),
     };
 }
@@ -95,15 +122,15 @@ const plugin = {
             label: "Search Fusion",
             description: "Search across multiple configured web search providers in parallel, merge duplicate URLs, and preserve provider attribution.",
             parameters: SearchFusionParameters,
-            async execute(_id, params) {
+            async execute(_id, params, signal) {
                 const payload = await runSearchFusion({
                     runtime: searchApi.runtime,
-                    config: resolveRuntimeConfigSnapshot(searchApi.config),
-                    sourceConfig: searchApi.config,
+                    config: searchApi.config,
                     pluginConfig: searchApi.pluginConfig,
                     request: params,
+                    signal,
                 });
-                return asJsonResult({
+                return await asWrappedJsonResult({
                     summary: renderFusionSummary(payload, Boolean(params.includeFailures)),
                     payload,
                 });
@@ -112,24 +139,38 @@ const plugin = {
         api.registerTool({
             name: "search_fusion_providers",
             label: "Search Fusion Providers",
-            description: "List the web search providers visible to Search Fusion and whether they appear configured.",
+            description: "List web search providers visible to Search Fusion and catalog providers missing from the runtime, with safe enablement hints.",
             parameters: ProviderListParameters,
-            async execute(_id, params) {
+            async execute(_id, params, signal) {
+                throwIfSignalAborted(signal);
                 const runtimeConfig = resolveRuntimeConfigSnapshot(searchApi.config);
+                const runtimeProviders = searchApi.runtime.webSearch.listProviders({
+                    config: runtimeConfig,
+                });
                 const providers = discoverProviders({
-                    providers: searchApi.runtime.webSearch.listProviders({
-                        config: runtimeConfig,
-                    }),
+                    providers: runtimeProviders,
                     config: runtimeConfig,
                     selfId: "search-fusion",
+                });
+                const missing = findMissingProviders({
+                    runtimeProviderIds: runtimeProviders.map((provider) => provider.id),
                 });
                 const visibleProviders = params.onlyConfigured
                     ? providers.filter((provider) => provider.configured)
                     : providers;
-                const lines = visibleProviders.map((provider) => `- ${provider.id}: ${provider.label}${provider.configured ? " [configured]" : " [not configured]"}${(provider.capabilities ?? []).length > 0 ? ` [${(provider.capabilities ?? []).join(", ")}]` : ""}${provider.hint ? ` — ${provider.hint}` : ""}`);
+                const lines = visibleProviders.map((provider) => `- ${provider.id}: ${provider.label}${provider.configured ? " [configured]" : " [not configured]"}${provider.credentialSource ? ` [credential: ${provider.credentialSource}]` : ""}${(provider.capabilities ?? []).length > 0 ? ` [${(provider.capabilities ?? []).join(", ")}]` : ""}${provider.hint ? ` — ${provider.hint}` : ""}`);
+                const missingLines = missing.map((provider) => `- ${provider.id}: enable plugin ${provider.pluginId} [keyless: ${provider.keyless}] [env key detected: ${provider.envKeyDetected}]`);
+                const summary = [
+                    lines.length > 0 ? lines.join("\n") : "No runtime web search providers discovered.",
+                    ...(missingLines.length > 0
+                        ? [`Missing catalog providers:\n${missingLines.join("\n")}`]
+                        : []),
+                ].join("\n\n");
+                throwIfSignalAborted(signal);
                 return asJsonResult({
-                    summary: lines.length > 0 ? lines.join("\n") : "No runtime web search providers discovered.",
+                    summary,
                     providers: visibleProviders,
+                    missing,
                 });
             },
         });

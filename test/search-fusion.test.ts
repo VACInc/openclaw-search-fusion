@@ -11,7 +11,14 @@ function createRuntime(overrides?: {
     requiresCredential?: boolean;
     autoDetectOrder?: number;
   }>;
-  search?: (params: { providerId?: string; args: Record<string, unknown> }) => Promise<{
+  search?: (params: {
+    config?: unknown;
+    providerId?: string;
+    args: Record<string, unknown>;
+    signal?: AbortSignal;
+    agentDir?: string;
+    runtimeWebSearch?: unknown;
+  }) => Promise<{
     provider: string;
     result: Record<string, unknown>;
   }>;
@@ -412,7 +419,6 @@ test("runSearchFusion resolves inactive runtime SecretRefs against source config
         },
       } as never,
       config: runtimeConfig,
-      sourceConfig,
       pluginConfig: {},
       request: {
         query: "openclaw",
@@ -535,11 +541,14 @@ test("runSearchFusion merges duplicate URLs across providers and keeps provider 
   assert.equal(mergedDocs?.ranking.scoreBreakdown.finalScore, mergedDocs?.score);
   assert.equal(mergedDocs?.ranking.tieBreakers.bestRank, mergedDocs?.bestRank);
   assert.equal(
-    (mergedDocs?.variants.find((variant) => variant.providerId === "brave")?.rawItem as {
-      metadata?: { provider?: string };
-    })?.metadata?.provider,
-    "brave",
+    mergedDocs?.variants.find((variant) => variant.providerId === "brave")?.rawItem,
+    undefined,
   );
+  assert.deepEqual(payload.output, {
+    includeRawPayloads: false,
+    includeDiscarded: false,
+    maxSnippetLength: 500,
+  });
 
   assert.equal(payload.evidenceTable.version, 1);
   assert.equal(payload.evidenceTable.rowCount, payload.results.length);
@@ -592,6 +601,7 @@ test("runSearchFusion keeps missing-url junk as non-merged provenance", async ()
     request: {
       query: "openclaw web docs",
       providers: ["brave"],
+      includeDiscarded: true,
     },
   });
 
@@ -665,6 +675,27 @@ test("runSearchFusion falls back to all configured providers when no defaults or
   assert.deepEqual(payload.providersQueried, ["brave", "gemini", "tavily", "duckduckgo"]);
 });
 
+test("runSearchFusion does not query paid and free siblings in the same fan-out", async () => {
+  const payload = await runSearchFusion({
+    runtime: createRuntime({
+      providers: [
+        { id: "firecrawl-free", label: "Firecrawl Free", configured: true, requiresCredential: false },
+        { id: "firecrawl", label: "Firecrawl", configured: true },
+        { id: "parallel-free", label: "Parallel Free", configured: true, requiresCredential: false },
+        { id: "parallel", label: "Parallel", configured: true },
+        { id: "search-fusion", label: "Search Fusion", configured: true },
+      ],
+    }) as never,
+    config: {},
+    pluginConfig: {},
+    request: {
+      query: "dedupe provider tiers",
+    },
+  });
+
+  assert.deepEqual(payload.providersQueried, ["firecrawl", "parallel"]);
+});
+
 test("runSearchFusion includes empty ranking metadata when no providers are available", async () => {
   const payload = await runSearchFusion({
     runtime: createRuntime({
@@ -734,6 +765,7 @@ test("runSearchFusion preserves full answer content and raw payloads for answer-
     request: {
       query: "openclaw grounding",
       providers: ["gemini", "tavily"],
+      includeRawPayloads: true,
     },
   });
 
@@ -1312,6 +1344,7 @@ test("runSearchFusion honors request maxMergedResults without losing provider pa
       query: "openclaw",
       providers: ["brave", "gemini", "tavily"],
       maxMergedResults: 2,
+      includeRawPayloads: true,
     },
   });
 
@@ -1356,6 +1389,30 @@ test("runSearchFusion routes by intent hint when intentProviders is configured",
   });
 
   assert.deepEqual(payload.providersQueried, ["gemini", "tavily"]);
+});
+
+test("runSearchFusion uses capability-driven answer routing by default", async () => {
+  const payload = await runSearchFusion({
+    runtime: createRuntime({
+      providers: [
+        { id: "codex", label: "Codex", configured: true, requiresCredential: false },
+        { id: "gemini", label: "Gemini", configured: true },
+        { id: "grok", label: "Grok", configured: true },
+        { id: "kimi", label: "Kimi", configured: true },
+        { id: "perplexity", label: "Perplexity", configured: true },
+        { id: "firecrawl", label: "Firecrawl", configured: true },
+        { id: "search-fusion", label: "Search Fusion", configured: true },
+      ],
+    }) as never,
+    config: {},
+    pluginConfig: {},
+    request: {
+      query: "answer intent provider routing",
+      intent: "answer",
+    },
+  });
+
+  assert.deepEqual(payload.providersQueried, ["codex", "gemini", "grok", "kimi", "perplexity"]);
 });
 
 test("runSearchFusion intent does not override explicit providers", async () => {
@@ -1479,4 +1536,205 @@ test("runSearchFusion sourceTierMode strict suppresses citation-first noise vs o
   assert.equal(offPayload.results[0]?.canonicalUrl, "https://example.com/citation-blog");
   assert.equal(strictPayload.results[0]?.canonicalUrl, "https://docs.openclaw.ai/tools/web");
   assert.equal(strictPayload.results[1]?.bestSourceTier, "low");
+});
+
+test("runSearchFusion outer abort stops retries and reaches delegated search", async () => {
+  const controller = new AbortController();
+  let attempts = 0;
+  let delegatedSignal: AbortSignal | undefined;
+  const search = runSearchFusion({
+    runtime: createRuntime({
+      search: async ({ signal }) => {
+        attempts += 1;
+        delegatedSignal = signal;
+        throw new Error("temporary upstream failure");
+      },
+    }) as never,
+    config: {},
+    pluginConfig: {
+      retry: { maxAttempts: 5, backoffMs: 5000 },
+    },
+    request: { query: "cancel retries", providers: ["brave"] },
+    signal: controller.signal,
+  });
+
+  setTimeout(() => controller.abort(new Error("caller cancelled")), 20);
+  const payload = await search;
+  assert.equal(attempts, 1);
+  assert.ok(delegatedSignal);
+  assert.equal(payload.providerRuns[0]?.attempts, 1);
+  assert.match(payload.providersFailed[0]?.error ?? "", /caller cancelled/i);
+});
+
+test("runSearchFusion global deadline returns completed providers as partial results", async () => {
+  const payload = await runSearchFusion({
+    runtime: createRuntime({
+      search: async ({ providerId, signal }) => {
+        if (providerId === "brave") {
+          return {
+            provider: "brave",
+            result: {
+              results: [{ title: "Fast result", url: "https://example.com/fast" }],
+            },
+          };
+        }
+        return await new Promise((resolve, reject) => {
+          const timer = setTimeout(
+            () => resolve({ provider: "gemini", result: { results: [] } }),
+            10000,
+          );
+          signal?.addEventListener(
+            "abort",
+            () => {
+              clearTimeout(timer);
+              reject(signal.reason);
+            },
+            { once: true },
+          );
+        });
+      },
+    }) as never,
+    config: {},
+    pluginConfig: {
+      totalTimeoutMs: 5000,
+      providerTimeoutMs: 120000,
+      retry: { maxAttempts: 5, backoffMs: 0 },
+    },
+    request: { query: "partial deadline", providers: ["brave", "gemini"] },
+  });
+
+  assert.deepEqual(payload.providersSucceeded, ["brave"]);
+  assert.deepEqual(payload.providersFailed, [{ provider: "gemini", error: "deadline exceeded" }]);
+  assert.equal(payload.results[0]?.title, "Fast result");
+  assert.ok(payload.tookMs >= 4900 && payload.tookMs < 7000, `unexpected deadline duration ${payload.tookMs}ms`);
+});
+
+test("runSearchFusion timed-out attempts do not start overlapping retries", async () => {
+  let attempts = 0;
+  let active = 0;
+  let maxActive = 0;
+  const payload = await runSearchFusion({
+    runtime: createRuntime({
+      search: async ({ providerId }) => {
+        attempts += 1;
+        active += 1;
+        maxActive = Math.max(maxActive, active);
+        await new Promise((resolve) => setTimeout(resolve, 1200));
+        active -= 1;
+        return { provider: providerId ?? "brave", result: { results: [] } };
+      },
+    }) as never,
+    config: {},
+    pluginConfig: {
+      providerTimeoutMs: 1000,
+      retry: { maxAttempts: 4, backoffMs: 0 },
+    },
+    request: { query: "no overlap", providers: ["brave"] },
+  });
+
+  assert.equal(attempts, 1);
+  assert.equal(maxActive, 1);
+  assert.equal(payload.providerRuns[0]?.attempts, 1);
+  assert.match(payload.providersFailed[0]?.error ?? "", /timed out/i);
+});
+
+test("runSearchFusion does not retry deterministic HTTP failures", async () => {
+  for (const message of ["404 not found", "409 conflict", "422 invalid input", "resource not found"]) {
+    let attempts = 0;
+    const payload = await runSearchFusion({
+      runtime: createRuntime({
+        search: async () => {
+          attempts += 1;
+          throw new Error(message);
+        },
+      }) as never,
+      config: {},
+      pluginConfig: { retry: { maxAttempts: 4, backoffMs: 0 } },
+      request: { query: message, providers: ["brave"] },
+    });
+    assert.equal(attempts, 1, message);
+    assert.equal(payload.providerRuns[0]?.attempts, 1, message);
+  }
+});
+
+test("runSearchFusion waits at least two seconds before retrying rate limits", async () => {
+  const attemptTimes: number[] = [];
+  const payload = await runSearchFusion({
+    runtime: createRuntime({
+      search: async ({ providerId }) => {
+        attemptTimes.push(Date.now());
+        if (attemptTimes.length === 1) throw new Error("429 rate limit exceeded");
+        return {
+          provider: providerId ?? "brave",
+          result: { results: [{ title: "Recovered", url: "https://example.com/recovered" }] },
+        };
+      },
+    }) as never,
+    config: {},
+    pluginConfig: {
+      retry: { maxAttempts: 2, backoffMs: 0, maxBackoffMs: 0 },
+    },
+    request: { query: "rate limit", providers: ["brave"] },
+  });
+
+  assert.deepEqual(payload.providersSucceeded, ["brave"]);
+  assert.equal(attemptTimes.length, 2);
+  assert.ok((attemptTimes[1] ?? 0) - (attemptTimes[0] ?? 0) >= 1900);
+  assert.equal(payload.providerRuns[0]?.retryHistory[0]?.delayMs, 2000);
+});
+
+test("runSearchFusion bounds visible text and keeps full fidelity behind opt-ins", async () => {
+  const longText = `long-${"x".repeat(800)}`;
+  const runtime = createRuntime({
+    search: async ({ providerId }) => ({
+      provider: providerId ?? "gemini",
+      result: {
+        content: longText,
+        results: [
+          {
+            title: "Long result",
+            url: "https://example.com/long",
+            description: longText,
+          },
+          { title: "Discarded", description: longText },
+        ],
+      },
+    }),
+  }) as never;
+
+  const bounded = await runSearchFusion({
+    runtime,
+    config: {},
+    pluginConfig: { maxSnippetLength: 120 },
+    request: { query: "bounded", providers: ["gemini"] },
+  });
+  assert.equal(bounded.providerRuns[0]?.rawPayload, undefined);
+  assert.equal(bounded.providerRuns[0]?.results[0]?.rawItem, undefined);
+  assert.deepEqual(bounded.discardedResults, []);
+  assert.deepEqual(bounded.providerRuns[0]?.discardedResults, []);
+  assert.equal(bounded.providerDetails[0]?.discardedCount, 1);
+  assert.equal(bounded.answers[0]?.truncated, true);
+  assert.ok((bounded.answers[0]?.fullContent.length ?? Infinity) <= 120);
+  assert.equal(bounded.results[0]?.truncated, true);
+  assert.ok((bounded.results[0]?.snippet?.length ?? Infinity) <= 120);
+  assert.equal(bounded.results[0]?.variants[0]?.truncated, true);
+  assert.equal(bounded.evidenceTable.rows[0]?.truncated, true);
+  assert.equal(bounded.evidenceTable.rows[0]?.providerEvidence[0]?.truncated, true);
+
+  const audit = await runSearchFusion({
+    runtime,
+    config: {},
+    pluginConfig: {
+      maxSnippetLength: 120,
+      includeRawPayloads: true,
+      includeDiscarded: true,
+    },
+    request: { query: "audit", providers: ["gemini"] },
+  });
+  assert.equal(audit.output.includeRawPayloads, true);
+  assert.equal(audit.output.includeDiscarded, true);
+  assert.equal((audit.providerRuns[0]?.rawPayload?.content as string)?.length, longText.length);
+  assert.equal((audit.providerRuns[0]?.results[0]?.rawItem as { description?: string })?.description, longText);
+  assert.equal(audit.discardedResults.length, 1);
+  assert.equal((audit.discardedResults[0]?.rawItem as { description?: string })?.description, longText);
 });

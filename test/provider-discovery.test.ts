@@ -1,6 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { discoverProviders, resolveSelectedProviders } from "../src/provider-discovery.js";
+import {
+  discoverProviders,
+  FREE_TIER_PROVIDER_SIBLINGS,
+  resolveProviderConfiguration,
+  preferPaidProviderSiblings,
+  resolveSelectedProviders,
+} from "../src/provider-discovery.js";
 
 const providers = [
   {
@@ -77,7 +83,7 @@ test("discoverProviders attaches capability taxonomy tags", () => {
 
   assert.deepEqual(brave?.capabilities, ["news", "privacy", "results"]);
   assert.deepEqual(gemini?.capabilities, ["answer", "results"]);
-  assert.deepEqual(tavily?.capabilities, ["answer", "neural", "results"]);
+  assert.deepEqual(tavily?.capabilities, ["neural", "results"]);
   assert.deepEqual(duckduckgo?.capabilities, ["free-tier", "privacy", "results"]);
 });
 
@@ -112,14 +118,89 @@ test("resolveSelectedProviders keeps keyless providers in the default pool", () 
   assert.deepEqual(selected.map((provider) => provider.id), ["duckduckgo"]);
 });
 
-test("resolveSelectedProviders honors explicit all and exclusions", () => {
+test("resolveSelectedProviders lets explicit all override default exclusions", () => {
   const selected = resolveSelectedProviders({
     availableProviders: getDiscovered(),
     requestProviders: ["all"],
     config: { excludeProviders: ["brave"] },
   });
 
-  assert.deepEqual(selected.map((provider) => provider.id), ["gemini", "duckduckgo"]);
+  assert.deepEqual(selected.map((provider) => provider.id), ["brave", "gemini", "duckduckgo"]);
+});
+
+test("preferPaidProviderSiblings is deterministic and retains lone free providers", () => {
+  assert.deepEqual(FREE_TIER_PROVIDER_SIBLINGS, {
+    "firecrawl-free": "firecrawl",
+    "parallel-free": "parallel",
+  });
+
+  const selected = preferPaidProviderSiblings([
+    { id: "firecrawl-free", configured: true },
+    { id: "brave" },
+    { id: "firecrawl", configured: true },
+    { id: "parallel", configured: true },
+    { id: "parallel-free", configured: true },
+    { id: "duckduckgo" },
+  ]);
+  assert.deepEqual(selected.map((provider) => provider.id), [
+    "brave",
+    "firecrawl",
+    "parallel",
+    "duckduckgo",
+  ]);
+  assert.deepEqual(
+    preferPaidProviderSiblings([{ id: "firecrawl-free", configured: true }]).map((provider) => provider.id),
+    ["firecrawl-free"],
+  );
+});
+
+test("resolveSelectedProviders never fans out to paid and free siblings together", () => {
+  const availableProviders = [
+    { id: "firecrawl", label: "Firecrawl", configured: true },
+    { id: "firecrawl-free", label: "Firecrawl Free", configured: true },
+    { id: "parallel", label: "Parallel", configured: true },
+    { id: "parallel-free", label: "Parallel Free", configured: true },
+  ];
+
+  const selected = resolveSelectedProviders({
+    availableProviders,
+    requestProviders: ["all"],
+    config: {},
+  });
+  assert.deepEqual(selected.map((provider) => provider.id), ["firecrawl", "parallel"]);
+});
+
+test("resolveSelectedProviders keeps a configured free sibling when paid is unconfigured", () => {
+  const selected = resolveSelectedProviders({
+    availableProviders: [
+      { id: "firecrawl", label: "Firecrawl", configured: false },
+      { id: "firecrawl-free", label: "Firecrawl Free", configured: true },
+    ],
+    requestProviders: ["firecrawl", "firecrawl-free"],
+    config: {},
+  });
+  assert.deepEqual(selected.map((provider) => provider.id), ["firecrawl-free"]);
+});
+
+test("resolveSelectedProviders throws for unknown explicit ids and lists valid ids", () => {
+  assert.throws(
+    () =>
+      resolveSelectedProviders({
+        availableProviders: getDiscovered(),
+        requestProviders: ["tavliy"],
+        config: {},
+      }),
+    /Unknown Search Fusion provider: tavliy\. Valid provider ids: brave, duckduckgo, gemini, tavily\./,
+  );
+});
+
+test("resolveSelectedProviders lets an explicit provider override default exclusions", () => {
+  const selected = resolveSelectedProviders({
+    availableProviders: getDiscovered(),
+    requestProviders: ["brave"],
+    config: { excludeProviders: ["brave"] },
+  });
+  assert.deepEqual(selected.map((provider) => provider.id), ["brave"]);
 });
 
 test("resolveSelectedProviders honors explicit mode", () => {
@@ -218,6 +299,138 @@ test("resolveSelectedProviders routes by intent when intentProviders is configur
   });
 
   assert.deepEqual(selected.map((provider) => provider.id), ["gemini", "tavily", "brave"]);
+});
+
+test("resolveSelectedProviders uses answer capabilities when intentProviders is omitted", () => {
+  const availableProviders = [
+    "codex",
+    "gemini",
+    "grok",
+    "kimi",
+    "perplexity",
+    "firecrawl",
+  ].map((id) => ({ id, label: id, configured: true }));
+
+  const selected = resolveSelectedProviders({
+    availableProviders,
+    requestIntent: "answer",
+    config: {},
+  });
+
+  assert.deepEqual(selected.map((provider) => provider.id), [
+    "codex",
+    "gemini",
+    "grok",
+    "kimi",
+    "perplexity",
+  ]);
+});
+
+test("resolveSelectedProviders routes research by extraction and neural capabilities", () => {
+  const availableProviders = [
+    "brave",
+    "firecrawl-free",
+    "firecrawl",
+    "parallel-free",
+    "parallel",
+    "tavily",
+  ].map((id) => ({ id, label: id, configured: true }));
+
+  const selected = resolveSelectedProviders({
+    availableProviders,
+    requestIntent: "research",
+    config: {},
+  });
+
+  assert.deepEqual(selected.map((provider) => provider.id), ["parallel", "tavily"]);
+});
+
+test("resolveSelectedProviders built-in keyword routing excludes answer providers", () => {
+  const selected = resolveSelectedProviders({
+    availableProviders: ["brave", "gemini", "perplexity", "tavily"].map((id) => ({
+      id,
+      label: id,
+      configured: true,
+    })),
+    requestIntent: "keyword",
+    config: {},
+  });
+  assert.deepEqual(selected.map((provider) => provider.id), ["brave", "tavily"]);
+});
+
+test("resolveSelectedProviders local intent falls through without an explicit mapping", () => {
+  const selected = resolveSelectedProviders({
+    availableProviders: getDiscovered(),
+    requestIntent: "local",
+    config: { defaultProviders: ["duckduckgo"] },
+  });
+  assert.deepEqual(selected.map((provider) => provider.id), ["duckduckgo"]);
+});
+
+test("provider configuration mirrors direct, scoped, fallback, auth, env, and keyless routes", () => {
+  const config = {
+    tools: { web: { search: { scoped: { apiKey: "scoped-key" } } } },
+    models: { providers: { google: { apiKey: "google-model-key" } } },
+  };
+  const previous = process.env.SEARCH_FUSION_TEST_KEY;
+  process.env.SEARCH_FUSION_TEST_KEY = "env-key";
+  try {
+    assert.deepEqual(
+      resolveProviderConfiguration(
+        { id: "direct", label: "Direct", getConfiguredCredentialValue: () => "direct-key" },
+        config,
+      ),
+      { configured: true, credentialSource: "provider-config" },
+    );
+    assert.deepEqual(
+      resolveProviderConfiguration(
+        { id: "scoped", label: "Scoped", getCredentialValue: (search) => search?.scoped },
+        config,
+      ),
+      { configured: true, credentialSource: "search-config" },
+    );
+    assert.deepEqual(
+      resolveProviderConfiguration(
+        {
+          id: "gemini",
+          label: "Gemini",
+          getConfiguredCredentialFallback: (cfg: any) => ({
+            path: "models.providers.google.apiKey",
+            value: cfg?.models?.providers?.google?.apiKey,
+          }),
+        },
+        config,
+      ),
+      {
+        configured: true,
+        credentialSource: "configured fallback (models.providers.google.apiKey)",
+      },
+    );
+    assert.deepEqual(
+      resolveProviderConfiguration(
+        { id: "grok", label: "Grok", authProviderId: "xai" },
+        config,
+      ),
+      { configured: true, credentialSource: "account-auth (unverified)" },
+    );
+    assert.deepEqual(
+      resolveProviderConfiguration(
+        { id: "env", label: "Env", envVars: ["SEARCH_FUSION_TEST_KEY"] },
+        config,
+      ),
+      { configured: true, credentialSource: "environment (SEARCH_FUSION_TEST_KEY)" },
+    );
+    assert.deepEqual(
+      resolveProviderConfiguration(
+        { id: "free", label: "Free", requiresCredential: false },
+        config,
+      ),
+      { configured: true, credentialSource: "keyless" },
+    );
+  } finally {
+    if (previous === undefined) delete process.env.SEARCH_FUSION_TEST_KEY;
+    else process.env.SEARCH_FUSION_TEST_KEY = previous;
+  }
 });
 
 test("resolveSelectedProviders routes keyword intent to configured subset", () => {

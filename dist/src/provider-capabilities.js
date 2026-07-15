@@ -30,6 +30,7 @@
 export const ALL_PROVIDER_CAPABILITIES = [
     "results",
     "answer",
+    "extract",
     "news",
     "images",
     "video",
@@ -56,17 +57,21 @@ export const ALL_PROVIDER_CAPABILITIES = [
  */
 const PROVIDER_CAPABILITY_REGISTRY = {
     brave: ["news", "privacy", "results"],
+    codex: ["answer", "results"],
     duckduckgo: ["free-tier", "privacy", "results"],
-    exa: ["academic", "code", "neural", "results"],
+    exa: ["academic", "code", "extract", "neural", "results"],
+    firecrawl: ["results"],
+    "firecrawl-free": ["free-tier", "results"],
     gemini: ["answer", "results"],
-    google: ["images", "local", "news", "results", "video"],
     grok: ["answer", "news", "results"],
     kimi: ["answer", "results"],
     minimax: ["code", "results"],
+    ollama: ["free-tier", "results"],
+    parallel: ["extract", "neural", "results"],
+    "parallel-free": ["extract", "free-tier", "neural", "results"],
     perplexity: ["answer", "neural", "results"],
     searxng: ["free-tier", "privacy", "results"],
-    serper: ["images", "local", "news", "results", "video"],
-    tavily: ["answer", "neural", "results"],
+    tavily: ["neural", "results"],
 };
 // ---------------------------------------------------------------------------
 // Public helpers

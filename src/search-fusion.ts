@@ -31,6 +31,8 @@ import { canonicalizeUrl } from "./text.js";
 const DEFAULT_COUNT_PER_PROVIDER = 5;
 const DEFAULT_MAX_MERGED_RESULTS = 10;
 const DEFAULT_PROVIDER_TIMEOUT_MS = 15000;
+const DEFAULT_TOTAL_TIMEOUT_MS = 30000;
+const DEFAULT_MAX_SNIPPET_LENGTH = 500;
 const DEFAULT_RETRY_MAX_ATTEMPTS = 3;
 const DEFAULT_RETRY_BACKOFF_MS = 750;
 const DEFAULT_RETRY_BACKOFF_MULTIPLIER = 2;
@@ -69,6 +71,26 @@ function resolveSearchConfig(config: unknown): Record<string, unknown> | undefin
   const web = isRecord(tools) ? tools.web : undefined;
   const search = isRecord(web) ? web.search : undefined;
   return isRecord(search) ? search : undefined;
+}
+
+function applySearchConfigContext(
+  config: unknown,
+  searchConfig: Record<string, unknown> | undefined,
+): unknown {
+  if (!searchConfig || !isRecord(config)) return config;
+  if (resolveSearchConfig(config) === searchConfig) return config;
+  const tools = isRecord(config.tools) ? config.tools : {};
+  const web = isRecord(tools.web) ? tools.web : {};
+  return {
+    ...config,
+    tools: {
+      ...tools,
+      web: {
+        ...web,
+        search: searchConfig,
+      },
+    },
+  };
 }
 
 async function resolveRuntimeSourceConfig(fallback: unknown): Promise<unknown> {
@@ -255,6 +277,82 @@ type ResolvedProviderConfig = {
   weight: number;
 };
 
+class DeadlineExceededError extends Error {
+  override name = "DeadlineExceededError";
+
+  constructor() {
+    super("deadline exceeded");
+  }
+}
+
+class ProviderTimeoutError extends Error {
+  override name = "ProviderTimeoutError";
+
+  constructor(providerId: string, timeoutMs: number) {
+    super(`Provider ${providerId} timed out after ${timeoutMs}ms`);
+  }
+}
+
+function createAbortError(reason?: unknown): Error {
+  if (reason instanceof Error) return reason;
+  const error = new Error(typeof reason === "string" && reason ? reason : "Search aborted");
+  error.name = "AbortError";
+  return error;
+}
+
+function throwIfAborted(signal: AbortSignal): void {
+  if (signal.aborted) {
+    throw createAbortError(signal.reason);
+  }
+}
+
+function relayAbort(source: AbortSignal | undefined, target: AbortController): () => void {
+  if (!source) return () => {};
+  const abort = () => target.abort(createAbortError(source.reason));
+  if (source.aborted) {
+    abort();
+    return () => {};
+  }
+  source.addEventListener("abort", abort, { once: true });
+  return () => source.removeEventListener("abort", abort);
+}
+
+function raceWithSignal<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) return Promise.reject(createAbortError(signal.reason));
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(createAbortError(signal.reason));
+    signal.addEventListener("abort", onAbort, { once: true });
+    void promise.then(
+      (value) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(value);
+      },
+      (error: unknown) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(error);
+      },
+    );
+  });
+}
+
+function sleep(ms: number, signal: AbortSignal): Promise<void> {
+  if (ms <= 0) {
+    throwIfAborted(signal);
+    return Promise.resolve();
+  }
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(createAbortError(signal.reason));
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
 type ProviderRunTaskRejection = {
   error: unknown;
   tookMs: number;
@@ -346,25 +444,25 @@ function buildProviderArgs(
   };
 }
 
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs);
-    void promise.then(
-      (value) => {
-        clearTimeout(timer);
-        resolve(value);
-      },
-      (error: unknown) => {
-        clearTimeout(timer);
-        reject(error);
-      },
-    );
-  });
-}
-
-function sleep(ms: number): Promise<void> {
-  if (ms <= 0) return Promise.resolve();
-  return new Promise((resolve) => setTimeout(resolve, ms));
+async function runProviderAttempt<T>(params: {
+  providerId: string;
+  timeoutMs: number;
+  parentSignal: AbortSignal;
+  execute: (signal: AbortSignal) => Promise<T>;
+}): Promise<T> {
+  const controller = new AbortController();
+  const removeParentRelay = relayAbort(params.parentSignal, controller);
+  const timer = setTimeout(
+    () => controller.abort(new ProviderTimeoutError(params.providerId, params.timeoutMs)),
+    params.timeoutMs,
+  );
+  try {
+    throwIfAborted(controller.signal);
+    return await raceWithSignal(params.execute(controller.signal), controller.signal);
+  } finally {
+    clearTimeout(timer);
+    removeParentRelay();
+  }
 }
 
 function asErrorMessage(error: unknown): string {
@@ -428,11 +526,23 @@ function asUnhandledProviderFailure(params: {
   };
 }
 
-function shouldRetry(errorMessage: string): boolean {
+function isAbortError(error: unknown): boolean {
+  return (
+    error instanceof DeadlineExceededError ||
+    error instanceof ProviderTimeoutError ||
+    (error instanceof Error && error.name === "AbortError")
+  );
+}
+
+function shouldRetry(error: unknown, errorMessage: string): boolean {
+  if (isAbortError(error)) return false;
   const nonRetriablePatterns = [
     /401\b/,
     /403\b/,
     /400\b/,
+    /404\b/,
+    /409\b/,
+    /422\b/,
     /unauthorized/i,
     /forbidden/i,
     /invalid api key/i,
@@ -441,6 +551,7 @@ function shouldRetry(errorMessage: string): boolean {
     /unknown provider/i,
     /unsupported/i,
     /bad request/i,
+    /not found/i,
   ];
 
   return !nonRetriablePatterns.some((pattern) => pattern.test(errorMessage));
@@ -452,6 +563,15 @@ function computeBackoffDelay(policy: ResolvedRetryConfig, attempt: number): numb
     policy.maxBackoffMs,
     Math.round(policy.backoffMs * Math.pow(policy.backoffMultiplier, Math.max(0, attempt - 1))),
   );
+}
+
+function computeRetryDelay(
+  policy: ResolvedRetryConfig,
+  attempt: number,
+  errorMessage: string,
+): number {
+  const configured = computeBackoffDelay(policy, attempt);
+  return /429|rate limit/i.test(errorMessage) ? Math.max(2000, configured) : configured;
 }
 
 function mergeFlags(...flagLists: Array<readonly SearchResultFlag[]>): SearchResultFlag[] {
@@ -564,6 +684,7 @@ function mergeResults(
           url: item.url,
           canonicalUrl: item.canonicalUrl,
           snippet: item.snippet,
+          truncated: item.truncated,
           siteName: item.siteName,
           providers: [item.providerId],
           providerCount: 1,
@@ -605,6 +726,7 @@ function mergeResults(
       });
       if ((!existing.snippet || existing.snippet.length < (item.snippet?.length ?? 0)) && item.snippet) {
         existing.snippet = item.snippet;
+        existing.truncated = item.truncated;
       }
       if (existing.title.length < item.title.length) {
         existing.title = item.title;
@@ -738,6 +860,7 @@ function buildEvidenceTable(
       canonicalUrl: result.canonicalUrl,
       siteName: result.siteName,
       snippet: result.snippet,
+      truncated: result.truncated,
       providers: [...result.providers],
       providerCount: result.providerCount,
       bestRank: result.bestRank,
@@ -755,6 +878,7 @@ function buildEvidenceTable(
         nativeScore: variant.nativeScore,
         sourceType: variant.sourceType,
         snippet: variant.snippet,
+        truncated: variant.truncated,
         snippetSource: variant.snippetSource,
         flags: [...variant.flags],
       })),
@@ -776,6 +900,11 @@ async function runProvider(params: {
   request: ProviderSelectionRequest;
   provider: ResolvedProvider;
   sourceTierMode: SourceTierMode;
+  maxSnippetLength: number;
+  signal: AbortSignal;
+  deadlineAt: number;
+  agentDir?: string;
+  runtimeMetadata?: unknown;
 }): Promise<ProviderRunResult> {
   const start = Date.now();
   const providerConfig = resolveRuntimeProviderConfig(
@@ -788,24 +917,61 @@ async function runProvider(params: {
   const retryHistory: ProviderRunResult["retryHistory"] = [];
   let lastError: string | undefined;
   let lastRawPayload: Record<string, unknown> | undefined;
+  let attempts = 0;
+
+  const failure = (error: string): ProviderRunResult => ({
+    providerId: params.provider.id,
+    label: params.provider.label,
+    configured: params.provider.configured,
+    ok: false,
+    tookMs: Date.now() - start,
+    rawCount: 0,
+    attempts: Math.max(1, attempts),
+    rawPayload: lastRawPayload,
+    results: [],
+    discardedResults: [],
+    retryHistory,
+    error,
+  });
 
   for (let attempt = 1; attempt <= retryPolicy.maxAttempts; attempt += 1) {
-    try {
-      const response: { provider: string; result: Record<string, unknown> } = await withTimeout(
-        params.runtime.webSearch.search({
-          config: params.config,
-          providerId: params.provider.id,
-          args: providerArgs,
-        }),
-        providerConfig.timeoutMs,
-        `Provider ${params.provider.id}`,
+    attempts = attempt;
+    if (Date.now() >= params.deadlineAt) {
+      return failure("deadline exceeded");
+    }
+    if (params.signal.aborted) {
+      return failure(
+        params.signal.reason instanceof DeadlineExceededError
+          ? "deadline exceeded"
+          : asErrorMessage(createAbortError(params.signal.reason)),
       );
+    }
+
+    try {
+      const remainingMs = Math.max(1, params.deadlineAt - Date.now());
+      const attemptTimeoutMs = Math.min(providerConfig.timeoutMs, remainingMs);
+      const response: { provider: string; result: Record<string, unknown> } =
+        await runProviderAttempt({
+          providerId: params.provider.id,
+          timeoutMs: attemptTimeoutMs,
+          parentSignal: params.signal,
+          execute: async (signal) =>
+            await params.runtime.webSearch.search({
+              config: params.config,
+              providerId: params.provider.id,
+              args: providerArgs,
+              signal,
+              agentDir: params.agentDir,
+              runtimeWebSearch: params.runtimeMetadata,
+            }),
+        });
 
       lastRawPayload = response.result;
       const normalized = normalizeProviderPayload({
         providerId: params.provider.id,
         payload: response.result,
         sourceTierMode: params.sourceTierMode,
+        maxSnippetLength: params.maxSnippetLength,
       });
 
       if (normalized.error) {
@@ -832,63 +998,106 @@ async function runProvider(params: {
         retryHistory,
       };
     } catch (error) {
-      lastError = asErrorMessage(error);
-      const canRetry = attempt < retryPolicy.maxAttempts && shouldRetry(lastError);
+      const deadlineExceeded =
+        error instanceof DeadlineExceededError ||
+        params.signal.reason instanceof DeadlineExceededError ||
+        Date.now() >= params.deadlineAt;
+      lastError = deadlineExceeded ? "deadline exceeded" : asErrorMessage(error);
+      const canRetry =
+        !params.signal.aborted &&
+        !deadlineExceeded &&
+        attempt < retryPolicy.maxAttempts &&
+        shouldRetry(error, lastError);
       if (!canRetry) {
-        return {
-          providerId: params.provider.id,
-          label: params.provider.label,
-          configured: params.provider.configured,
-          ok: false,
-          tookMs: Date.now() - start,
-          rawCount: 0,
-          attempts: attempt,
-          rawPayload: lastRawPayload,
-          results: [],
-          discardedResults: [],
-          retryHistory,
-          error: lastError,
-        };
+        return failure(lastError);
       }
 
-      const delayMs = computeBackoffDelay(retryPolicy, attempt);
+      const delayMs = computeRetryDelay(retryPolicy, attempt, lastError);
+      if (Date.now() + delayMs >= params.deadlineAt) {
+        return failure("deadline exceeded");
+      }
       retryHistory.push({ attempt, error: lastError, delayMs });
-      await sleep(delayMs);
+      try {
+        await sleep(delayMs, params.signal);
+      } catch (sleepError) {
+        return failure(
+          params.signal.reason instanceof DeadlineExceededError
+            ? "deadline exceeded"
+            : asErrorMessage(sleepError),
+        );
+      }
     }
   }
 
+  return failure(lastError ?? "Unknown error");
+}
+
+function exposeResult<T extends { rawItem?: unknown }>(result: T, includeRaw: boolean): T {
+  if (includeRaw) return result;
+  const { rawItem: _rawItem, ...visible } = result;
+  void _rawItem;
+  return visible as T;
+}
+
+function exposeAnswer(
+  answer: ProviderAnswerDigest,
+  includeRaw: boolean,
+): ProviderAnswerDigest {
+  if (includeRaw) return answer;
   return {
-    providerId: params.provider.id,
-    label: params.provider.label,
-    configured: params.provider.configured,
-    ok: false,
-    tookMs: Date.now() - start,
-    rawCount: 0,
-    attempts: retryPolicy.maxAttempts,
-    rawPayload: lastRawPayload,
-    results: [],
-    discardedResults: [],
-    retryHistory,
-    error: lastError ?? "Unknown error",
+    ...answer,
+    citationDetails: answer.citationDetails.map(({ raw: _raw, ...citation }) => {
+      void _raw;
+      return citation;
+    }),
+  };
+}
+
+function exposeMergedResult(
+  result: FusionMergedResult,
+  includeRaw: boolean,
+): FusionMergedResult {
+  return {
+    ...result,
+    variants: result.variants.map((variant) => exposeResult(variant, includeRaw)),
   };
 }
 
 export async function runSearchFusion(params: {
   runtime: SearchRuntime;
   config: unknown;
-  sourceConfig?: unknown;
+  contextConfig?: unknown;
   pluginConfig: unknown;
   request: ProviderSelectionRequest;
+  signal?: AbortSignal;
+  agentDir?: string;
+  runtimeMetadata?: unknown;
+  searchConfig?: Record<string, unknown>;
 }): Promise<FusionSearchPayload> {
+  const start = Date.now();
   const brokerConfig = asConfig(params.pluginConfig);
   const sourceTierMode = coerceSourceTierMode(brokerConfig.sourceTierMode);
+  const includeRawPayloads =
+    params.request.includeRawPayloads ?? brokerConfig.includeRawPayloads ?? false;
+  const includeDiscarded =
+    params.request.includeDiscarded ?? brokerConfig.includeDiscarded ?? false;
+  const maxSnippetLength = clamp(
+    brokerConfig.maxSnippetLength ?? DEFAULT_MAX_SNIPPET_LENGTH,
+    100,
+    5000,
+  );
+  const output = { includeRawPayloads, includeDiscarded, maxSnippetLength };
   const runtimeConfigSnapshot = getRuntimeConfigSnapshot();
-  const runtimeConfig = runtimeConfigSnapshot ?? params.config;
-  const sourceConfig = params.sourceConfig ?? await resolveRuntimeSourceConfig(params.config);
+  const runtimeConfig = applySearchConfigContext(
+    runtimeConfigSnapshot ?? params.contextConfig ?? params.config,
+    params.searchConfig,
+  );
+  const sourceConfig = await resolveRuntimeSourceConfig(params.config);
   const runtimeProviders = params.runtime.webSearch.listProviders({ config: runtimeConfig });
   const availableProviders = discoverProviders({
     providers: runtimeProviders,
     config: sourceConfig,
+    fallbackConfig: runtimeConfig,
     selfId: SEARCH_FUSION_PROVIDER_ID,
   });
   const selectedProviders = resolveSelectedProviders({
@@ -903,7 +1112,7 @@ export async function runSearchFusion(params: {
     return {
       query: params.request.query,
       provider: SEARCH_FUSION_PROVIDER_ID,
-      tookMs: 0,
+      tookMs: Date.now() - start,
       count: 0,
       configuredProviders: availableProviders
         .filter((provider) => provider.configured)
@@ -918,6 +1127,7 @@ export async function runSearchFusion(params: {
       results: [],
       ranking: emptyRankingMeta(sourceTierMode),
       evidenceTable: buildEvidenceTable([], []),
+      output,
       externalContent: {
         untrusted: true,
         source: "web_search",
@@ -927,11 +1137,22 @@ export async function runSearchFusion(params: {
     };
   }
 
-  const start = Date.now();
   const maxMergedResults = clamp(
     params.request.maxMergedResults ?? brokerConfig.maxMergedResults ?? DEFAULT_MAX_MERGED_RESULTS,
     1,
     50,
+  );
+  const totalTimeoutMs = clamp(
+    brokerConfig.totalTimeoutMs ?? DEFAULT_TOTAL_TIMEOUT_MS,
+    5000,
+    180000,
+  );
+  const deadlineAt = start + totalTimeoutMs;
+  const runController = new AbortController();
+  const removeOuterRelay = relayAbort(params.signal, runController);
+  const deadlineTimer = setTimeout(
+    () => runController.abort(new DeadlineExceededError()),
+    Math.max(0, deadlineAt - Date.now()),
   );
 
   const providerRunTasks = selectedProviders.map((provider) => {
@@ -939,20 +1160,28 @@ export async function runSearchFusion(params: {
     return {
       provider,
       startedAt,
-      promise: resolveDelegatedRuntimeConfig({
-        provider,
-        runtimeProviders,
-        runtimeConfig,
-        sourceConfig,
-      }).then((providerConfig) =>
-        runProvider({
-          runtime: params.runtime,
-          config: providerConfig,
-          brokerConfig,
-          request: params.request,
+      promise: raceWithSignal(
+        resolveDelegatedRuntimeConfig({
           provider,
-          sourceTierMode,
-        }),
+          runtimeProviders,
+          runtimeConfig,
+          sourceConfig,
+        }).then((providerConfig) =>
+          runProvider({
+            runtime: params.runtime,
+            config: providerConfig,
+            brokerConfig,
+            request: params.request,
+            provider,
+            sourceTierMode,
+            maxSnippetLength,
+            signal: runController.signal,
+            deadlineAt,
+            agentDir: params.agentDir,
+            runtimeMetadata: params.runtimeMetadata,
+          }),
+        ),
+        runController.signal,
       ).catch((error) => {
         const rejection: ProviderRunTaskRejection = {
           error,
@@ -963,9 +1192,16 @@ export async function runSearchFusion(params: {
     };
   });
 
-  const providerRuns = (
-    await Promise.allSettled(providerRunTasks.map((task) => task.promise))
-  ).map((settled, index) => {
+  let settledProviderRuns: PromiseSettledResult<ProviderRunResult>[];
+  try {
+    settledProviderRuns = await Promise.allSettled(
+      providerRunTasks.map((task) => task.promise),
+    );
+  } finally {
+    clearTimeout(deadlineTimer);
+    removeOuterRelay();
+  }
+  const providerRuns = settledProviderRuns.map((settled, index) => {
     if (settled.status === "fulfilled") {
       return settled.value;
     }
@@ -980,10 +1216,17 @@ export async function runSearchFusion(params: {
 
   const merged = mergeResults(providerRuns.filter((run) => run.ok), maxMergedResults, sourceTierMode);
   const mergedResults = merged.results;
-  const discardedResults = providerRuns.flatMap((run) => run.discardedResults);
-  const answers = providerRuns
+  const internalDiscardedResults = providerRuns.flatMap((run) => run.discardedResults);
+  const internalAnswers = providerRuns
     .map((run) => run.answer)
     .filter((answer): answer is NonNullable<ProviderRunResult["answer"]> => Boolean(answer));
+  const answers = internalAnswers.map((answer) => exposeAnswer(answer, includeRawPayloads));
+  const visibleMergedResults = mergedResults.map((result) =>
+    exposeMergedResult(result, includeRawPayloads),
+  );
+  const discardedResults = includeDiscarded
+    ? internalDiscardedResults.map((result) => exposeResult(result, includeRawPayloads))
+    : [];
 
   return {
     query: params.request.query,
@@ -1015,17 +1258,20 @@ export async function runSearchFusion(params: {
       attempts: run.attempts,
       configured: run.configured,
       error: run.error,
-      answer: run.answer,
-      results: run.results,
-      discardedResults: run.discardedResults,
-      rawPayload: run.rawPayload,
+      answer: run.answer ? exposeAnswer(run.answer, includeRawPayloads) : undefined,
+      results: run.results.map((result) => exposeResult(result, includeRawPayloads)),
+      discardedResults: includeDiscarded
+        ? run.discardedResults.map((result) => exposeResult(result, includeRawPayloads))
+        : [],
+      ...(includeRawPayloads ? { rawPayload: run.rawPayload } : {}),
       retryHistory: run.retryHistory,
     })),
     discardedResults,
     answers,
-    results: mergedResults,
+    results: visibleMergedResults,
     ranking: merged.ranking,
-    evidenceTable: buildEvidenceTable(mergedResults, answers),
+    evidenceTable: buildEvidenceTable(visibleMergedResults, answers),
+    output,
     externalContent: {
       untrusted: true,
       source: "web_search",

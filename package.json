@@ -1,8 +1,25 @@
 {
   "name": "@vacinc/search-fusion",
-  "version": "0.1.11",
+  "version": "0.2.0",
   "description": "Federated OpenClaw web search fusion that fans out across configured providers, merges results, and preserves attribution.",
   "type": "module",
+  "main": "./dist/index.js",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/VACInc/openclaw-search-fusion.git"
+  },
+  "homepage": "https://github.com/VACInc/openclaw-search-fusion#readme",
+  "bugs": {
+    "url": "https://github.com/VACInc/openclaw-search-fusion/issues"
+  },
   "openclaw": {
     "extensions": [
       "./dist/index.js"
@@ -18,11 +35,12 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
+    "prepack": "npm run build",
     "check": "tsc --noEmit",
     "test": "node --test --import tsx test/**/*.test.ts",
     "plugin:check": "plugin-inspector check --no-openclaw",
-    "plugin:check:runtime": "plugin-inspector check --no-openclaw --runtime --mock-sdk --allow-execute",
-    "plugin:ci": "plugin-inspector ci --no-openclaw --runtime --mock-sdk --allow-execute"
+    "plugin:check:runtime": "node ./scripts/plugin-inspector-runtime.mjs check --no-openclaw --runtime --mock-sdk --allow-execute",
+    "plugin:ci": "node ./scripts/plugin-inspector-runtime.mjs ci --no-openclaw --runtime --mock-sdk --allow-execute"
   },
   "files": [
     "dist/",

@@ -4,7 +4,26 @@ import type {
   SearchFusionConfig,
   SearchQueryIntent,
 } from "./types.js";
-import { resolveProviderCapabilities } from "./provider-capabilities.js";
+import {
+  resolveProviderCapabilities,
+  type ProviderCapability,
+} from "./provider-capabilities.js";
+
+/** Keyless provider variants that share an index with a higher-limit paid sibling. */
+export const FREE_TIER_PROVIDER_SIBLINGS: Readonly<Record<string, string>> = {
+  "firecrawl-free": "firecrawl",
+  "parallel-free": "parallel",
+};
+
+const BUILT_IN_INTENT_CAPABILITIES: Readonly<
+  Record<SearchQueryIntent, readonly ProviderCapability[]>
+> = {
+  research: ["academic", "extract", "neural"],
+  keyword: ["results"],
+  answer: ["answer"],
+  news: ["news"],
+  local: ["local"],
+};
 
 function asSearchConfig(config: unknown): Record<string, unknown> | undefined {
   const maybe = (config as { tools?: { web?: { search?: Record<string, unknown> } } } | undefined)?.tools?.web
@@ -19,6 +38,19 @@ function hasValue(value: unknown): boolean {
   if (Array.isArray(value)) return value.length > 0;
   if (typeof value === "object") return Object.keys(value as Record<string, unknown>).length > 0;
   return false;
+}
+
+function hasCredentialValue(value: unknown): boolean {
+  if (
+    value &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    (value as { source?: unknown }).source === "env" &&
+    typeof (value as { id?: unknown }).id === "string"
+  ) {
+    return hasValue(process.env[(value as { id: string }).id]);
+  }
+  return hasValue(value);
 }
 
 function normalizeName(value: string | undefined): string | undefined {
@@ -99,51 +131,127 @@ function resolveIntentProviders(params: {
   return providers.length > 0 ? providers : undefined;
 }
 
-export function isProviderConfigured(provider: RuntimeWebSearchProvider, config: unknown): boolean {
+function resolveBuiltInIntentProviders(params: {
+  intent: SearchQueryIntent;
+  configuredProviders: ResolvedProvider[];
+  availableProviders: ResolvedProvider[];
+}): ResolvedProvider[] | undefined {
+  const pool = params.configuredProviders.length > 0
+    ? params.configuredProviders
+    : params.availableProviders;
+  const preferredCapabilities = BUILT_IN_INTENT_CAPABILITIES[params.intent];
+  const providers = pool.filter((provider) => {
+    const capabilities = resolveProviderCapabilities(provider.id);
+    // Keyword intent deliberately means classic index-style results, not an
+    // answer-synthesis provider that happens to expose citation results too.
+    if (params.intent === "keyword") {
+      return capabilities.includes("results") && !capabilities.includes("answer");
+    }
+    return preferredCapabilities.some((capability) => capabilities.includes(capability));
+  });
+  return providers.length > 0 ? providers : undefined;
+}
+
+/**
+ * Prefer a paid provider when a selection contains both it and its keyless
+ * sibling. The input order is preserved and a lone free provider is retained.
+ */
+export function preferPaidProviderSiblings<T extends { id: string; configured?: boolean }>(providers: readonly T[]): T[] {
+  const selectedById = new Map(providers.map((provider) => [provider.id.toLowerCase(), provider]));
+  return providers.filter((provider) => {
+    const providerId = provider.id.toLowerCase();
+    const paidSibling = FREE_TIER_PROVIDER_SIBLINGS[providerId];
+    if (paidSibling) {
+      const paid = selectedById.get(paidSibling);
+      return !paid || paid.configured !== true;
+    }
+    const freeSibling = Object.entries(FREE_TIER_PROVIDER_SIBLINGS).find(
+      ([, paidId]) => paidId === providerId,
+    )?.[0];
+    return !freeSibling || !selectedById.has(freeSibling) || provider.configured === true;
+  });
+}
+
+export function resolveProviderConfiguration(
+  provider: RuntimeWebSearchProvider,
+  config: unknown,
+): { configured: boolean; credentialSource?: string } {
   if (provider.requiresCredential === false) {
-    return true;
+    return { configured: true, credentialSource: "keyless" };
   }
 
   try {
-    if (hasValue(provider.getConfiguredCredentialValue?.(config))) {
-      return true;
+    if (hasCredentialValue(provider.getConfiguredCredentialValue?.(config))) {
+      return { configured: true, credentialSource: "provider-config" };
     }
   } catch {
     // ignore provider accessor errors
   }
 
   try {
-    if (hasValue(provider.getCredentialValue?.(asSearchConfig(config)))) {
-      return true;
+    if (hasCredentialValue(provider.getCredentialValue?.(asSearchConfig(config)))) {
+      return { configured: true, credentialSource: "search-config" };
     }
   } catch {
     // ignore provider accessor errors
+  }
+
+  // Plugin contexts do not expose the auth-profile store. Match core's
+  // account-auth route conservatively and make the uncertainty explicit.
+  if (provider.authProviderId) {
+    return { configured: true, credentialSource: "account-auth (unverified)" };
   }
 
   for (const envVar of provider.envVars ?? []) {
     if (hasValue(process.env[envVar])) {
-      return true;
+      return { configured: true, credentialSource: `environment (${envVar})` };
     }
   }
 
-  return false;
+  try {
+    const fallback = provider.getConfiguredCredentialFallback?.(config);
+    if (hasCredentialValue(fallback?.value)) {
+      return {
+        configured: true,
+        credentialSource: fallback?.path
+          ? `configured fallback (${fallback.path})`
+          : "configured fallback",
+      };
+    }
+  } catch {
+    // ignore provider fallback accessor errors
+  }
+
+  return { configured: false };
+}
+
+export function isProviderConfigured(provider: RuntimeWebSearchProvider, config: unknown): boolean {
+  return resolveProviderConfiguration(provider, config).configured;
 }
 
 export function discoverProviders(params: {
   providers: RuntimeWebSearchProvider[];
   config: unknown;
+  fallbackConfig?: unknown;
   selfId: string;
 }): ResolvedProvider[] {
   return params.providers
     .filter((provider) => provider.id !== params.selfId)
-    .map((provider) => ({
-      id: provider.id,
-      label: provider.label,
-      hint: provider.hint,
-      autoDetectOrder: provider.autoDetectOrder,
-      configured: isProviderConfigured(provider, params.config),
-      capabilities: [...resolveProviderCapabilities(provider.id)],
-    }))
+    .map((provider) => {
+      const primaryConfiguration = resolveProviderConfiguration(provider, params.config);
+      const configuration =
+        primaryConfiguration.configured || params.fallbackConfig === undefined
+          ? primaryConfiguration
+          : resolveProviderConfiguration(provider, params.fallbackConfig);
+      return {
+        id: provider.id,
+        label: provider.label,
+        hint: provider.hint,
+        autoDetectOrder: provider.autoDetectOrder,
+        ...configuration,
+        capabilities: [...resolveProviderCapabilities(provider.id)],
+      };
+    })
     .sort((a, b) => {
       const orderA = a.autoDetectOrder ?? Number.MAX_SAFE_INTEGER;
       const orderB = b.autoDetectOrder ?? Number.MAX_SAFE_INTEGER;
@@ -160,7 +268,9 @@ export function resolveSelectedProviders(params: {
   config: SearchFusionConfig;
 }): ResolvedProvider[] {
   const excluded = new Set(normalizeIdList(params.config.excludeProviders));
-  const available = params.availableProviders.filter((provider) => !excluded.has(provider.id));
+  const allAvailable = params.availableProviders;
+  const available = allAvailable.filter((provider) => !excluded.has(provider.id));
+  const explicitById = new Map(allAvailable.map((provider) => [provider.id, provider]));
   const byId = new Map(available.map((provider) => [provider.id, provider]));
   const configured = available.filter((provider) => provider.configured);
   const requested = normalizeIdList(params.requestProviders);
@@ -172,28 +282,42 @@ export function resolveSelectedProviders(params: {
   });
 
   // 1. Explicit provider list (including "all" / "*")
+  const unknown = requested.filter(
+    (id) => id !== "all" && id !== "*" && !explicitById.has(id),
+  );
+  if (unknown.length > 0) {
+    const validIds = allAvailable.map((provider) => provider.id).sort();
+    throw new Error(
+      `Unknown Search Fusion provider${unknown.length === 1 ? "" : "s"}: ${unknown.join(", ")}. Valid provider ids: ${validIds.join(", ")}.`,
+    );
+  }
   const expandAll = requested.includes("all") || requested.includes("*");
   if (expandAll) {
-    return configured.length > 0 ? configured : available;
+    const allConfigured = allAvailable.filter((provider) => provider.configured);
+    return preferPaidProviderSiblings(allConfigured.length > 0 ? allConfigured : allAvailable);
   }
 
   if (requested.length > 0) {
-    return requested.map((id) => byId.get(id)).filter((provider): provider is ResolvedProvider => Boolean(provider));
+    return preferPaidProviderSiblings(
+      requested
+        .map((id) => explicitById.get(id))
+        .filter((provider): provider is ResolvedProvider => Boolean(provider)),
+    );
   }
 
   // 2. Explicit mode
   if (requestMode) {
-    const selectedForMode = resolveModeProviders({ mode: requestMode, modes, byId });
+    const selectedForMode = resolveModeProviders({ mode: requestMode, modes, byId: explicitById });
     if (!selectedForMode) {
       throw new Error(`Unknown Search Fusion mode: ${params.requestMode}`);
     }
     if (selectedForMode.length === 0) {
       throw new Error(`Search Fusion mode "${params.requestMode}" resolved to no available providers.`);
     }
-    return selectedForMode;
+    return preferPaidProviderSiblings(selectedForMode);
   }
 
-  // 3. Intent hint → intentProviders map
+  // 3. Intent hint → configured map, or capability defaults when no map exists
   const intent = normalizeIntent(
     typeof params.requestIntent === "string" ? params.requestIntent : undefined,
   );
@@ -204,7 +328,16 @@ export function resolveSelectedProviders(params: {
       byId,
     });
     if (selectedForIntent && selectedForIntent.length > 0) {
-      return selectedForIntent;
+      return preferPaidProviderSiblings(selectedForIntent);
+    }
+  } else if (intent) {
+    const selectedForIntent = resolveBuiltInIntentProviders({
+      intent,
+      configuredProviders: configured,
+      availableProviders: available,
+    });
+    if (selectedForIntent && selectedForIntent.length > 0) {
+      return preferPaidProviderSiblings(selectedForIntent);
     }
   }
 
@@ -213,7 +346,7 @@ export function resolveSelectedProviders(params: {
   if (defaultMode) {
     const selectedForDefaultMode = resolveModeProviders({ mode: defaultMode, modes, byId });
     if (selectedForDefaultMode && selectedForDefaultMode.length > 0) {
-      return selectedForDefaultMode;
+      return preferPaidProviderSiblings(selectedForDefaultMode);
     }
   }
 
@@ -222,9 +355,9 @@ export function resolveSelectedProviders(params: {
     .map((id) => byId.get(id))
     .filter((provider): provider is ResolvedProvider => Boolean(provider));
   if (defaults.length > 0) {
-    return defaults;
+    return preferPaidProviderSiblings(defaults);
   }
 
   // 6. All configured providers
-  return configured.length > 0 ? configured : available;
+  return preferPaidProviderSiblings(configured.length > 0 ? configured : available);
 }

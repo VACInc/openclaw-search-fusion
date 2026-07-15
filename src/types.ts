@@ -3,14 +3,13 @@ export type SearchFusionModeMap = Record<string, string[]>;
 /**
  * Hint describing the caller's intent for a search query.
  *
- * - `"research"` — in-depth investigation; prefer answer/grounding providers alongside broad
- *   web search (e.g. Gemini, Perplexity, Tavily).
+ * - `"research"` — in-depth investigation; prefer academic, extraction, and neural retrieval.
  * - `"keyword"` — keyword / classic web search; prefer fast index-based providers
  *   (e.g. Brave, DuckDuckGo).
- * - `"answer"` — direct answer expected; prefer answer-style providers
- *   (e.g. Gemini, Grok, Perplexity).
+ * - `"answer"` — direct answer expected; prefer answer-style providers.
  * - `"news"` — recent news / current events; prefer freshness-optimized providers.
- * - `"local"` — location-aware query; prefer providers with local/map results.
+ * - `"local"` — location-aware query; uses an explicit `intentProviders.local`
+ *   override when configured, otherwise falls through to the default chain.
  *
  * When an intent is provided it influences provider selection but never overrides
  * explicit `providers` or `mode` parameters.
@@ -40,17 +39,18 @@ export type SearchFusionConfig = {
    * Provider lists keyed by `SearchQueryIntent`.
    * When a request carries an `intent` hint and no explicit `providers`/`mode`,
    * Search Fusion uses this map to pick the provider set.
-   * Falls back to the normal default-resolution chain when the intent is absent
-   * or has no entry here.
+   * When this map is omitted entirely, Search Fusion uses built-in capability
+   * rules from the provider registry. When the map exists but the intent is
+   * absent or resolves to no providers, routing falls back to the normal
+   * default-resolution chain.
    *
    * Example:
    * ```json
    * "intentProviders": {
-   *   "research": ["gemini", "tavily", "brave", "minimax"],
+   *   "research": ["exa", "parallel", "tavily"],
    *   "keyword":  ["brave", "duckduckgo", "minimax"],
-   *   "answer":   ["gemini", "perplexity"],
-   *   "news":     ["brave", "tavily"],
-   *   "local":    ["brave"]
+   *   "answer":   ["codex", "gemini", "grok", "kimi", "perplexity"],
+   *   "news":     ["brave"]
    * }
    * ```
    */
@@ -61,6 +61,10 @@ export type SearchFusionConfig = {
   countPerProvider?: number;
   maxMergedResults?: number;
   providerTimeoutMs?: number;
+  totalTimeoutMs?: number;
+  includeRawPayloads?: boolean;
+  includeDiscarded?: boolean;
+  maxSnippetLength?: number;
   retry?: SearchFusionRetryConfig;
   providerConfig?: Record<string, SearchFusionProviderConfig>;
   providerRetries?: Record<string, SearchFusionRetryConfig>;
@@ -75,7 +79,8 @@ export type ProviderSelectionRequest = {
    * Resolution order:
    * 1. explicit `providers`
    * 2. explicit `mode`
-   * 3. `intent` → matched against `config.intentProviders`
+   * 3. `intent` → matched against `config.intentProviders`, or built-in
+   *    capability rules when that map is omitted
    * 4. configured `defaultMode`
    * 5. configured `defaultProviders`
    * 6. all configured providers
@@ -85,6 +90,8 @@ export type ProviderSelectionRequest = {
   providers?: string[];
   count?: number;
   maxMergedResults?: number;
+  includeRawPayloads?: boolean;
+  includeDiscarded?: boolean;
   country?: string;
   language?: string;
   freshness?: string;
@@ -104,6 +111,10 @@ export type RuntimeWebSearchProvider = {
   envVars?: readonly string[];
   credentialPath?: string;
   getConfiguredCredentialValue?: (config?: unknown) => unknown;
+  getConfiguredCredentialFallback?: (
+    config?: unknown,
+  ) => { path: string; value: unknown } | undefined;
+  authProviderId?: string;
   setConfiguredCredentialValue?: (configTarget: unknown, value: unknown) => void;
   getCredentialValue?: (searchConfig?: Record<string, unknown> | undefined) => unknown;
   setCredentialValue?: (searchConfigTarget: Record<string, unknown>, value: unknown) => void;
@@ -115,6 +126,7 @@ export type ResolvedProvider = {
   hint?: string;
   autoDetectOrder?: number;
   configured: boolean;
+  credentialSource?: string;
   /**
    * Capability tags declared for this provider by the capability taxonomy.
    * An empty array means the provider is treated as general-purpose / unknown.
@@ -143,6 +155,7 @@ export type DiscardedSearchResult = {
   reason: DiscardedSearchResultReason;
   title?: string;
   snippet?: string;
+  truncated?: true;
   rawItem?: unknown;
 };
 
@@ -152,6 +165,7 @@ export type NormalizedSearchResult = {
   originalUrl: string;
   canonicalUrl: string;
   snippet?: string;
+  truncated?: true;
   siteName?: string;
   providerId: string;
   score: number;
@@ -175,6 +189,7 @@ export type ProviderAnswerDigest = {
   summary: string;
   fullContent: string;
   summaryTruncated: boolean;
+  truncated?: true;
   citations: string[];
   citationDetails: ProviderAnswerCitation[];
 };
@@ -257,6 +272,7 @@ export type FusionMergedResult = {
   url: string;
   canonicalUrl: string;
   snippet?: string;
+  truncated?: true;
   siteName?: string;
   providers: string[];
   providerCount: number;
@@ -293,6 +309,7 @@ export type FusionEvidenceProvider = {
   nativeScore?: number;
   sourceType: SearchResultSourceType;
   snippet?: string;
+  truncated?: true;
   snippetSource?: "provider" | "answer-fallback";
   flags: SearchResultFlag[];
 };
@@ -311,6 +328,7 @@ export type FusionEvidenceRow = {
   canonicalUrl: string;
   siteName?: string;
   snippet?: string;
+  truncated?: true;
   providers: string[];
   providerCount: number;
   bestRank: number;
@@ -334,6 +352,9 @@ export type SearchRuntime = {
       config?: unknown;
       providerId?: string;
       args: Record<string, unknown>;
+      signal?: AbortSignal;
+      agentDir?: string;
+      runtimeWebSearch?: unknown;
     }) => Promise<{ provider: string; result: Record<string, unknown> }>;
   };
 };
@@ -377,6 +398,11 @@ export type FusionSearchPayload = {
   results: FusionMergedResult[];
   ranking: FusionRankingMeta;
   evidenceTable: FusionEvidenceTable;
+  output: {
+    includeRawPayloads: boolean;
+    includeDiscarded: boolean;
+    maxSnippetLength: number;
+  };
   externalContent: {
     untrusted: true;
     source: "web_search";

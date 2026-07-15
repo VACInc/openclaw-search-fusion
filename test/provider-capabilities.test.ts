@@ -15,12 +15,23 @@ import {
 
 test("resolveProviderCapabilities returns registered capabilities for known providers", () => {
   assert.deepEqual(resolveProviderCapabilities("brave"), ["news", "privacy", "results"]);
+  assert.deepEqual(resolveProviderCapabilities("codex"), ["answer", "results"]);
   assert.deepEqual(resolveProviderCapabilities("gemini"), ["answer", "results"]);
   assert.deepEqual(resolveProviderCapabilities("duckduckgo"), ["free-tier", "privacy", "results"]);
-  assert.deepEqual(resolveProviderCapabilities("exa"), ["academic", "code", "neural", "results"]);
+  assert.deepEqual(resolveProviderCapabilities("exa"), ["academic", "code", "extract", "neural", "results"]);
+  assert.deepEqual(resolveProviderCapabilities("firecrawl"), ["results"]);
+  assert.deepEqual(resolveProviderCapabilities("firecrawl-free"), ["free-tier", "results"]);
   assert.deepEqual(resolveProviderCapabilities("minimax"), ["code", "results"]);
+  assert.deepEqual(resolveProviderCapabilities("ollama"), ["free-tier", "results"]);
+  assert.deepEqual(resolveProviderCapabilities("parallel"), ["extract", "neural", "results"]);
+  assert.deepEqual(resolveProviderCapabilities("parallel-free"), ["extract", "free-tier", "neural", "results"]);
   assert.deepEqual(resolveProviderCapabilities("perplexity"), ["answer", "neural", "results"]);
-  assert.deepEqual(resolveProviderCapabilities("tavily"), ["answer", "neural", "results"]);
+  assert.deepEqual(resolveProviderCapabilities("tavily"), ["neural", "results"]);
+});
+
+test("resolveProviderCapabilities excludes non-runtime google and serper ids", () => {
+  assert.deepEqual(resolveProviderCapabilities("google"), []);
+  assert.deepEqual(resolveProviderCapabilities("serper"), []);
 });
 
 test("resolveProviderCapabilities is case-insensitive", () => {
@@ -42,16 +53,20 @@ test("resolveProviderCapabilities results are sorted and match ALL_PROVIDER_CAPA
 
   const registeredIds = [
     "brave",
+    "codex",
     "duckduckgo",
     "exa",
+    "firecrawl",
+    "firecrawl-free",
     "gemini",
-    "google",
     "grok",
     "kimi",
     "minimax",
+    "ollama",
+    "parallel",
+    "parallel-free",
     "perplexity",
     "searxng",
-    "serper",
     "tavily",
   ];
 
@@ -100,7 +115,7 @@ test("filterByCapabilities keeps providers that have all required capabilities",
 
   assert.deepEqual(
     filterByCapabilities(providers, ["answer"]),
-    ["gemini", "tavily"],
+    ["gemini"],
   );
 
   // DuckDuckGo is the only one that is both free-tier AND privacy-conscious.
@@ -137,7 +152,7 @@ test("filterByAnyCapability keeps providers that have at least one required capa
   // "answer" OR "academic"
   assert.deepEqual(
     filterByAnyCapability(providers, ["answer", "academic"]),
-    ["gemini", "exa", "tavily"],
+    ["gemini", "exa"],
   );
 
   // "free-tier" OR "privacy" — brave, duckduckgo have privacy; duckduckgo also has free-tier
@@ -159,7 +174,7 @@ test("filterByAnyCapability with empty any list returns all providers", () => {
 test("ALL_PROVIDER_CAPABILITIES contains every capability used in the registry", () => {
   const known = new Set<string>(ALL_PROVIDER_CAPABILITIES);
   const sample: ProviderCapability[] = [
-    "results", "answer", "news", "images", "video",
+    "results", "answer", "extract", "news", "images", "video",
     "local", "academic", "code", "neural", "free-tier", "privacy",
   ];
   for (const cap of sample) {

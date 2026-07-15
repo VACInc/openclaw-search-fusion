@@ -2,7 +2,7 @@
   "id": "search-fusion",
   "name": "Search Fusion",
   "description": "Federated web search fusion for OpenClaw that reuses configured providers in parallel.",
-  "version": "0.1.11",
+  "version": "0.2.0",
   "contracts": {
     "webSearchProviders": [
       "search-fusion"
@@ -38,7 +38,7 @@
       },
       "intentProviders": {
         "type": "object",
-        "description": "Provider lists keyed by intent hint (research, keyword, answer, news, local). Used when a request carries an intent but no explicit providers or mode. Falls back to the normal default-resolution chain when the intent has no entry here.",
+        "description": "Provider lists keyed by intent hint (research, keyword, answer, news, local). Used when a request carries an intent but no explicit providers or mode. Built-in keyword routing selects classic results providers without answer synthesis. Local has no built-in preference and falls through unless local is configured here.",
         "additionalProperties": false,
         "properties": {
           "research": {
@@ -46,7 +46,7 @@
             "items": {
               "type": "string"
             },
-            "description": "Providers to use for research/in-depth queries (e.g. gemini, tavily, brave, minimax)."
+            "description": "Providers to use for research/in-depth queries (e.g. exa, parallel, tavily)."
           },
           "keyword": {
             "type": "array",
@@ -60,21 +60,21 @@
             "items": {
               "type": "string"
             },
-            "description": "Providers to use for direct-answer queries (e.g. gemini, perplexity, grok)."
+            "description": "Providers to use for direct-answer queries (e.g. codex, gemini, grok, kimi, perplexity)."
           },
           "news": {
             "type": "array",
             "items": {
               "type": "string"
             },
-            "description": "Providers to use for news/current-events queries (e.g. brave, tavily)."
+            "description": "Providers to use for news/current-events queries (e.g. brave)."
           },
           "local": {
             "type": "array",
             "items": {
               "type": "string"
             },
-            "description": "Providers to use for location-aware queries (e.g. brave)."
+            "description": "Optional explicit providers for location-aware queries. OpenClaw 2026.7.2 has no provider with verified local strength through the generic web_search path."
           }
         }
       },
@@ -90,7 +90,7 @@
         "items": {
           "type": "string"
         },
-        "description": "Provider ids to never use by default."
+        "description": "Provider ids excluded from intent/default fallback selection. Explicit providers and explicit modes may still select them."
       },
       "sourceTierMode": {
         "type": "string",
@@ -118,6 +118,26 @@
         "minimum": 1000,
         "maximum": 120000,
         "description": "Per-provider timeout when federating requests."
+      },
+      "totalTimeoutMs": {
+        "type": "integer",
+        "minimum": 5000,
+        "maximum": 180000,
+        "description": "Whole fan-out deadline including credential preparation, retries, and backoff. Defaults to 30000ms; completed providers are returned as partial results."
+      },
+      "includeRawPayloads": {
+        "type": "boolean",
+        "description": "Include full provider payloads and raw normalized items in model-visible output. Defaults to false."
+      },
+      "includeDiscarded": {
+        "type": "boolean",
+        "description": "Include missing-URL items discarded from merging. Defaults to false."
+      },
+      "maxSnippetLength": {
+        "type": "integer",
+        "minimum": 100,
+        "maximum": 5000,
+        "description": "Maximum model-visible length for snippets and provider answers. Defaults to 500; truncated fields are marked."
       },
       "retry": {
         "type": "object",
