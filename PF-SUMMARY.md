@@ -1,120 +1,68 @@
 # PF Summary: Provider-native result counts
 
-## What was built
+## Outcome
 
-- Added a documented provider result-count contract table in `src/search-fusion.ts`.
-  - Exa defaults to 100 and its adapter maps generic `count` to native `numResults`.
-  - Tavily defaults to 20 and maps `count` to native `max_results`.
-  - Parallel defaults to 40 and maps `count` to `advanced_settings.max_results`.
-  - Parallel Free allows up to 40, but the OpenClaw adapter applies that count only as a client-side slice of the free MCP's fixed response.
-  - Every other known OpenClaw catalog provider has an explicit 10-result generic-adapter ceiling.
-  - Unknown third-party adapters retain the previous default of 5 and the previous generic ceiling of 10.
-- Added `providerConfig.<id>.maxResults`.
-  - It defaults to the known provider's native/generic adapter maximum.
-  - It can lower but cannot raise the verified native maximum.
-  - Per-call `count`, legacy `providerConfig.<id>.count`, and shared `countPerProvider` are all clamped to that ceiling.
-  - Non-finite and fractional direct inputs are normalized defensively.
-- Raised the public request/config schema range to 100 so Exa's supported maximum is expressible; provider-specific clamping still prevents invalid downstream requests.
-- Preserved the fusion-level `maxMergedResults` cap while using the deeper internal candidate pool for normalization, dedupe, and ranking.
-- Prevented default model-visible provider-run bloat: `providerRuns[].results` contains only evidence for URLs surviving the merged cap. `rawCount` reports the full pull, and `includeRawPayloads: true` intentionally restores complete normalized provider runs and raw responses for audits.
-- Updated configuration and tool documentation.
-- Added transport-mock coverage for native defaults, native/configured clamping, free/keyless provider behavior, unknown adapters, payload argument names, default overrides, the global cap, and raw-output opt-in behavior.
+The provider-native count feature now ships through the declared package/OpenClaw entrypoint and keeps default model-visible output bounded.
+
+- Known providers default to their verified adapter ceilings: Exa 100, Parallel 40, Parallel Free 40, Tavily 20, and other catalog providers 10.
+- Unknown adapters retain the historical default of 5 and conservative ceiling of 10.
+- `providerConfig.<id>.maxResults` can lower but cannot raise a provider's verified ceiling.
+- Per-call `count`, legacy per-provider `count`, and shared `countPerProvider` are clamped to the resolved ceiling.
+- `maxMergedResults` still bounds merged results after the deeper pool is normalized, deduplicated, and ranked.
+- Default output retains aggregate `ranking.droppedCount` but omits detailed dropped records.
+- Default merged variants, rankings, provider-run results, and evidence-table provider evidence retain one item per contributing provider per returned merged URL.
+- `includeRawPayloads: true` restores complete normalized provider runs, duplicate merged evidence, dropped-result details, and raw responses for audit use.
+- `rawCount` now counts every transport result item in supported arrays, including items discarded for a missing URL.
+- Tracked `dist` JavaScript and declarations were rebuilt.
+
+## Review findings resolved
+
+All four findings in `PF-REVIEW.md` reproduced before changes and pass equivalent probes after the fixes.
+
+1. The source/published Exa default changed from `100 / 5` before the rebuild to `100 / 100`.
+2. A 120-candidate, 7-result probe still reports `droppedCount: 113`, while default `ranking.dropped.length` changed from 113 to 0 and serialized output fell from 34,945 to 14,665 bytes.
+3. A 100-item duplicate-URL probe changed merged variants, merged rankings, provider-run visible results, and evidence-table provider evidence from 100 each to 1 each; serialized output fell from 101,425 to 3,868 bytes.
+4. A three-item transport response containing one missing-URL item now reports `rawCount: 3` and `discardedCount: 1`, instead of `rawCount: 2`.
+
+Detailed per-finding evidence is in `PF-FIXES.md`.
 
 ## Files added or changed
 
-- Added `PF-SUMMARY.md` — this handoff.
-- Changed `README.md` — provider count table, configuration examples, clamping semantics, free-tier notes, and bounded-output behavior.
-- Changed `index.ts` — public `count` tool schema now accepts 1-100 and documents provider clamping.
-- Changed `openclaw.plugin.json` — exposes `providerConfig.<id>.maxResults`; raises count schema ceilings to 100 with updated descriptions.
-- Changed `src/search-fusion.ts` — provider contract table, count resolution/clamping, native defaults, conservative unknown-provider handling, and bounded default provider-run evidence.
-- Changed `src/types.ts` — adds the typed `maxResults` provider configuration.
-- Changed `test/index.test.ts` — verifies the public tool count ceiling.
-- Changed `test/manifest.test.ts` — verifies manifest count/maxResults schemas.
-- Changed `test/search-fusion.test.ts` — adds provider-count, payload, free-tier, override, global-cap, and output-bounding tests.
+- `src/search-fusion.ts` — provider count contracts and clamping, corrected raw counts, bounded default evidence, and audit-only dropped details.
+- `src/types.ts` — `maxResults` config and clarified output semantics.
+- `index.ts` — public count ceiling and audit-output description.
+- `openclaw.plugin.json` — count/maxResults schema and audit-output description.
+- `README.md` — provider count table, clamping, raw-count semantics, and bounded/audit output behavior.
+- `test/search-fusion.test.ts` — native-count, clamping, global-cap, dropped-detail, duplicate-evidence, audit opt-in, and raw-count regression coverage.
+- `test/index.test.ts` — public tool count schema coverage.
+- `test/manifest.test.ts` — manifest count/maxResults schema coverage.
+- `test/dist-entrypoint.test.ts` — executes the declared `dist/index.js` entrypoint and verifies Exa's 100 default plus a 17-result config override.
+- `dist/index.js`, `dist/src/search-fusion.js`, `dist/src/types.d.ts` — rebuilt published runtime and declarations.
+- `PF-SUMMARY.md` — final implementation and verification handoff.
+- `PF-FIXES.md` — reviewer-finding reproduction and resolution record.
 
-`npm install` also populated ignored `node_modules/`. Inspector reports were generated under ignored `reports/`. The npm-generated `package-lock.json` was removed because this repository's canonical lockfile is `pnpm-lock.yaml`.
+## Verification run
 
-## Verification and observed results
+- `npm run build` — exit 0; tracked `dist` regenerated.
+- `node --test --experimental-test-module-mocks --import tsx test/dist-entrypoint.test.ts test/search-fusion.test.ts` — exit 0; 78 passed, 0 failed.
+- `npm test` — exit 0; 197 passed, 0 failed, 0 skipped, 0 todo.
+- `npx tsc --noEmit` — exit 0; no diagnostics.
+- `pnpm run plugin:check` — exit 0; PASS, 1 fixture, 0 breakages, 0 issues.
+- `pnpm run plugin:check:runtime` — exit 0; PASS, 1 fixture, 0 breakages, 0 issues.
+- `git diff --check` — exit 0; no output.
+- Reviewer-equivalent mocked transport probes — exit 0 with the corrected values listed above.
 
-1. Dependency install:
-
-   ```text
-   npm install --cache .npm-cache
-   ```
-
-   Observed: exit 0; 554 packages added, 555 audited. npm reported 12 dependency audit findings (8 moderate, 3 high, 1 critical). No automatic dependency mutation was attempted.
-
-   The first plain `npm install` attempt failed before installation because the host npm cache under `/home/vac/.npm` was read-only. Re-running with a worktree-local cache succeeded.
-
-2. Baseline before source edits:
-
-   ```text
-   npm test
-   ```
-
-   Observed: exit 0; 131 tests, 131 passed, 0 failed.
-
-3. Final full test suite:
-
-   ```text
-   npm test
-   ```
-
-   Observed: exit 0; 137 tests, 137 passed, 0 failed, 0 skipped, 0 todo.
-
-4. TypeScript:
-
-   ```text
-   npx tsc --noEmit
-   ```
-
-   Observed: exit 0; no diagnostics.
-
-5. Static plugin inspector:
-
-   ```text
-   pnpm run plugin:check
-   ```
-
-   Observed: exit 0; `Status: PASS`, 1 fixture, 0 breakages, 0 issues.
-
-6. Runtime plugin inspector:
-
-   ```text
-   pnpm run plugin:check:runtime
-   ```
-
-   Observed: exit 0; `Status: PASS`, 1 fixture, 0 breakages, 0 issues.
-
-7. Diff hygiene:
-
-   ```text
-   git diff --check
-   ```
-
-   Observed: exit 0; no whitespace errors.
-
-## Adapter evidence used
-
-- Installed OpenClaw 2026.5.6 adapters confirmed:
-  - Tavily generic `count` -> `max_results`, capped at 20.
-  - Exa generic `count` -> `numResults`, capped at 100.
-  - Firecrawl generic adapter contract capped at 10.
-- Catalog-matched OpenClaw/plugin package source at 2026.7.2-beta.4 confirmed:
-  - Parallel generic `count` -> paid `advanced_settings.max_results`, capped at 40.
-  - Parallel Free uses the same 1-40 generic contract but slices the free MCP response client-side instead of asking the free service for a larger response.
-  - Firecrawl paid and free generic providers both cap `count` at 10; the separate Firecrawl-specific tool's larger range is not used by Search Fusion.
-- Search Fusion transport tests assert that the broker passes only the generic adapter-facing `count`, not provider-native fields. Native field translation remains owned by the OpenClaw adapters.
+The `codex-review` closeout helper was attempted in both `--no-yolo` and normal modes. Both exited 1 before reviewing code because the managed environment could not initialize Codex app-server/PATH-alias state on a read-only filesystem. No clean automated-review result is claimed.
 
 ## Known gaps and risks
 
-- No live paid-provider API calls were made. The provider-native mappings were verified from the installed/catalog-matched OpenClaw adapter source, and broker behavior was verified with mocked runtime transport as requested.
-- Provider limits are dependency contracts and can drift in future OpenClaw/provider-plugin releases. The documented table and tests must be updated when adapters change.
-- `includeRawPayloads: true` deliberately opts into larger output by returning complete provider runs and raw responses.
-- npm reported 12 audit findings in the installed development dependency tree. They were not changed because dependency remediation was outside this feature and `npm audit fix` could introduce unrelated updates.
+- No live paid-provider requests were made. Adapter request mappings are source-verified and broker behavior is transport-mock verified.
+- Provider ceilings can drift with future OpenClaw/provider adapter releases and must be rechecked when those dependencies change.
+- `includeRawPayloads: true` deliberately opts into potentially large audit output.
+- The final Codex advisory review was environment-blocked as described above; mandatory tests, inspectors, probes, and manual diff hygiene all passed.
 
 ## Suggested follow-ups
 
-- Run a credentialed staging smoke test for Exa, Tavily, and paid Parallel before release if those credentials are available.
-- Re-audit the count table when updating the OpenClaw/plugin build target.
-- Triage the npm audit report in a separate dependency-maintenance change.
+- Run credentialed staging smoke tests for Exa, Tavily, and paid Parallel before release if credentials are available.
+- Recheck the provider count contract table when updating OpenClaw or provider plugins.
+- Rerun `codex review --uncommitted` in an environment where Codex state is writable if an additional automated review is required.

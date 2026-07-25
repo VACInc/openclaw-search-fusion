@@ -1182,6 +1182,7 @@ test("runSearchFusion can disable fuzzy dedupe without disabling legacy exact me
     request: {
       query: "story",
       providers: ["alpha", "beta"],
+      includeRawPayloads: true,
     },
   });
 
@@ -1474,6 +1475,8 @@ test("runSearchFusion keeps missing-url junk as non-merged provenance", async ()
   assert.equal(payload.discardedResults.length, 1);
   assert.equal(payload.discardedResults[0]?.reason, "missing-url");
   assert.equal(payload.providerRuns[0]?.discardedResults.length, 1);
+  assert.equal(payload.providerRuns[0]?.rawCount, 2);
+  assert.equal(payload.providerDetails[0]?.rawCount, 2);
   assert.equal(payload.providerDetails[0]?.discardedCount, 1);
 });
 
@@ -2339,6 +2342,7 @@ test("runSearchFusion keeps merged output capped while ranking deeper native pul
   assert.equal(payload.ranking.consideredCount, 120);
   assert.equal(payload.ranking.returnedCount, 7);
   assert.equal(payload.ranking.droppedCount, 113);
+  assert.deepEqual(payload.ranking.dropped, []);
   assert.equal(payload.results.length, 7);
   assert.equal(
     payload.providerRuns.reduce((total, run) => total + run.results.length, 0),
@@ -2346,6 +2350,81 @@ test("runSearchFusion keeps merged output capped while ranking deeper native pul
   );
   assert.equal(payload.evidenceTable.rowCount, 7);
   assert.equal(payload.count, 7);
+});
+
+test("runSearchFusion bounds duplicate merged evidence unless raw audit output is requested", async () => {
+  const runtime = createRuntime({
+    providers: [
+      { id: "exa", label: "Exa", configured: true, autoDetectOrder: 10 },
+      { id: "tavily", label: "Tavily", configured: true, autoDetectOrder: 20 },
+    ],
+    search: async ({ providerId, args }) => {
+      const id = providerId ?? "unknown";
+      const count = typeof args.count === "number" ? args.count : 0;
+      return {
+        provider: id,
+        result: {
+          results: Array.from({ length: count }, (_, index) => ({
+            title: `${id} duplicate ${index + 1}`,
+            url: "https://example.com/shared",
+            description: `${id} evidence ${index + 1}`,
+          })),
+        },
+      };
+    },
+  }) as never;
+
+  const bounded = await runSearchFusion({
+    runtime,
+    config: {},
+    pluginConfig: {},
+    request: {
+      query: "duplicate candidate evidence",
+      providers: ["exa", "tavily"],
+    },
+  });
+
+  assert.equal(bounded.results.length, 1);
+  assert.equal(bounded.results[0]?.providerCount, 2);
+  assert.deepEqual(
+    bounded.results[0]?.variants.map((variant) => variant.providerId),
+    ["exa", "tavily"],
+  );
+  assert.deepEqual(
+    bounded.results[0]?.rankings.map((ranking) => ranking.providerId),
+    ["exa", "tavily"],
+  );
+  assert.deepEqual(
+    bounded.providerRuns.map((run) => [run.provider, run.rawCount, run.results.length]),
+    [
+      ["exa", 100, 1],
+      ["tavily", 20, 1],
+    ],
+  );
+  assert.deepEqual(
+    bounded.evidenceTable.rows[0]?.providerEvidence.map((entry) => entry.providerId),
+    ["exa", "tavily"],
+  );
+
+  const audit = await runSearchFusion({
+    runtime,
+    config: {},
+    pluginConfig: {},
+    request: {
+      query: "duplicate candidate evidence",
+      providers: ["exa", "tavily"],
+      includeRawPayloads: true,
+    },
+  });
+
+  assert.equal(audit.results[0]?.variants.length, 120);
+  assert.equal(audit.results[0]?.rankings.length, 120);
+  assert.equal(
+    audit.providerRuns.reduce((total, run) => total + run.results.length, 0),
+    120,
+  );
+  assert.equal(audit.evidenceTable.rows[0]?.providerEvidence.length, 120);
+  assert.ok(audit.providerRuns.every((run) => Boolean(run.rawPayload)));
 });
 
 test("runSearchFusion passes providerConfig count overrides when request count is absent", async () => {

@@ -25,9 +25,9 @@ const SearchFusionParameters = Type.Object({
     mode: Type.Optional(Type.String({ description: "Optional mode name. Uses configured modes, or built-in starter modes (fast, balanced, deep) when custom modes are not set." })),
     providers: Type.Optional(Type.Array(Type.String({ description: "Explicit provider id, or use 'all' / '*' to fan out to every configured provider. Explicit selections bypass excludeProviders; unknown ids are errors." }))),
     count: Type.Optional(Type.Integer({
-        description: "Number of results to request from each provider (1-10).",
+        description: "Number of results to request from each provider (1-100). Each request is clamped to providerConfig.<id>.maxResults and the delegated provider's native maximum.",
         minimum: 1,
-        maximum: 10,
+        maximum: 100,
     })),
     maxMergedResults: Type.Optional(Type.Integer({
         description: "Maximum merged results returned after dedupe (1-50).",
@@ -42,7 +42,9 @@ const SearchFusionParameters = Type.Object({
     search_lang: Type.Optional(Type.String({ description: "Provider-specific search language code when supported." })),
     ui_lang: Type.Optional(Type.String({ description: "Locale code for UI elements when supported." })),
     includeFailures: Type.Optional(Type.Boolean({ description: "Include provider failures in the human-readable summary." })),
-    includeRawPayloads: Type.Optional(Type.Boolean({ description: "Include full provider payloads and raw normalized items. Defaults to false." })),
+    includeRawPayloads: Type.Optional(Type.Boolean({
+        description: "Include full provider payloads, complete normalized provider runs, duplicate merged evidence, and detailed dropped-result records. Defaults to false.",
+    })),
     includeDiscarded: Type.Optional(Type.Boolean({ description: "Include missing-URL items discarded from merging. Defaults to false." })),
 }, { additionalProperties: false });
 function asJsonResult(payload) {

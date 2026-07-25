@@ -83,7 +83,10 @@ const SearchFusionParameters = Type.Object(
       Type.Boolean({ description: "Include provider failures in the human-readable summary." }),
     ),
     includeRawPayloads: Type.Optional(
-      Type.Boolean({ description: "Include full provider payloads and raw normalized items. Defaults to false." }),
+      Type.Boolean({
+        description:
+          "Include full provider payloads, complete normalized provider runs, duplicate merged evidence, and detailed dropped-result records. Defaults to false.",
+      }),
     ),
     includeDiscarded: Type.Optional(
       Type.Boolean({ description: "Include missing-URL items discarded from merging. Defaults to false." }),

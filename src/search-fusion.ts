@@ -1818,7 +1818,7 @@ async function runProvider(params: {
         configured: params.provider.configured,
         ok: true,
         tookMs: Date.now() - start,
-        rawCount: normalized.results.length,
+        rawCount: normalized.results.length + normalized.discardedResults.length,
         attempts,
         rawPayload: response.result,
         results: weightedResults,
@@ -1909,14 +1909,49 @@ function exposeAnswer(
   };
 }
 
+function selectProviderEvidence<T extends { providerId: string }>(
+  entries: readonly T[],
+): T[] {
+  const seenProviders = new Set<string>();
+  return entries.filter((entry) => {
+    if (seenProviders.has(entry.providerId)) {
+      return false;
+    }
+    seenProviders.add(entry.providerId);
+    return true;
+  });
+}
+
+function selectMergedVariants(
+  result: FusionMergedResult,
+  includeRaw: boolean,
+): NormalizedSearchResult[] {
+  return includeRaw ? result.variants : selectProviderEvidence(result.variants);
+}
+
 function exposeMergedResult(
   result: FusionMergedResult,
   includeRaw: boolean,
 ): FusionMergedResult {
   return {
     ...result,
-    variants: result.variants.map((variant) => exposeResult(variant, includeRaw)),
+    rankings: includeRaw ? result.rankings : selectProviderEvidence(result.rankings),
+    variants: selectMergedVariants(result, includeRaw).map((variant) =>
+      exposeResult(variant, includeRaw),
+    ),
   };
+}
+
+function exposeRankingMeta(
+  ranking: FusionRankingMeta,
+  includeRaw: boolean,
+): FusionRankingMeta {
+  return includeRaw
+    ? ranking
+    : {
+        ...ranking,
+        dropped: [],
+      };
 }
 
 export async function runSearchFusion(params: {
@@ -2101,8 +2136,8 @@ export async function runSearchFusion(params: {
   const visibleMergedResults = mergedResults.map((result) =>
     exposeMergedResult(result, includeRawPayloads),
   );
-  const visibleMergedCanonicalUrls = new Set(
-    visibleMergedResults.map((result) => result.canonicalUrl),
+  const defaultProviderEvidence = new Set(
+    mergedResults.flatMap((result) => selectMergedVariants(result, false)),
   );
   const discardedResults = includeDiscarded
     ? internalDiscardedResults.map((result) => exposeResult(result, includeRawPayloads))
@@ -2140,10 +2175,7 @@ export async function runSearchFusion(params: {
       error: run.error,
       answer: run.answer ? exposeAnswer(run.answer, includeRawPayloads) : undefined,
       results: run.results
-        .filter(
-          (result) =>
-            includeRawPayloads || visibleMergedCanonicalUrls.has(result.canonicalUrl),
-        )
+        .filter((result) => includeRawPayloads || defaultProviderEvidence.has(result))
         .map((result) => exposeResult(result, includeRawPayloads)),
       discardedResults: includeDiscarded
         ? run.discardedResults.map((result) => exposeResult(result, includeRawPayloads))
@@ -2154,7 +2186,7 @@ export async function runSearchFusion(params: {
     discardedResults,
     answers,
     results: visibleMergedResults,
-    ranking: merged.ranking,
+    ranking: exposeRankingMeta(merged.ranking, includeRawPayloads),
     evidenceTable: buildEvidenceTable(visibleMergedResults, answers, dedupe),
     output,
     externalContent: {

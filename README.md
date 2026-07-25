@@ -171,13 +171,13 @@ Use `providerConfig.<id>.maxResults` to lower a provider's ceiling:
 }
 ```
 
-A per-call `count`, legacy `providerConfig.<id>.count`, or shared `countPerProvider` can select a smaller pull size. None can exceed `providerConfig.<id>.maxResults` or the native adapter maximum. `maxMergedResults` remains the independent fusion-level output cap, so deeper provider pulls improve dedupe and ranking without increasing the returned merged-result count. By default, `providerRuns[].results` is also limited to provider evidence for URLs that survived the merged cap; `rawCount` still reports the complete pull. Set `includeRawPayloads: true` when an audit needs the complete normalized provider runs and raw responses.
+A per-call `count`, legacy `providerConfig.<id>.count`, or shared `countPerProvider` can select a smaller pull size. None can exceed `providerConfig.<id>.maxResults` or the native adapter maximum. `maxMergedResults` remains the independent fusion-level output cap, so deeper provider pulls improve dedupe and ranking without increasing the returned merged-result count. `rawCount` reports every transport result item encountered in the supported result arrays, including items later discarded for a missing URL.
 
 `totalTimeoutMs` bounds the whole fan-out, including credential preparation, provider attempts, retries, and backoff (default `30000`, range `5000`–`180000`). When it expires, completed providers are returned as partial results and unfinished providers report `deadline exceeded`. `providerTimeoutMs` still bounds each individual attempt; timed-out and aborted attempts are not retried.
 
 Model-visible output is compact by default:
 
-- `includeRawPayloads` (default `false`) controls provider `rawPayload` data and raw normalized items.
+- `includeRawPayloads` (default `false`) controls full provider payloads and complete audit evidence. Without it, `providerRuns[].results` includes one item per provider for each returned merged URL, merged `variants`/`rankings` and evidence-table provider evidence include one item per contributing provider, and `ranking.dropped` omits detailed records while retaining `droppedCount`.
 - `includeDiscarded` (default `false`) controls missing-URL items preserved outside the merged results.
 - `maxSnippetLength` (default `500`, range `100`–`5000`) caps result snippets, variant snippets, evidence snippets, and provider answer text. Affected objects carry `truncated: true`.
 
@@ -311,7 +311,7 @@ The structured payload retains `externalContent.untrusted: true` metadata for no
 Merged payloads include:
 
 - `results[].ranking` with the final rank, score breakdown (`bestVariantScore`, `corroborationBonus`, `bestRankBonus`, `tierAdjustment`, `flagPenalty`, `finalScore`), and tie-breaker values. `bestRankBonus` is retained as a compatibility field with value `0`; original rank is applied only as the explicit final tie-breaker.
-- top-level `ranking` metadata with the strategy, sort order, considered/returned counts, and `dropped[]` entries (with `reason: "maxMergedResults"`) for results trimmed by the output cap.
+- top-level `ranking` metadata with the strategy, sort order, considered/returned counts, and `droppedCount` for results trimmed by the output cap. Detailed `dropped[]` records (with `reason: "maxMergedResults"`) are included only with `includeRawPayloads: true`.
 
 Final ordering is deterministic: descending score, selected-provider priority, then original provider rank. Results still tied on all three keys retain their insertion order. The selected `providers`/mode order therefore acts as the provider-priority order and is exposed in `ranking.tieBreakers`.
 

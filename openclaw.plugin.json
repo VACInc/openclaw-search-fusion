@@ -127,7 +127,7 @@
       },
       "includeRawPayloads": {
         "type": "boolean",
-        "description": "Include full provider payloads and raw normalized items in model-visible output. Defaults to false."
+        "description": "Include full provider payloads, complete normalized provider runs, duplicate merged evidence, and detailed dropped-result records. Defaults to false."
       },
       "includeDiscarded": {
         "type": "boolean",
