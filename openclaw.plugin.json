@@ -141,7 +141,7 @@
       },
       "fuzzyDedupe": {
         "type": "boolean",
-        "description": "Enable conservative fuzzy URL and same-host normalized-title deduplication. Defaults to true; false retains exact canonical-URL merging only."
+        "description": "Enable conservative fuzzy URL and same-host normalized-title deduplication. By default it activates only when more than one provider contributes results; true forces it for single-provider runs, false retains exact canonical-URL merging only."
       },
       "trackingParams": {
         "type": "array",
