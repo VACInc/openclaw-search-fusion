@@ -139,6 +139,26 @@
         "maximum": 5000,
         "description": "Maximum model-visible length for snippets and provider answers. Defaults to 500; truncated fields are marked."
       },
+      "fuzzyDedupe": {
+        "type": "boolean",
+        "description": "Enable conservative fuzzy URL and same-host normalized-title deduplication. Defaults to true; false retains exact canonical-URL merging only."
+      },
+      "trackingParams": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": "Tracking parameter names or prefix patterns ending in * to add to, or replace, the default fuzzy-dedupe tracking list."
+      },
+      "trackingParamMode": {
+        "type": "string",
+        "enum": [
+          "extend",
+          "override"
+        ],
+        "description": "Whether trackingParams extends the safe default list (default) or replaces it entirely."
+      },
       "retry": {
         "type": "object",
         "additionalProperties": false,

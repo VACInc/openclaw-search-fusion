@@ -60,6 +60,18 @@ export type SearchFusionConfig = {
     includeRawPayloads?: boolean;
     includeDiscarded?: boolean;
     maxSnippetLength?: number;
+    /**
+     * Enables conservative URL and same-host normalized-title deduplication.
+     * Defaults to true. When false, the legacy exact canonical-URL merge remains.
+     */
+    fuzzyDedupe?: boolean;
+    /**
+     * Additional tracking parameter names or prefix patterns (ending in `*`).
+     * Used with the default tracking list unless `trackingParamMode` is
+     * `"override"`.
+     */
+    trackingParams?: string[];
+    trackingParamMode?: "extend" | "override";
     retry?: SearchFusionRetryConfig;
     providerConfig?: Record<string, SearchFusionProviderConfig>;
     providerRetries?: Record<string, SearchFusionRetryConfig>;

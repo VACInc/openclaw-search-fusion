@@ -146,6 +146,18 @@ Both include flags can be set in plugin config or overridden per `search_fusion`
 
 `providerConfig.<id>.weight` is a ranking multiplier (default `1`, range `0.1` to `5`). Higher values boost trusted providers, lower values down-weight noisier ones.
 
+Fuzzy dedupe is enabled by default through `fuzzyDedupe`. It folds HTTP into HTTPS, default ports, `www.`/`m.`/`amp.` host variants, terminal `/amp` paths, fragments, trailing slashes, and known tracking parameters. Meaningful query parameters remain part of URL identity. Normalized-title equality is used only for results on the same canonical host with the same remaining query, so equal titles never merge across sites or across conflicting query values.
+
+The default tracking list is `utm_*`, `fbclid`, `gclid`, `ref`, `mc_cid`, `mc_eid`, and `igshid`. Add site-specific names with `trackingParams`; its default `trackingParamMode` is `extend`. Set the mode to `override` to replace the defaults entirely. Set `fuzzyDedupe` to `false` to retain only the legacy exact canonical-URL merge.
+
+```json
+{
+  "fuzzyDedupe": true,
+  "trackingParams": ["campaign_id", "pk_*"],
+  "trackingParamMode": "extend"
+}
+```
+
 `sourceTierMode` controls deterministic trust-tier downranking:
 
 - `off`: disables source-tier adjustments
@@ -339,7 +351,7 @@ pnpm test
 - prefers a paid sibling only when it is configured; otherwise keeps the keyless sibling
 - reports native providers whose plugins are disabled/not enabled, with plugin ids and boolean-only credential detection hints
 - excludes itself to avoid recursion
-- dedupes by canonical URL
+- dedupes fuzzy URL variants by default, with same-host normalized titles as a guarded secondary signal
 - retries transient provider failures with global defaults and per-provider overrides via `providerConfig.<id>.retry`
 - supports deterministic provider weighting via `providerConfig.<id>.weight` to bias ranking by provider trust/value
 - isolates unexpected provider pipeline crashes so one provider cannot abort the whole fusion run

@@ -56,3 +56,10 @@ test("manifest exposes providerConfig weight overrides", () => {
   assert.equal(weightSchema?.minimum, 0.1);
   assert.equal(weightSchema?.maximum, 5);
 });
+
+test("manifest exposes configurable fuzzy dedupe and tracking parameters", () => {
+  const properties = manifest.configSchema?.properties ?? {};
+  assert.equal(asObject(properties.fuzzyDedupe)?.type, "boolean");
+  assert.equal(asObject(properties.trackingParams)?.type, "array");
+  assert.deepEqual(asObject(properties.trackingParamMode)?.enum, ["extend", "override"]);
+});

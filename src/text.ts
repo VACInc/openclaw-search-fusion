@@ -1,4 +1,14 @@
-const TRACKING_PARAMS = new Set([
+export const DEFAULT_TRACKING_PARAMS = [
+  "utm_*",
+  "gclid",
+  "fbclid",
+  "mc_cid",
+  "mc_eid",
+  "ref",
+  "igshid",
+] as const;
+
+const LEGACY_TRACKING_PARAMS = [
   "utm_source",
   "utm_medium",
   "utm_campaign",
@@ -10,7 +20,20 @@ const TRACKING_PARAMS = new Set([
   "mc_cid",
   "mc_eid",
   "ref",
-]);
+] as const;
+
+export type TrackingParamMode = "extend" | "override";
+
+export type FuzzyUrlOptions = {
+  trackingParams?: readonly string[];
+  trackingParamMode?: TrackingParamMode;
+};
+
+export type FuzzyUrlAnalysis = {
+  canonicalUrl: string;
+  host?: string;
+  meaningfulQuery: string;
+};
 
 function maybeDecode(value: string | null): string | undefined {
   if (!value) return undefined;
@@ -83,6 +106,76 @@ function unwrapKnownRedirectUrl(rawUrl: string): { url: string; unwrapped: boole
   return { url: rawUrl.trim(), unwrapped: false };
 }
 
+function normalizeTrackingPattern(value: string): string {
+  return value.trim().replace(/^\?/, "").toLowerCase();
+}
+
+function resolveTrackingPatterns(options?: FuzzyUrlOptions): string[] {
+  const configuredValues = Array.isArray(options?.trackingParams) ? options.trackingParams : [];
+  const configured = configuredValues
+    .filter((value): value is string => typeof value === "string")
+    .map(normalizeTrackingPattern)
+    .filter(Boolean);
+  const patterns =
+    options?.trackingParamMode === "override"
+      ? configured
+      : [...DEFAULT_TRACKING_PARAMS, ...configured];
+  return [...new Set(patterns)];
+}
+
+function isTrackingParam(key: string, patterns: readonly string[]): boolean {
+  const normalizedKey = key.toLowerCase();
+  return patterns.some((pattern) =>
+    pattern.endsWith("*")
+      ? normalizedKey.startsWith(pattern.slice(0, -1))
+      : normalizedKey === pattern,
+  );
+}
+
+function stripTrackingParams(parsed: URL, patterns: readonly string[]): boolean {
+  let stripped = false;
+  for (const key of [...parsed.searchParams.keys()]) {
+    if (isTrackingParam(key, patterns)) {
+      parsed.searchParams.delete(key);
+      stripped = true;
+    }
+  }
+  return stripped;
+}
+
+function foldVariantHostname(hostname: string): string {
+  let normalized = hostname.toLowerCase();
+  if (normalized.startsWith("www.") && normalized.slice(4).includes(".")) {
+    normalized = normalized.slice(4);
+  }
+  while (
+    (normalized.startsWith("m.") || normalized.startsWith("amp.")) &&
+    normalized.split(".").length > 2
+  ) {
+    normalized = normalized.slice(normalized.indexOf(".") + 1);
+  }
+  return normalized;
+}
+
+function foldAmpPath(pathname: string): string {
+  const withoutAmpSuffix = pathname.replace(/\/amp(?:\/index\.html?|\.html?)?\/*$/i, "");
+  const normalized = withoutAmpSuffix || "/";
+  return normalized === "/" ? normalized : normalized.replace(/\/+$/, "");
+}
+
+function sortSearchParams(parsed: URL): void {
+  const entries = [...parsed.searchParams.entries()];
+  entries.sort(([aKey], [bKey]) => {
+    if (aKey !== bKey) return aKey < bKey ? -1 : 1;
+    // Repeated-value order can be meaningful, so stable-sort only by key.
+    return 0;
+  });
+  parsed.search = "";
+  for (const [key, value] of entries) {
+    parsed.searchParams.append(key, value);
+  }
+}
+
 export function analyzeUrl(rawUrl: string): UrlAnalysis {
   const originalUrl = rawUrl.trim();
   const flags = new Set<string>();
@@ -94,13 +187,7 @@ export function analyzeUrl(rawUrl: string): UrlAnalysis {
   try {
     const parsed = new URL(unwrapped.url);
     parsed.hash = "";
-    let strippedTracking = false;
-    for (const key of [...parsed.searchParams.keys()]) {
-      if (TRACKING_PARAMS.has(key.toLowerCase())) {
-        parsed.searchParams.delete(key);
-        strippedTracking = true;
-      }
-    }
+    const strippedTracking = stripTrackingParams(parsed, LEGACY_TRACKING_PARAMS);
     if (strippedTracking) {
       flags.add("tracking-stripped");
     }
@@ -125,6 +212,64 @@ export function analyzeUrl(rawUrl: string): UrlAnalysis {
 
 export function canonicalizeUrl(rawUrl: string): string {
   return analyzeUrl(rawUrl).url;
+}
+
+/**
+ * Builds the conservative identity used for fuzzy result deduplication.
+ *
+ * Meaningful query parameters remain part of the identity. Tracking parameters
+ * can be extended or replaced by configuration, while HTTP(S), common host
+ * variants, and terminal AMP paths fold to one canonical URL.
+ */
+export function analyzeFuzzyUrl(
+  rawUrl: string,
+  options?: FuzzyUrlOptions,
+): FuzzyUrlAnalysis {
+  const unwrapped = unwrapKnownRedirectUrl(rawUrl.trim());
+  try {
+    const parsed = new URL(unwrapped.url);
+    parsed.protocol = parsed.protocol.toLowerCase();
+    parsed.hostname = foldVariantHostname(parsed.hostname);
+    parsed.hash = "";
+
+    if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+      parsed.protocol = "https:";
+      if (parsed.port === "443") {
+        parsed.port = "";
+      }
+    }
+
+    stripTrackingParams(parsed, resolveTrackingPatterns(options));
+    sortSearchParams(parsed);
+    parsed.pathname = foldAmpPath(parsed.pathname);
+
+    return {
+      canonicalUrl: parsed.toString(),
+      host: parsed.host,
+      meaningfulQuery: parsed.search,
+    };
+  } catch {
+    return {
+      canonicalUrl: unwrapped.url.trim(),
+      meaningfulQuery: "",
+    };
+  }
+}
+
+export function canonicalizeUrlForDedupe(
+  rawUrl: string,
+  options?: FuzzyUrlOptions,
+): string {
+  return analyzeFuzzyUrl(rawUrl, options).canonicalUrl;
+}
+
+export function normalizeTitle(value: string): string {
+  return value
+    .normalize("NFKC")
+    .toLocaleLowerCase("en-US")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 export function resolveSiteName(rawUrl: string): string | undefined {
