@@ -29,7 +29,8 @@ import {
 } from "./source-tier.js";
 import { canonicalizeUrl } from "./text.js";
 
-const DEFAULT_COUNT_PER_PROVIDER = 5;
+const DEFAULT_UNKNOWN_PROVIDER_COUNT = 5;
+const DEFAULT_GENERIC_PROVIDER_MAX_RESULTS = 10;
 const DEFAULT_MAX_MERGED_RESULTS = 10;
 const DEFAULT_PROVIDER_TIMEOUT_MS = 15000;
 const DEFAULT_TOTAL_TIMEOUT_MS = 30000;
@@ -44,6 +45,102 @@ const MAX_PROVIDER_WEIGHT = 5;
 const SEARCH_FUSION_PROVIDER_ID = "search-fusion";
 const MERGED_RANKING_STRATEGY = "merged-score-v1" as const;
 const MERGED_SORT_ORDER = ["score:desc", "bestRank:asc", "providerCount:desc", "title:asc"] as const;
+
+type ProviderResultCountContract = {
+  maxResults: number;
+  adapterHandling: string;
+  freeTier?: true;
+};
+
+/**
+ * Result-count contracts verified against the OpenClaw generic web-search
+ * adapters. Search Fusion always sends the adapter-facing `count` argument;
+ * each adapter translates or applies it as described below.
+ *
+ * | Provider        | Native request field               | Maximum |
+ * |-----------------|------------------------------------|---------|
+ * | exa             | `numResults`                       | 100     |
+ * | parallel        | `advanced_settings.max_results`    | 40      |
+ * | parallel-free   | client-side slice of MCP response  | 40      |
+ * | tavily          | `max_results`                      | 20      |
+ *
+ * The object also records every other catalog provider's generic 10-result
+ * contract. Both Firecrawl adapters intentionally cap generic paid and
+ * keyless searches at 10 even though the provider-specific Firecrawl tool can
+ * request more. Parallel Free's 40-result ceiling is applied only after the
+ * hosted free MCP returns its fixed-size response, so this broker does not
+ * increase free-tier upstream usage. Unknown third-party providers retain the
+ * historical default of 5 because their native ceiling is not known here.
+ */
+const PROVIDER_RESULT_COUNT_CONTRACTS: Readonly<Record<string, ProviderResultCountContract>> = {
+  brave: {
+    maxResults: 10,
+    adapterHandling: "native count query parameter",
+  },
+  codex: {
+    maxResults: 10,
+    adapterHandling: "generic adapter contract",
+  },
+  duckduckgo: {
+    maxResults: 10,
+    adapterHandling: "client-side result slice",
+    freeTier: true,
+  },
+  exa: {
+    maxResults: 100,
+    adapterHandling: "native numResults",
+  },
+  firecrawl: {
+    maxResults: 10,
+    adapterHandling: "native limit",
+  },
+  "firecrawl-free": {
+    maxResults: 10,
+    adapterHandling: "native limit",
+    freeTier: true,
+  },
+  gemini: {
+    maxResults: 10,
+    adapterHandling: "generic adapter contract",
+  },
+  grok: {
+    maxResults: 10,
+    adapterHandling: "generic adapter contract",
+  },
+  kimi: {
+    maxResults: 10,
+    adapterHandling: "generic adapter contract",
+  },
+  minimax: {
+    maxResults: 10,
+    adapterHandling: "client-side result slice",
+  },
+  ollama: {
+    maxResults: 10,
+    adapterHandling: "native max_results",
+  },
+  parallel: {
+    maxResults: 40,
+    adapterHandling: "native advanced_settings.max_results",
+  },
+  "parallel-free": {
+    maxResults: 40,
+    adapterHandling: "client-side slice of fixed MCP response",
+    freeTier: true,
+  },
+  perplexity: {
+    maxResults: 10,
+    adapterHandling: "generic adapter contract",
+  },
+  searxng: {
+    maxResults: 10,
+    adapterHandling: "generic adapter contract",
+  },
+  tavily: {
+    maxResults: 20,
+    adapterHandling: "native max_results",
+  },
+};
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -449,6 +546,25 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
+function resolveProviderNativeMaxResults(providerId: string): number {
+  return (
+    PROVIDER_RESULT_COUNT_CONTRACTS[providerId.toLowerCase()]?.maxResults ??
+    DEFAULT_GENERIC_PROVIDER_MAX_RESULTS
+  );
+}
+
+function resolveProviderDefaultResultCount(providerId: string): number {
+  return (
+    PROVIDER_RESULT_COUNT_CONTRACTS[providerId.toLowerCase()]?.maxResults ??
+    DEFAULT_UNKNOWN_PROVIDER_COUNT
+  );
+}
+
+function resolveResultCount(value: unknown, fallback: number, max: number): number {
+  const finiteValue = typeof value === "number" && Number.isFinite(value) ? value : fallback;
+  return clamp(Math.floor(finiteValue), 1, max);
+}
+
 function roundScore(value: number): number {
   return Math.round(value * 1_000_000) / 1_000_000;
 }
@@ -488,12 +604,22 @@ function resolveRuntimeProviderConfig(
   providerId: string,
 ): ResolvedProviderConfig {
   const providerConfig = resolveProviderConfig(config, providerId);
+  const nativeMaxResults = resolveProviderNativeMaxResults(providerId);
+  const maxResults = resolveResultCount(
+    providerConfig.maxResults,
+    nativeMaxResults,
+    nativeMaxResults,
+  );
+  const defaultCount =
+    providerConfig.maxResults === undefined
+      ? Math.min(resolveProviderDefaultResultCount(providerId), maxResults)
+      : maxResults;
 
   return {
-    count: clamp(
-      request.count ?? providerConfig.count ?? config.countPerProvider ?? DEFAULT_COUNT_PER_PROVIDER,
-      1,
-      10,
+    count: resolveResultCount(
+      request.count ?? providerConfig.count ?? config.countPerProvider,
+      defaultCount,
+      maxResults,
     ),
     timeoutMs: clamp(
       providerConfig.timeoutMs ?? config.providerTimeoutMs ?? DEFAULT_PROVIDER_TIMEOUT_MS,
@@ -1306,6 +1432,9 @@ export async function runSearchFusion(params: {
   const visibleMergedResults = mergedResults.map((result) =>
     exposeMergedResult(result, includeRawPayloads),
   );
+  const visibleMergedCanonicalUrls = new Set(
+    visibleMergedResults.map((result) => result.canonicalUrl),
+  );
   const discardedResults = includeDiscarded
     ? internalDiscardedResults.map((result) => exposeResult(result, includeRawPayloads))
     : [];
@@ -1341,7 +1470,12 @@ export async function runSearchFusion(params: {
       configured: run.configured,
       error: run.error,
       answer: run.answer ? exposeAnswer(run.answer, includeRawPayloads) : undefined,
-      results: run.results.map((result) => exposeResult(result, includeRawPayloads)),
+      results: run.results
+        .filter(
+          (result) =>
+            includeRawPayloads || visibleMergedCanonicalUrls.has(result.canonicalUrl),
+        )
+        .map((result) => exposeResult(result, includeRawPayloads)),
       discardedResults: includeDiscarded
         ? run.discardedResults.map((result) => exposeResult(result, includeRawPayloads))
         : [],

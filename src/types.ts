@@ -26,6 +26,12 @@ export type SearchFusionRetryConfig = {
 export type SearchFusionProviderConfig = {
   retry?: SearchFusionRetryConfig;
   timeoutMs?: number;
+  /**
+   * Maximum results this provider may be asked for. Defaults to the verified
+   * native maximum of the delegated OpenClaw adapter and cannot raise it.
+   */
+  maxResults?: number;
+  /** Legacy default count used when a request does not provide `count`. */
   count?: number;
   weight?: number;
 };

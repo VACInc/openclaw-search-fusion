@@ -104,8 +104,8 @@
       "countPerProvider": {
         "type": "integer",
         "minimum": 1,
-        "maximum": 10,
-        "description": "Default number of results requested from each provider."
+        "maximum": 100,
+        "description": "Optional shared default number of results requested from each provider. When omitted, each provider uses its native maximum; values are clamped to the provider's configured and native maxima."
       },
       "maxMergedResults": {
         "type": "integer",
@@ -180,8 +180,14 @@
             "count": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 10,
-              "description": "Default result count for this provider when the request does not pass an explicit count."
+              "maximum": 100,
+              "description": "Legacy default result count for this provider when the request does not pass an explicit count. Prefer maxResults as the provider ceiling."
+            },
+            "maxResults": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "description": "Maximum results requested from this provider. Defaults to the delegated adapter's native maximum and can lower, but never raise, that maximum."
             },
             "timeoutMs": {
               "type": "integer",

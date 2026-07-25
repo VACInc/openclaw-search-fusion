@@ -101,6 +101,7 @@ test("plugin registers provider and both tools", async () => {
   assert.ok(providerListTool);
   assert.ok(fusionTool);
   assert.equal(fusionTool.parameters?.properties?.count?.type, "integer");
+  assert.equal(fusionTool.parameters?.properties?.count?.maximum, 100);
   assert.equal(fusionTool.parameters?.properties?.maxMergedResults?.type, "integer");
   assert.equal(fusionTool.parameters?.properties?.includeRawPayloads?.type, "boolean");
   assert.equal(fusionTool.parameters?.properties?.includeDiscarded?.type, "boolean");

@@ -80,7 +80,6 @@ Optional plugin config:
           "defaultMode": "balanced",
           "excludeProviders": ["grok"],
           "sourceTierMode": "balanced",
-          "countPerProvider": 5,
           "maxMergedResults": 10,
           "providerTimeoutMs": 15000,
           "totalTimeoutMs": 30000,
@@ -94,6 +93,9 @@ Optional plugin config:
             "maxBackoffMs": 5000
           },
           "providerConfig": {
+            "exa": {
+              "maxResults": 25
+            },
             "gemini": {
               "timeoutMs": 60000,
               "weight": 1.3,
@@ -130,7 +132,35 @@ Resolution order:
 - configured `defaultProviders` (backward compatibility)
 - otherwise all configured providers
 
-`providerConfig.<id>` is the canonical place for per-provider overrides like `retry`, `timeoutMs`, `count`, and `weight`.
+`providerConfig.<id>` is the canonical place for per-provider overrides like `maxResults`, `retry`, `timeoutMs`, and `weight`. The older `count` field remains supported as a default count when a request does not pass one.
+
+### Provider result counts
+
+Search Fusion pulls each provider's verified native maximum by default so dedupe and ranking have a deeper candidate pool. Every delegated OpenClaw provider receives its generic `count` argument; the provider adapter translates that to its native request field.
+
+| Provider | Default / native maximum | Adapter behavior |
+|---|---:|---|
+| `exa` | 100 | `count` becomes Exa `numResults` |
+| `parallel` | 40 | `count` becomes `advanced_settings.max_results` |
+| `parallel-free` | 40 | `count` only slices the free MCP's fixed-size response client-side |
+| `tavily` | 20 | `count` becomes Tavily `max_results` |
+| Other known generic providers | 10 | OpenClaw's generic provider contract caps `count` at 10 |
+
+The generic Firecrawl adapters are part of the 10-result row: both `firecrawl` and `firecrawl-free` intentionally accept at most 10 even though Firecrawl's separate provider-specific tool supports a larger count. This keeps the keyless starter tier within its adapter contract. Parallel Free does not ask its hosted MCP for a larger response; its count is applied only after the fixed response arrives. Runtime providers outside the documented OpenClaw catalog retain the historical default of 5 because Search Fusion cannot safely infer a third-party adapter's native ceiling.
+
+Use `providerConfig.<id>.maxResults` to lower a provider's ceiling:
+
+```json
+{
+  "providerConfig": {
+    "exa": { "maxResults": 25 },
+    "tavily": { "maxResults": 10 },
+    "parallel-free": { "maxResults": 10 }
+  }
+}
+```
+
+A per-call `count`, legacy `providerConfig.<id>.count`, or shared `countPerProvider` can select a smaller pull size. None can exceed `providerConfig.<id>.maxResults` or the native adapter maximum. `maxMergedResults` remains the independent fusion-level output cap, so deeper provider pulls improve dedupe and ranking without increasing the returned merged-result count. By default, `providerRuns[].results` is also limited to provider evidence for URLs that survived the merged cap; `rawCount` still reports the complete pull. Set `includeRawPayloads: true` when an audit needs the complete normalized provider runs and raw responses.
 
 `totalTimeoutMs` bounds the whole fan-out, including credential preparation, provider attempts, retries, and backoff (default `30000`, range `5000`–`180000`). When it expires, completed providers are returned as partial results and unfinished providers report `deadline exceeded`. `providerTimeoutMs` still bounds each individual attempt; timed-out and aborted attempts are not retried.
 
@@ -221,7 +251,7 @@ Supported arguments:
 - `intent` — optional routing hint: `research`, `keyword`, `answer`, `news`, or `local`
 - `mode` — mode name from configured modes, or starter modes (`fast`, `balanced`, `deep`) when custom modes are not set
 - `providers` — provider ids, or `all`
-- `count`
+- `count` — requested per-provider pull count (1–100), clamped independently to each provider's configured and native maximum
 - `maxMergedResults`
 - `country`
 - `language`

@@ -59,9 +59,10 @@ const SearchFusionParameters = Type.Object(
     ),
     count: Type.Optional(
       Type.Integer({
-        description: "Number of results to request from each provider (1-10).",
+        description:
+          "Number of results to request from each provider (1-100). Each request is clamped to providerConfig.<id>.maxResults and the delegated provider's native maximum.",
         minimum: 1,
-        maximum: 10,
+        maximum: 100,
       }),
     ),
     maxMergedResults: Type.Optional(
