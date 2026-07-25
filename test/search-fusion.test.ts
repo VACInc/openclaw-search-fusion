@@ -1216,6 +1216,48 @@ test("runSearchFusion fuzzy-dedupe disable preserves non-legacy tracking distinc
   );
 });
 
+test("runSearchFusion keeps single-provider results raw by default (fuzzy dedupe is fusion-only)", async () => {
+  const runtime = createStaticResultsRuntime({
+    alpha: [
+      {
+        title: "Story",
+        url: "https://example.com/story?utm_custom=alpha",
+        description: "Tracked variant",
+      },
+      {
+        title: "Story",
+        url: "https://example.com/story?utm_custom=beta",
+        description: "Second tracked variant",
+      },
+    ],
+  }) as never;
+
+  const defaulted = await runSearchFusion({
+    runtime,
+    config: {},
+    pluginConfig: {},
+    request: {
+      query: "story",
+      providers: ["alpha"],
+    },
+  });
+  assert.equal(defaulted.results.length, 2);
+
+  const optedIn = await runSearchFusion({
+    runtime,
+    config: {},
+    pluginConfig: {
+      fuzzyDedupe: true,
+    },
+    request: {
+      query: "story",
+      providers: ["alpha"],
+    },
+  });
+  assert.equal(optedIn.results.length, 1);
+  assert.equal(optedIn.results[0]?.canonicalUrl, "https://example.com/story");
+});
+
 test("runSearchFusion extends and overrides tracking-parameter dedupe safely", async () => {
   const runtime = createStaticResultsRuntime({
     alpha: [

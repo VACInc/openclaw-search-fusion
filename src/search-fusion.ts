@@ -1436,12 +1436,17 @@ export async function runSearchFusion(params: {
     });
   });
 
-  const merged = mergeResults(
-    providerRuns.filter((run) => run.ok),
-    maxMergedResults,
-    sourceTierMode,
-    dedupe,
-  );
+  const okRuns = providerRuns.filter((run) => run.ok);
+  const contributingProviders = new Set(
+    okRuns.filter((run) => run.results.length > 0).map((run) => run.providerId),
+  ).size;
+  // Fuzzy dedupe is a fusion feature: a single contributing provider keeps its
+  // raw result set (exact-match dedupe only) unless fuzzyDedupe is explicitly true.
+  const mergeDedupe =
+    brokerConfig.fuzzyDedupe !== true && contributingProviders <= 1
+      ? { ...dedupe, enabled: false }
+      : dedupe;
+  const merged = mergeResults(okRuns, maxMergedResults, sourceTierMode, mergeDedupe);
   const mergedResults = merged.results;
   const internalDiscardedResults = providerRuns.flatMap((run) => run.discardedResults);
   const internalAnswers = providerRuns
