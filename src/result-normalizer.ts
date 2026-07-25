@@ -3,8 +3,11 @@ import type {
   NormalizedSearchResult,
   ProviderAnswerCitation,
   ProviderAnswerDigest,
+  ScoreCalibrationPoint,
+  ScoreCalibrationStrategy,
   SearchResultFlag,
   SearchResultSourceType,
+  SearchFusionScoreCalibrationConfig,
   SourceTierMode,
 } from "./types.js";
 import {
@@ -131,6 +134,209 @@ function normalizeNativeScore(value: number | undefined, index: number): number 
   return Math.max(0.1, 1 - index * 0.08);
 }
 
+export type ScoreCalibrationFallback =
+  | "single-result"
+  | "missing-or-invalid-scores"
+  | "constant-scores";
+
+export type CalibratedProviderScores = {
+  scores: number[];
+  strategy: ScoreCalibrationStrategy;
+  fallback?: ScoreCalibrationFallback;
+};
+
+function roundScore(value: number): number {
+  return Math.round(value * 1_000_000) / 1_000_000;
+}
+
+function rankScores(results: readonly NormalizedSearchResult[]): number[] {
+  return results.map((result, index) => {
+    const rawRank =
+      Number.isFinite(result.rawRank) && result.rawRank > 0
+        ? result.rawRank
+        : index + 1;
+    return roundScore(1 / rawRank);
+  });
+}
+
+function resolveCalibrationStrategy(
+  config: SearchFusionScoreCalibrationConfig | undefined,
+): ScoreCalibrationStrategy {
+  if (config?.strategy) {
+    if (!["minmax", "rank", "fixed", "none"].includes(config.strategy)) {
+      throw new Error(`Unknown score calibration strategy: ${String(config.strategy)}`);
+    }
+    return config.strategy;
+  }
+  return config?.curve ? "fixed" : "minmax";
+}
+
+function validateCalibrationCurve(
+  curve: readonly ScoreCalibrationPoint[] | undefined,
+): readonly ScoreCalibrationPoint[] {
+  if (!curve || curve.length < 2) {
+    throw new Error("Fixed score calibration requires at least two curve points.");
+  }
+
+  curve.forEach((point, index) => {
+    if (!Number.isFinite(point.input) || !Number.isFinite(point.output)) {
+      throw new Error(`Score calibration curve point ${index + 1} must contain finite numbers.`);
+    }
+    if (point.output < 0 || point.output > 1) {
+      throw new Error(
+        `Score calibration curve point ${index + 1} output must be between 0 and 1.`,
+      );
+    }
+    if (index > 0 && point.input <= curve[index - 1]!.input) {
+      throw new Error("Score calibration curve inputs must be strictly increasing.");
+    }
+    if (index > 0 && point.output < curve[index - 1]!.output) {
+      throw new Error("Score calibration curve outputs must be non-decreasing.");
+    }
+  });
+
+  return curve;
+}
+
+export function validateScoreCalibrationConfig(
+  config: SearchFusionScoreCalibrationConfig | undefined,
+): void {
+  const strategy = resolveCalibrationStrategy(config);
+  if (strategy === "fixed") {
+    validateCalibrationCurve(config?.curve);
+  }
+}
+
+function applyCalibrationCurve(
+  score: number,
+  curve: readonly ScoreCalibrationPoint[],
+): number {
+  if (score <= curve[0]!.input) {
+    return curve[0]!.output;
+  }
+
+  const last = curve.at(-1)!;
+  if (score >= last.input) {
+    return last.output;
+  }
+
+  for (let index = 1; index < curve.length; index += 1) {
+    const upper = curve[index]!;
+    if (score > upper.input) {
+      continue;
+    }
+
+    const lower = curve[index - 1]!;
+    const progress = (score - lower.input) / (upper.input - lower.input);
+    return lower.output + progress * (upper.output - lower.output);
+  }
+
+  return last.output;
+}
+
+/**
+ * Calibrate one provider's native relevance scores before cross-provider merge.
+ *
+ * Missing, non-finite, negative, constant, and singleton score sets use rank
+ * fallback as a complete set. Falling back as a set avoids mixing incomparable
+ * native and synthetic scores within one provider run.
+ */
+export function calibrateProviderScores(
+  results: readonly NormalizedSearchResult[],
+  config?: SearchFusionScoreCalibrationConfig,
+): CalibratedProviderScores {
+  const configuredStrategy = resolveCalibrationStrategy(config);
+  const fixedCurve =
+    configuredStrategy === "fixed" ? validateCalibrationCurve(config?.curve) : undefined;
+  if (results.length === 0) {
+    return { scores: [], strategy: configuredStrategy };
+  }
+
+  if (configuredStrategy === "rank") {
+    return { scores: rankScores(results), strategy: "rank" };
+  }
+
+  const nativeScores = results.map((result) => result.nativeScore);
+  if (
+    nativeScores.some(
+      (score) => typeof score !== "number" || !Number.isFinite(score) || score < 0,
+    )
+  ) {
+    return {
+      scores: rankScores(results),
+      strategy: "rank",
+      fallback: "missing-or-invalid-scores",
+    };
+  }
+
+  const finiteScores = nativeScores as number[];
+  if (configuredStrategy === "none") {
+    return {
+      scores: finiteScores.map((score) => roundScore(Math.min(1, score))),
+      strategy: "none",
+    };
+  }
+
+  if (configuredStrategy === "fixed") {
+    return {
+      scores: finiteScores.map((score) =>
+        roundScore(applyCalibrationCurve(score, fixedCurve!)),
+      ),
+      strategy: "fixed",
+    };
+  }
+
+  if (results.length === 1) {
+    return {
+      scores: rankScores(results),
+      strategy: "rank",
+      fallback: "single-result",
+    };
+  }
+
+  const minimum = Math.min(...finiteScores);
+  const maximum = Math.max(...finiteScores);
+  if (maximum === minimum) {
+    return {
+      scores: rankScores(results),
+      strategy: "rank",
+      fallback: "constant-scores",
+    };
+  }
+
+  return {
+    scores: finiteScores.map((score) =>
+      roundScore((score - minimum) / (maximum - minimum)),
+    ),
+    strategy: "minmax",
+  };
+}
+
+export function applySearchResultQuality(params: {
+  relevanceScore: number;
+  sourceType: SearchResultSourceType;
+  sourceTier: NormalizedSearchResult["sourceTier"];
+  flags: readonly SearchResultFlag[];
+  sourceTierMode: SourceTierMode;
+  normalizeHighTier?: boolean;
+}): number {
+  const boundedRelevance = params.normalizeHighTier
+    ? Math.min(1, Math.max(0, params.relevanceScore))
+    : Math.max(0, params.relevanceScore);
+  const preTierScore = Math.max(
+    params.normalizeHighTier ? 0 : 0.05,
+    boundedRelevance * sourceTypeWeight(params.sourceType) - flagPenalty(params.flags),
+  );
+  const tierMultiplier = sourceTierMultiplier(params.sourceTier, params.sourceTierMode);
+  const highTierMultiplier = params.normalizeHighTier
+    ? sourceTierMultiplier("high", params.sourceTierMode)
+    : 1;
+  const qualityScore = preTierScore * (tierMultiplier / highTierMultiplier);
+  return params.normalizeHighTier
+    ? Math.min(1, Math.max(0, qualityScore))
+    : Math.max(0.01, qualityScore);
+}
+
 function mapResultArray(params: {
   items: unknown[];
   providerId: string;
@@ -181,14 +387,13 @@ function mapResultArray(params: {
     const title = firstString(obj, ["title", "name", "headline", "label"]) ?? titleFromUrl(analyzedUrl.url);
     const nativeScore = firstNumber(obj, ["score", "confidence", "relevance"]);
     const baseScore = normalizeNativeScore(nativeScore, index);
-    const preTierScore = Math.max(
-      0.05,
-      baseScore * sourceTypeWeight(params.sourceType) - flagPenalty(flags),
-    );
-    const score = Math.max(
-      0.01,
-      preTierScore * sourceTierMultiplier(sourceTier, params.sourceTierMode),
-    );
+    const score = applySearchResultQuality({
+      relevanceScore: baseScore,
+      sourceType: params.sourceType,
+      sourceTier,
+      flags,
+      sourceTierMode: params.sourceTierMode,
+    });
 
     results.push({
       title,

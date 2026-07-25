@@ -20,11 +20,33 @@ export type SearchFusionRetryConfig = {
     backoffMultiplier?: number;
     maxBackoffMs?: number;
 };
+export type ScoreCalibrationStrategy = "minmax" | "rank" | "fixed" | "none";
+export type ScoreCalibrationPoint = {
+    input: number;
+    output: number;
+};
+export type SearchFusionScoreCalibrationConfig = {
+    /**
+     * `minmax` scales the provider's native scores within each result set,
+     * `rank` uses `1 / rawRank`, `fixed` applies `curve`, and `none` passes
+     * native scores through uncalibrated (clamped to [0, 1]).
+     *
+     * Defaults to `minmax`, or `fixed` when a curve is supplied without an
+     * explicit strategy.
+     */
+    strategy?: ScoreCalibrationStrategy;
+    /**
+     * Piecewise-linear native-score mapping for the `fixed` strategy. Inputs
+     * must be strictly increasing and outputs must be non-decreasing in [0, 1].
+     */
+    curve?: ScoreCalibrationPoint[];
+};
 export type SearchFusionProviderConfig = {
     retry?: SearchFusionRetryConfig;
     timeoutMs?: number;
     count?: number;
     weight?: number;
+    scoreCalibration?: SearchFusionScoreCalibrationConfig;
 };
 export type SourceTierMode = "off" | "balanced" | "strict";
 export type SearchFusionConfig = {
@@ -205,6 +227,7 @@ export type SearchResultRanking = {
 export type FusionScoreBreakdown = {
     bestVariantScore: number;
     corroborationBonus: number;
+    /** Retained for payload compatibility; rank is now an explicit tie-breaker. */
     bestRankBonus: number;
     tierAdjustment: number;
     flagPenalty: number;
@@ -215,6 +238,8 @@ export type FusionRankingExplanation = {
     rank: number;
     scoreBreakdown: FusionScoreBreakdown;
     tieBreakers: {
+        providerPriority?: number;
+        priorityProvider?: string;
         bestSourceTier: SearchResultSourceTier;
         bestRank: number;
         providerCount: number;
