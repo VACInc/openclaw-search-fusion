@@ -185,6 +185,29 @@ function createHttpError(params: {
   return error;
 }
 
+type StaticResult = {
+  title: string;
+  url: string;
+  description?: string;
+};
+
+function createStaticResultsRuntime(resultsByProvider: Record<string, StaticResult[]>) {
+  return createRuntime({
+    providers: Object.keys(resultsByProvider).map((providerId, index) => ({
+      id: providerId,
+      label: providerId,
+      configured: true,
+      autoDetectOrder: index + 1,
+    })),
+    search: async ({ providerId }) => ({
+      provider: providerId ?? "unknown",
+      result: {
+        results: resultsByProvider[providerId ?? ""] ?? [],
+      },
+    }),
+  });
+}
+
 test("runSearchFusion passes catalog-stub plain-string credentials through unchanged", async () => {
   clearRuntimeConfigSnapshot();
   const config = {
@@ -914,6 +937,505 @@ test("runSearchFusion merges duplicate URLs across providers and keeps provider 
   assert.equal(evidenceDocs?.answerCitationSupport.count, 0);
 
   assert.equal(payload.providersSucceeded.length, 3);
+});
+
+test("runSearchFusion fuzzy-merges URL variants, keeps the highest-ranked instance, and merges provenance", async () => {
+  const payload = await runSearchFusion({
+    runtime: createStaticResultsRuntime({
+      alpha: [
+        {
+          title: "Primary story title",
+          url: "http://www.Example.com:80/story/amp/?utm_custom=value#comments",
+          description: "Useful short snippet",
+        },
+      ],
+      beta: [
+        {
+          title: "Unrelated result",
+          url: "https://elsewhere.example/first",
+          description: "A separate result",
+        },
+        {
+          title: "A much longer title from the lower-ranked duplicate",
+          url: "https://m.example.com/story/?fbclid=value",
+          description:
+            "The lower-ranked provider supplied this longer and more informative snippet.",
+        },
+      ],
+      gamma: [
+        {
+          title: "Primary story title",
+          url: "https://amp.example.com/story/amp.html?gclid=value",
+          description: "Another snippet",
+        },
+      ],
+    }) as never,
+    config: {},
+    pluginConfig: {},
+    request: {
+      query: "primary story",
+      providers: ["alpha", "beta", "gamma"],
+    },
+  });
+
+  const merged = payload.results.find(
+    (result) => result.canonicalUrl === "https://example.com/story",
+  );
+  assert.equal(payload.results.length, 2);
+  assert.equal(merged?.title, "Primary story title");
+  assert.equal(merged?.url, "http://www.example.com/story/amp?utm_custom=value");
+  assert.equal(
+    merged?.snippet,
+    "The lower-ranked provider supplied this longer and more informative snippet.",
+  );
+  assert.deepEqual(merged?.providers, ["alpha", "beta", "gamma"]);
+  assert.equal(merged?.providerCount, 3);
+  assert.equal(merged?.variants.length, 3);
+  assert.equal(merged?.rankings.length, 3);
+  assert.equal(merged?.bestRank, 1);
+});
+
+test("runSearchFusion applies fuzzy URL identity to evidence citation support", async () => {
+  const payload = await runSearchFusion({
+    runtime: createRuntime({
+      providers: [
+        { id: "alpha", label: "alpha", configured: true },
+        { id: "beta", label: "beta", configured: true },
+      ],
+      search: async ({ providerId }) =>
+        providerId === "alpha"
+          ? {
+              provider: "alpha",
+              result: {
+                results: [
+                  {
+                    title: "Canonical story",
+                    url: "https://example.com/story",
+                    description: "Canonical result",
+                  },
+                ],
+              },
+            }
+          : {
+              provider: "beta",
+              result: {
+                content: "An answer supported by a same-host alternate URL for the same story.",
+                citations: [
+                  {
+                    title: " canonical story ",
+                    url: "http://m.example.com/news/alternate/amp/?utm_source=answer#section",
+                  },
+                ],
+              },
+            },
+    }) as never,
+    config: {},
+    pluginConfig: {},
+    request: {
+      query: "canonical story",
+      providers: ["alpha", "beta"],
+    },
+  });
+
+  const evidence = payload.evidenceTable.rows.find(
+    (row) => row.canonicalUrl === "https://example.com/story",
+  );
+  assert.equal(evidence?.answerCitationSupport.count, 1);
+  assert.deepEqual(evidence?.answerCitationSupport.providers, ["beta"]);
+});
+
+test("runSearchFusion merges normalized-title matches only on the same canonical host", async () => {
+  const payload = await runSearchFusion({
+    runtime: createStaticResultsRuntime({
+      alpha: [
+        {
+          title: "Quarterly Results — Q2",
+          url: "https://www.example.com/press/q2",
+          description: "Press release",
+        },
+      ],
+      beta: [
+        {
+          title: " quarterly results q2 ",
+          url: "https://m.example.com/news/results",
+          description: "A longer same-host account of the quarterly results",
+        },
+      ],
+      gamma: [
+        {
+          title: "Quarterly Results Q2",
+          url: "https://different.example/press/q2",
+          description: "Different publisher",
+        },
+      ],
+    }) as never,
+    config: {},
+    pluginConfig: {},
+    request: {
+      query: "quarterly results",
+      providers: ["alpha", "beta", "gamma"],
+    },
+  });
+
+  assert.equal(payload.results.length, 2);
+  const sameHost = payload.results.find((result) => result.providerCount === 2);
+  assert.deepEqual(sameHost?.providers, ["alpha", "beta"]);
+  assert.equal(sameHost?.canonicalUrl, "https://example.com/press/q2");
+  assert.ok(
+    payload.results.some(
+      (result) => result.canonicalUrl === "https://different.example/press/q2",
+    ),
+  );
+});
+
+test("runSearchFusion never title-merges conflicting meaningful query values", async () => {
+  const payload = await runSearchFusion({
+    runtime: createStaticResultsRuntime({
+      alpha: [
+        {
+          title: "Product details",
+          url: "https://example.com/product?id=1&utm_source=alpha",
+          description: "Product one",
+        },
+      ],
+      beta: [
+        {
+          title: "PRODUCT DETAILS",
+          url: "https://www.example.com/product?id=2&utm_source=beta",
+          description: "Product two",
+        },
+      ],
+    }) as never,
+    config: {},
+    pluginConfig: {},
+    request: {
+      query: "product",
+      providers: ["alpha", "beta"],
+    },
+  });
+
+  assert.equal(payload.results.length, 2);
+  assert.deepEqual(
+    payload.results.map((result) => result.canonicalUrl).sort(),
+    ["https://example.com/product?id=1", "https://example.com/product?id=2"],
+  );
+  assert.ok(payload.results.every((result) => result.providerCount === 1));
+});
+
+test("runSearchFusion never title-merges different non-default ports", async () => {
+  const payload = await runSearchFusion({
+    runtime: createStaticResultsRuntime({
+      alpha: [
+        {
+          title: "Service status",
+          url: "https://example.com:8443/status/current",
+          description: "First service",
+        },
+      ],
+      beta: [
+        {
+          title: "SERVICE STATUS",
+          url: "https://example.com:9443/health",
+          description: "Second service",
+        },
+      ],
+    }) as never,
+    config: {},
+    pluginConfig: {},
+    request: {
+      query: "service status",
+      providers: ["alpha", "beta"],
+    },
+  });
+
+  assert.equal(payload.results.length, 2);
+  assert.ok(payload.results.every((result) => result.providerCount === 1));
+});
+
+test("runSearchFusion can disable fuzzy dedupe without disabling legacy exact merging", async () => {
+  const payload = await runSearchFusion({
+    runtime: createStaticResultsRuntime({
+      alpha: [
+        {
+          title: "Story",
+          url: "http://www.example.com/story/amp",
+          description: "Mobile variant",
+        },
+        {
+          title: "Exact duplicate",
+          url: "http://www.example.com/story/amp#fragment",
+          description: "Exact canonical duplicate",
+        },
+      ],
+      beta: [
+        {
+          title: "Story",
+          url: "https://example.com/story",
+          description: "Canonical variant",
+        },
+      ],
+    }) as never,
+    config: {},
+    pluginConfig: {
+      fuzzyDedupe: false,
+    },
+    request: {
+      query: "story",
+      providers: ["alpha", "beta"],
+    },
+  });
+
+  assert.equal(payload.results.length, 2);
+  assert.deepEqual(
+    payload.results.map((result) => result.providerCount).sort(),
+    [1, 1],
+  );
+  const legacyExact = payload.results.find(
+    (result) => result.canonicalUrl === "http://www.example.com/story/amp",
+  );
+  assert.equal(legacyExact?.variants.length, 2);
+});
+
+test("runSearchFusion fuzzy-dedupe disable preserves non-legacy tracking distinctions", async () => {
+  const payload = await runSearchFusion({
+    runtime: createStaticResultsRuntime({
+      alpha: [
+        {
+          title: "Story",
+          url: "https://example.com/story?utm_custom=alpha",
+          description: "Alpha campaign",
+        },
+      ],
+      beta: [
+        {
+          title: "Story",
+          url: "https://example.com/story?utm_custom=beta",
+          description: "Beta campaign",
+        },
+      ],
+    }) as never,
+    config: {},
+    pluginConfig: {
+      fuzzyDedupe: false,
+    },
+    request: {
+      query: "story",
+      providers: ["alpha", "beta"],
+    },
+  });
+
+  assert.equal(payload.results.length, 2);
+  assert.deepEqual(
+    payload.results.map((result) => result.canonicalUrl).sort(),
+    [
+      "https://example.com/story?utm_custom=alpha",
+      "https://example.com/story?utm_custom=beta",
+    ],
+  );
+});
+
+test("runSearchFusion keeps single-provider results raw by default (fuzzy dedupe is fusion-only)", async () => {
+  const runtime = createStaticResultsRuntime({
+    alpha: [
+      {
+        title: "Story",
+        url: "https://example.com/story?utm_custom=alpha",
+        description: "Tracked variant",
+      },
+      {
+        title: "Story",
+        url: "https://example.com/story?utm_custom=beta",
+        description: "Second tracked variant",
+      },
+    ],
+  }) as never;
+
+  const defaulted = await runSearchFusion({
+    runtime,
+    config: {},
+    pluginConfig: {},
+    request: {
+      query: "story",
+      providers: ["alpha"],
+    },
+  });
+  assert.equal(defaulted.results.length, 2);
+
+  const optedIn = await runSearchFusion({
+    runtime,
+    config: {},
+    pluginConfig: {
+      fuzzyDedupe: true,
+    },
+    request: {
+      query: "story",
+      providers: ["alpha"],
+    },
+  });
+  assert.equal(optedIn.results.length, 1);
+  assert.equal(optedIn.results[0]?.canonicalUrl, "https://example.com/story");
+});
+
+test("runSearchFusion extends and overrides tracking-parameter dedupe safely", async () => {
+  const runtime = createStaticResultsRuntime({
+    alpha: [
+      {
+        title: "Campaign story",
+        url: "https://example.com/story?campaign_id=alpha&ref=one",
+        description: "Alpha campaign",
+      },
+    ],
+    beta: [
+      {
+        title: "Campaign story",
+        url: "https://example.com/story?campaign_id=beta&ref=two",
+        description: "Beta campaign",
+      },
+    ],
+  }) as never;
+  const request = {
+    query: "campaign story",
+    providers: ["alpha", "beta"],
+  };
+
+  const extended = await runSearchFusion({
+    runtime,
+    config: {},
+    pluginConfig: {
+      trackingParams: ["campaign_id"],
+    },
+    request,
+  });
+  const overridden = await runSearchFusion({
+    runtime,
+    config: {},
+    pluginConfig: {
+      trackingParams: ["campaign_id"],
+      trackingParamMode: "override",
+    },
+    request,
+  });
+
+  assert.equal(extended.results.length, 1);
+  assert.equal(extended.results[0]?.canonicalUrl, "https://example.com/story");
+  assert.deepEqual(extended.results[0]?.providers, ["alpha", "beta"]);
+  assert.equal(overridden.results.length, 2);
+  assert.deepEqual(
+    overridden.results.map((result) => result.canonicalUrl).sort(),
+    [
+      "https://example.com/story?ref=one",
+      "https://example.com/story?ref=two",
+    ],
+  );
+  assert.deepEqual(
+    overridden.results.map((result) => result.url).sort(),
+    [
+      "https://example.com/story?campaign_id=alpha&ref=one",
+      "https://example.com/story?campaign_id=beta&ref=two",
+    ],
+  );
+});
+
+test("runSearchFusion preserves override-mode display and navigation URLs", async () => {
+  const payload = await runSearchFusion({
+    runtime: createStaticResultsRuntime({
+      alpha: [
+        {
+          title: "Referenced story",
+          url: "https://example.com/story?ref=one",
+        },
+      ],
+    }) as never,
+    config: {},
+    pluginConfig: {
+      trackingParams: [],
+      trackingParamMode: "override",
+    },
+    request: {
+      query: "referenced story",
+      providers: ["alpha"],
+    },
+  });
+
+  assert.equal(payload.results[0]?.url, "https://example.com/story?ref=one");
+  assert.equal(
+    payload.results[0]?.canonicalUrl,
+    "https://example.com/story?ref=one",
+  );
+  assert.equal(
+    payload.results[0]?.variants[0]?.originalUrl,
+    "https://example.com/story?ref=one",
+  );
+});
+
+test("runSearchFusion attributes override-mode citations to the matching evidence row", async () => {
+  const payload = await runSearchFusion({
+    runtime: createRuntime({
+      providers: [
+        { id: "alpha", label: "alpha", configured: true },
+        { id: "beta", label: "beta", configured: true },
+        { id: "gamma", label: "gamma", configured: true },
+      ],
+      search: async ({ providerId }) => {
+        if (providerId === "alpha") {
+          return {
+            provider: "alpha",
+            result: {
+              results: [
+                {
+                  title: "Referenced story",
+                  url: "https://example.com/story?ref=one",
+                },
+              ],
+            },
+          };
+        }
+        if (providerId === "beta") {
+          return {
+            provider: "beta",
+            result: {
+              results: [
+                {
+                  title: "Base story",
+                  url: "https://example.com/story",
+                },
+              ],
+            },
+          };
+        }
+        return {
+          provider: "gamma",
+          result: {
+            content: "An answer supported by the referenced story.",
+            citations: ["https://example.com/story?ref=one"],
+          },
+        };
+      },
+    }) as never,
+    config: {},
+    pluginConfig: {
+      trackingParams: [],
+      trackingParamMode: "override",
+    },
+    request: {
+      query: "story",
+      providers: ["alpha", "beta", "gamma"],
+    },
+  });
+
+  assert.deepEqual(payload.answers[0]?.citations, [
+    "https://example.com/story?ref=one",
+  ]);
+  const referencedEvidence = payload.evidenceTable.rows.find(
+    (row) => row.canonicalUrl === "https://example.com/story?ref=one",
+  );
+  const baseEvidence = payload.evidenceTable.rows.find(
+    (row) => row.canonicalUrl === "https://example.com/story",
+  );
+  assert.equal(referencedEvidence?.answerCitationSupport.count, 1);
+  assert.deepEqual(referencedEvidence?.answerCitationSupport.providers, ["gamma"]);
+  assert.equal(baseEvidence?.answerCitationSupport.count, 0);
+  assert.deepEqual(baseEvidence?.answerCitationSupport.providers, []);
 });
 
 

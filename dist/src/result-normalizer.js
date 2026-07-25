@@ -1,5 +1,5 @@
 import { classifySourceTier, coerceSourceTierMode, sourceTierMultiplier, } from "./source-tier.js";
-import { analyzeUrl, cleanProviderText, resolveSiteName, truncate } from "./text.js";
+import { analyzeUrl, cleanProviderText, resolveSiteName, truncate, } from "./text.js";
 const DEFAULT_MAX_SNIPPET_LENGTH = 500;
 function limitText(value, maxLength) {
     if (!value)
@@ -272,7 +272,7 @@ function mapResultArray(params) {
             });
             return;
         }
-        const analyzedUrl = analyzeUrl(rawUrl);
+        const analyzedUrl = analyzeUrl(rawUrl, params.urlOptions);
         const itemFlags = detectItemFlags(obj, analyzedUrl.url);
         const flags = mergeFlags(analyzedUrl.flags, itemFlags);
         const sourceTier = classifySourceTier({ sourceType: params.sourceType, flags });
@@ -307,17 +307,17 @@ function mapResultArray(params) {
     });
     return { results, discardedResults };
 }
-function buildCitationDetails(citationsRaw) {
+function buildCitationDetails(citationsRaw, urlOptions) {
     return citationsRaw.flatMap((entry) => {
         if (typeof entry === "string") {
-            const analyzed = analyzeUrl(entry.trim());
+            const analyzed = analyzeUrl(entry.trim(), urlOptions);
             return analyzed.url ? [{ url: analyzed.url, raw: entry }] : [];
         }
         const obj = asObject(entry);
         const url = firstString(obj, ["url", "link", "href"]);
         if (!url)
             return [];
-        const analyzed = analyzeUrl(url);
+        const analyzed = analyzeUrl(url, urlOptions);
         return [
             {
                 url: analyzed.url,
@@ -327,14 +327,14 @@ function buildCitationDetails(citationsRaw) {
         ];
     });
 }
-export function extractProviderAnswer(payload, providerId, maxSnippetLength = DEFAULT_MAX_SNIPPET_LENGTH) {
+export function extractProviderAnswer(payload, providerId, maxSnippetLength = DEFAULT_MAX_SNIPPET_LENGTH, urlOptions) {
     const rawFullContent = cleanProviderText(payload.content ?? payload.answer);
     if (!rawFullContent)
         return undefined;
     const fullContent = truncate(rawFullContent, maxSnippetLength);
     const summaryMaxLength = Math.min(320, maxSnippetLength);
     const citationsRaw = Array.isArray(payload.citations) ? payload.citations : [];
-    const citationDetails = buildCitationDetails(citationsRaw);
+    const citationDetails = buildCitationDetails(citationsRaw, urlOptions);
     return {
         providerId,
         summary: truncate(rawFullContent, summaryMaxLength),
@@ -348,7 +348,7 @@ export function extractProviderAnswer(payload, providerId, maxSnippetLength = DE
 export function normalizeProviderPayload(params) {
     const payload = params.payload;
     const maxSnippetLength = Math.max(100, Math.min(5000, params.maxSnippetLength ?? DEFAULT_MAX_SNIPPET_LENGTH));
-    const answer = extractProviderAnswer(payload, params.providerId, maxSnippetLength);
+    const answer = extractProviderAnswer(payload, params.providerId, maxSnippetLength, params.urlOptions);
     const sourceTierMode = coerceSourceTierMode(params.sourceTierMode);
     const resultArrays = [];
     const discardedArrays = [];
@@ -362,6 +362,7 @@ export function normalizeProviderPayload(params) {
             fallbackSnippet: answer?.fullContent,
             fallbackTruncated: answer?.truncated,
             maxSnippetLength,
+            urlOptions: params.urlOptions,
         });
         resultArrays.push(...mapped.results);
         discardedArrays.push(...mapped.discardedResults);
@@ -376,6 +377,7 @@ export function normalizeProviderPayload(params) {
             fallbackSnippet: answer?.fullContent,
             fallbackTruncated: answer?.truncated,
             maxSnippetLength,
+            urlOptions: params.urlOptions,
         });
         resultArrays.push(...mapped.results);
         discardedArrays.push(...mapped.discardedResults);
@@ -392,6 +394,7 @@ export function normalizeProviderPayload(params) {
             fallbackSnippet: answer?.fullContent,
             fallbackTruncated: answer?.truncated,
             maxSnippetLength,
+            urlOptions: params.urlOptions,
         });
         resultArrays.push(...mapped.results);
         discardedArrays.push(...mapped.discardedResults);
@@ -406,6 +409,7 @@ export function normalizeProviderPayload(params) {
             fallbackSnippet: answer?.fullContent,
             fallbackTruncated: answer?.truncated,
             maxSnippetLength,
+            urlOptions: params.urlOptions,
         });
         resultArrays.push(...mapped.results);
         discardedArrays.push(...mapped.discardedResults);

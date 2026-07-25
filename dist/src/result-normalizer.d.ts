@@ -1,4 +1,5 @@
 import type { DiscardedSearchResult, NormalizedSearchResult, ProviderAnswerDigest, ScoreCalibrationStrategy, SearchResultFlag, SearchResultSourceType, SearchFusionScoreCalibrationConfig, SourceTierMode } from "./types.js";
+import { type FuzzyUrlOptions } from "./text.js";
 export type ScoreCalibrationFallback = "single-result" | "missing-or-invalid-scores" | "constant-scores";
 export type CalibratedProviderScores = {
     scores: number[];
@@ -22,12 +23,13 @@ export declare function applySearchResultQuality(params: {
     sourceTierMode: SourceTierMode;
     normalizeHighTier?: boolean;
 }): number;
-export declare function extractProviderAnswer(payload: Record<string, unknown>, providerId: string, maxSnippetLength?: number): ProviderAnswerDigest | undefined;
+export declare function extractProviderAnswer(payload: Record<string, unknown>, providerId: string, maxSnippetLength?: number, urlOptions?: FuzzyUrlOptions): ProviderAnswerDigest | undefined;
 export declare function normalizeProviderPayload(params: {
     providerId: string;
     payload: Record<string, unknown>;
     sourceTierMode?: SourceTierMode;
     maxSnippetLength?: number;
+    urlOptions?: FuzzyUrlOptions;
 }): {
     results: NormalizedSearchResult[];
     discardedResults: DiscardedSearchResult[];

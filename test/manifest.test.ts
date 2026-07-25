@@ -71,7 +71,7 @@ test("manifest exposes per-provider score calibration", () => {
   const pointProperties = asObject(curveItem?.properties);
 
   assert.equal(scoreCalibration?.additionalProperties, false);
-  assert.deepEqual(strategy?.enum, ["minmax", "rank", "fixed"]);
+  assert.deepEqual(strategy?.enum, ["minmax", "rank", "fixed", "none"]);
   assert.equal(curve?.minItems, 2);
   assert.deepEqual(curveItem?.required, ["input", "output"]);
   assert.equal(asObject(pointProperties?.output)?.minimum, 0);
@@ -121,4 +121,11 @@ test("manifest requires a curve when fixed calibration is selected", () => {
     );
   }
   assert.equal(fixedWithCurve.ok, true);
+});
+
+test("manifest exposes configurable fuzzy dedupe and tracking parameters", () => {
+  const properties = manifest.configSchema?.properties ?? {};
+  assert.equal(asObject(properties.fuzzyDedupe)?.type, "boolean");
+  assert.equal(asObject(properties.trackingParams)?.type, "array");
+  assert.deepEqual(asObject(properties.trackingParamMode)?.enum, ["extend", "override"]);
 });

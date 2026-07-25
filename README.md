@@ -168,6 +168,18 @@ Both include flags can be set in plugin config or overridden per `search_fusion`
 
 Calibration happens before source-type/trust penalties and the optional provider weight. Clean result-style hits with the default weight retain their calibrated `[0,1]` score; an explicit weight above `1` can intentionally move the merge score above that interval. Native provider values remain available as `nativeScore`.
 
+Fuzzy dedupe is a fusion feature controlled by `fuzzyDedupe`: it activates by default only when more than one provider contributes results, so single-provider searches return that provider's result set untouched (legacy exact canonical-URL merge only). Set `fuzzyDedupe` to `true` to force it for single-provider runs, or `false` to disable it everywhere. When active, it folds HTTP into HTTPS, default ports, `www.`/`m.`/`amp.` host variants, terminal `/amp` paths, fragments, trailing slashes, and known tracking parameters. Meaningful query parameters remain part of URL identity. Normalized-title equality is used only for results on the same canonical host with the same remaining query, so equal titles never merge across sites or across conflicting query values.
+
+The default tracking list is `utm_*`, `fbclid`, `gclid`, `ref`, `mc_cid`, `mc_eid`, and `igshid`. Add site-specific names with `trackingParams`; its default `trackingParamMode` is `extend`. Set the mode to `override` to replace the defaults entirely. The active policy is also applied before result and answer-citation normalization, so a parameter omitted by an override remains present in navigation URLs and is attributed to the correct evidence row. Set `fuzzyDedupe` to `false` to retain only the legacy exact canonical-URL merge.
+
+```json
+{
+  "fuzzyDedupe": true,
+  "trackingParams": ["campaign_id", "pk_*"],
+  "trackingParamMode": "extend"
+}
+```
+
 `sourceTierMode` controls deterministic trust-tier downranking:
 
 - `off`: disables source-tier adjustments
@@ -363,7 +375,7 @@ pnpm test
 - prefers a paid sibling only when it is configured; otherwise keeps the keyless sibling
 - reports native providers whose plugins are disabled/not enabled, with plugin ids and boolean-only credential detection hints
 - excludes itself to avoid recursion
-- dedupes by canonical URL
+- dedupes fuzzy URL variants by default, with same-host normalized titles as a guarded secondary signal
 - retries transient provider failures with global defaults and per-provider overrides via `providerConfig.<id>.retry`
 - calibrates each provider's relevance scores with default minmax normalization, rank fallback for degenerate score sets, and optional fixed curves
 - supports deterministic provider weighting via `providerConfig.<id>.weight` to bias ranking by provider trust/value

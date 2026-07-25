@@ -3,7 +3,7 @@ import { discoverProviders, resolveSelectedProviders } from "./provider-discover
 import { KNOWN_PROVIDERS } from "./provider-catalog.js";
 import { applySearchResultQuality, calibrateProviderScores, normalizeProviderPayload, validateScoreCalibrationConfig, } from "./result-normalizer.js";
 import { compareSourceTierDesc, coerceSourceTierMode, pickHigherSourceTier, sourceTierMergedAdjustment, } from "./source-tier.js";
-import { canonicalizeUrl } from "./text.js";
+import { analyzeFuzzyUrl, canonicalizeUrl, normalizeTitle, } from "./text.js";
 const DEFAULT_COUNT_PER_PROVIDER = 5;
 const DEFAULT_MAX_MERGED_RESULTS = 10;
 const DEFAULT_PROVIDER_TIMEOUT_MS = 15000;
@@ -352,6 +352,13 @@ function asConfig(pluginConfig) {
     return pluginConfig && typeof pluginConfig === "object" && !Array.isArray(pluginConfig)
         ? pluginConfig
         : {};
+}
+function resolveMergeDedupeOptions(config) {
+    return {
+        enabled: config.fuzzyDedupe !== false,
+        trackingParams: config.trackingParams,
+        trackingParamMode: config.trackingParamMode,
+    };
 }
 function clamp(value, min, max) {
     return Math.min(max, Math.max(min, value));
@@ -885,59 +892,139 @@ function emptyRankingMeta() {
         dropped: [],
     };
 }
-function mergeResults(results, maxMergedResults, sourceTierMode, providerOrder = results.map((provider) => provider.providerId)) {
-    const merged = new Map();
+function compareRepresentativeResults(a, b, sourceTierMode) {
+    if (a.rawRank !== b.rawRank)
+        return a.rawRank - b.rawRank;
+    if (b.score !== a.score)
+        return b.score - a.score;
+    if (sourceTierMode !== "off") {
+        const tierDelta = compareSourceTierDesc(a.sourceTier, b.sourceTier);
+        if (tierDelta !== 0)
+            return tierDelta;
+    }
+    const providerDelta = a.providerId.localeCompare(b.providerId);
+    if (providerDelta !== 0)
+        return providerDelta;
+    return a.originalUrl.localeCompare(b.originalUrl);
+}
+function pickBestSnippet(items) {
+    const withSnippets = items.filter((item) => typeof item.snippet === "string" && item.snippet.trim().length > 0);
+    if (withSnippets.length === 0) {
+        return {};
+    }
+    const informative = withSnippets.filter((item) => normalizeTitle(item.snippet).length > 0);
+    const candidates = informative.length > 0 ? informative : withSnippets;
+    const best = candidates.reduce((current, item) => item.snippet.length > current.snippet.length ? item : current);
+    return {
+        snippet: best.snippet,
+        ...(best.truncated ? { truncated: true } : {}),
+    };
+}
+function buildMergeGroups(results, dedupe) {
+    const indexed = results.flatMap((provider) => provider.results.map((item) => ({
+        item,
+        fuzzyUrl: dedupe.enabled
+            ? analyzeFuzzyUrl(item.originalUrl, dedupe)
+            : {
+                canonicalUrl: item.canonicalUrl,
+                meaningfulQuery: "",
+            },
+    })));
+    const parent = indexed.map((_, index) => index);
+    const find = (index) => {
+        let root = index;
+        while (parent[root] !== root) {
+            root = parent[root];
+        }
+        while (parent[index] !== index) {
+            const next = parent[index];
+            parent[index] = root;
+            index = next;
+        }
+        return root;
+    };
+    const union = (left, right) => {
+        const leftRoot = find(left);
+        const rightRoot = find(right);
+        if (leftRoot !== rightRoot) {
+            parent[rightRoot] = leftRoot;
+        }
+    };
+    const byCanonicalUrl = new Map();
+    indexed.forEach((entry, index) => {
+        const prior = byCanonicalUrl.get(entry.fuzzyUrl.canonicalUrl);
+        if (prior === undefined) {
+            byCanonicalUrl.set(entry.fuzzyUrl.canonicalUrl, index);
+        }
+        else {
+            union(prior, index);
+        }
+    });
+    if (dedupe.enabled) {
+        const byTitleHostAndQuery = new Map();
+        indexed.forEach((entry, index) => {
+            const title = normalizeTitle(entry.item.title);
+            if (!entry.fuzzyUrl.host ||
+                !entry.fuzzyUrl.canonicalUrl.startsWith("https://") ||
+                !title) {
+                return;
+            }
+            const titleKey = [
+                entry.fuzzyUrl.host,
+                entry.fuzzyUrl.meaningfulQuery,
+                title,
+            ].join("\u0000");
+            const prior = byTitleHostAndQuery.get(titleKey);
+            if (prior === undefined) {
+                byTitleHostAndQuery.set(titleKey, index);
+            }
+            else {
+                union(prior, index);
+            }
+        });
+    }
+    const groups = new Map();
+    indexed.forEach((entry, index) => {
+        const root = find(index);
+        const group = groups.get(root);
+        if (group) {
+            group.push(entry);
+        }
+        else {
+            groups.set(root, [entry]);
+        }
+    });
+    return [...groups.values()];
+}
+function mergeResults(results, maxMergedResults, sourceTierMode, dedupe, providerOrder = results.map((provider) => provider.providerId)) {
     const providerPriorities = new Map(providerOrder.map((providerId, index) => [providerId, index]));
-    let insertionIndex = 0;
-    for (const provider of results) {
-        const providerPriority = providerPriorities.get(provider.providerId) ?? Number.MAX_SAFE_INTEGER;
-        for (const item of provider.results) {
-            const existing = merged.get(item.canonicalUrl);
-            if (!existing) {
-                merged.set(item.canonicalUrl, {
-                    title: item.title,
-                    url: item.url,
-                    canonicalUrl: item.canonicalUrl,
-                    snippet: item.snippet,
-                    truncated: item.truncated,
-                    siteName: item.siteName,
-                    providers: [item.providerId],
-                    providerCount: 1,
-                    bestRank: item.rawRank,
-                    bestSourceTier: item.sourceTier,
-                    flags: [...item.flags],
-                    rankings: [
-                        {
-                            providerId: item.providerId,
-                            rawRank: item.rawRank,
-                            score: item.score,
-                            nativeScore: item.nativeScore,
-                            sourceType: item.sourceType,
-                            sourceTier: item.sourceTier,
-                            flags: [...item.flags],
-                        },
-                    ],
-                    variants: [item],
-                    providerPriority,
-                    priorityProvider: item.providerId,
-                    insertionIndex,
-                });
-                insertionIndex += 1;
-                continue;
-            }
-            existing.variants.push(item);
-            if (!existing.providers.includes(item.providerId)) {
-                existing.providers.push(item.providerId);
-            }
-            existing.providerCount = existing.providers.length;
-            if (providerPriority < existing.providerPriority) {
-                existing.providerPriority = providerPriority;
-                existing.priorityProvider = item.providerId;
-            }
-            existing.bestRank = Math.min(existing.bestRank, item.rawRank);
-            existing.bestSourceTier = pickHigherSourceTier(existing.bestSourceTier, item.sourceTier);
-            existing.flags = mergeFlags(existing.flags, item.flags);
-            existing.rankings.push({
+    const mergeCandidates = buildMergeGroups(results, dedupe).map((group, groupIndex) => {
+        const representative = [...group].sort((a, b) => compareRepresentativeResults(a.item, b.item, sourceTierMode))[0];
+        const items = group.map((entry) => entry.item);
+        const providers = [...new Set(items.map((item) => item.providerId))];
+        const flags = mergeFlags(...items.map((item) => item.flags));
+        const bestSourceTier = items.reduce((best, item) => pickHigherSourceTier(best, item.sourceTier), representative.item.sourceTier);
+        const priority = items.reduce((best, item) => {
+            const itemPriority = providerPriorities.get(item.providerId) ?? Number.MAX_SAFE_INTEGER;
+            return itemPriority < best.providerPriority
+                ? { providerPriority: itemPriority, priorityProvider: item.providerId }
+                : best;
+        }, {
+            providerPriority: Number.MAX_SAFE_INTEGER,
+            priorityProvider: representative.item.providerId,
+        });
+        return {
+            title: representative.item.title,
+            url: representative.item.url,
+            canonicalUrl: representative.fuzzyUrl.canonicalUrl,
+            ...pickBestSnippet(items),
+            siteName: representative.item.siteName ?? items.find((item) => item.siteName)?.siteName,
+            providers,
+            providerCount: providers.length,
+            bestRank: Math.min(...items.map((item) => item.rawRank)),
+            bestSourceTier,
+            flags,
+            rankings: items.map((item) => ({
                 providerId: item.providerId,
                 rawRank: item.rawRank,
                 score: item.score,
@@ -945,20 +1032,14 @@ function mergeResults(results, maxMergedResults, sourceTierMode, providerOrder =
                 sourceType: item.sourceType,
                 sourceTier: item.sourceTier,
                 flags: [...item.flags],
-            });
-            if ((!existing.snippet || existing.snippet.length < (item.snippet?.length ?? 0)) && item.snippet) {
-                existing.snippet = item.snippet;
-                existing.truncated = item.truncated;
-            }
-            if (existing.title.length < item.title.length) {
-                existing.title = item.title;
-            }
-            if (!existing.siteName && item.siteName) {
-                existing.siteName = item.siteName;
-            }
-        }
-    }
-    const rankedCandidates = [...merged.values()]
+            })),
+            variants: items,
+            providerPriority: priority.providerPriority,
+            priorityProvider: priority.priorityProvider,
+            insertionIndex: groupIndex,
+        };
+    });
+    const rankedCandidates = mergeCandidates
         .map((entry) => {
         const normalized = {
             ...entry,
@@ -1039,11 +1120,24 @@ function mergeResults(results, maxMergedResults, sourceTierMode, providerOrder =
             },
     };
 }
-function buildEvidenceTable(results, answers) {
+function buildEvidenceTable(results, answers, dedupe) {
     const citationSupportByUrl = new Map();
+    const mergedUrlByVariantUrl = new Map();
+    for (const result of results) {
+        mergedUrlByVariantUrl.set(result.canonicalUrl, result.canonicalUrl);
+        for (const variant of result.variants) {
+            const variantUrl = dedupe.enabled
+                ? analyzeFuzzyUrl(variant.originalUrl, dedupe).canonicalUrl
+                : variant.canonicalUrl;
+            mergedUrlByVariantUrl.set(variantUrl, result.canonicalUrl);
+        }
+    }
     for (const answer of answers) {
         for (const citationUrl of answer.citations) {
-            const canonicalCitationUrl = canonicalizeUrl(citationUrl);
+            const citationVariantUrl = dedupe.enabled
+                ? analyzeFuzzyUrl(citationUrl, dedupe).canonicalUrl
+                : canonicalizeUrl(citationUrl);
+            const canonicalCitationUrl = mergedUrlByVariantUrl.get(citationVariantUrl) ?? citationVariantUrl;
             if (!canonicalCitationUrl) {
                 continue;
             }
@@ -1178,6 +1272,7 @@ async function runProvider(params) {
                 payload: response.result,
                 sourceTierMode: params.sourceTierMode,
                 maxSnippetLength: params.maxSnippetLength,
+                urlOptions: params.urlOptions,
             });
             if (normalized.error) {
                 const providerError = new Error(normalized.error);
@@ -1286,6 +1381,7 @@ export async function runSearchFusion(params) {
     const start = Date.now();
     const brokerConfig = asConfig(params.pluginConfig);
     const sourceTierMode = coerceSourceTierMode(brokerConfig.sourceTierMode);
+    const dedupe = resolveMergeDedupeOptions(brokerConfig);
     const includeRawPayloads = params.request.includeRawPayloads ?? brokerConfig.includeRawPayloads ?? false;
     const includeDiscarded = params.request.includeDiscarded ?? brokerConfig.includeDiscarded ?? false;
     const maxSnippetLength = clamp(brokerConfig.maxSnippetLength ?? DEFAULT_MAX_SNIPPET_LENGTH, 100, 5000);
@@ -1326,7 +1422,7 @@ export async function runSearchFusion(params) {
             answers: [],
             results: [],
             ranking: emptyRankingMeta(),
-            evidenceTable: buildEvidenceTable([], []),
+            evidenceTable: buildEvidenceTable([], [], dedupe),
             output,
             externalContent: {
                 untrusted: true,
@@ -1361,6 +1457,7 @@ export async function runSearchFusion(params) {
                 provider,
                 sourceTierMode,
                 maxSnippetLength,
+                urlOptions: dedupe.enabled ? dedupe : undefined,
                 signal: runController.signal,
                 deadlineAt,
                 cooldowns: providerCooldowns,
@@ -1394,7 +1491,14 @@ export async function runSearchFusion(params) {
             error: rejection?.error ?? settled.reason,
         });
     });
-    const merged = mergeResults(providerRuns.filter((run) => run.ok), maxMergedResults, sourceTierMode, selectedProviders.map((provider) => provider.id));
+    const okRuns = providerRuns.filter((run) => run.ok);
+    const contributingProviders = new Set(okRuns.filter((run) => run.results.length > 0).map((run) => run.providerId)).size;
+    // Fuzzy dedupe is a fusion feature: a single contributing provider keeps its
+    // raw result set (exact-match dedupe only) unless fuzzyDedupe is explicitly true.
+    const mergeDedupe = brokerConfig.fuzzyDedupe !== true && contributingProviders <= 1
+        ? { ...dedupe, enabled: false }
+        : dedupe;
+    const merged = mergeResults(okRuns, maxMergedResults, sourceTierMode, mergeDedupe, selectedProviders.map((provider) => provider.id));
     const mergedResults = merged.results;
     const internalDiscardedResults = providerRuns.flatMap((run) => run.discardedResults);
     const internalAnswers = providerRuns
@@ -1447,7 +1551,7 @@ export async function runSearchFusion(params) {
         answers,
         results: visibleMergedResults,
         ranking: merged.ranking,
-        evidenceTable: buildEvidenceTable(visibleMergedResults, answers),
+        evidenceTable: buildEvidenceTable(visibleMergedResults, answers, dedupe),
         output,
         externalContent: {
             untrusted: true,
