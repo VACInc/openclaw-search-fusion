@@ -1182,6 +1182,7 @@ test("runSearchFusion can disable fuzzy dedupe without disabling legacy exact me
     request: {
       query: "story",
       providers: ["alpha", "beta"],
+      includeRawPayloads: true,
     },
   });
 
@@ -1474,6 +1475,8 @@ test("runSearchFusion keeps missing-url junk as non-merged provenance", async ()
   assert.equal(payload.discardedResults.length, 1);
   assert.equal(payload.discardedResults[0]?.reason, "missing-url");
   assert.equal(payload.providerRuns[0]?.discardedResults.length, 1);
+  assert.equal(payload.providerRuns[0]?.rawCount, 2);
+  assert.equal(payload.providerDetails[0]?.rawCount, 2);
   assert.equal(payload.providerDetails[0]?.discardedCount, 1);
 });
 
@@ -2086,6 +2089,344 @@ test("runSearchFusion honors per-provider retry overrides", async () => {
   assert.equal(payload.providerRuns.find((run) => run.provider === "gemini")?.attempts, 4);
 });
 
+test("runSearchFusion defaults to verified provider-native counts in delegated payloads", async () => {
+  const seenArgs = new Map<string, Record<string, unknown>>();
+  const payload = await runSearchFusion({
+    runtime: createRuntime({
+      providers: [
+        { id: "brave", label: "Brave", configured: true, autoDetectOrder: 10 },
+        { id: "exa", label: "Exa", configured: true, autoDetectOrder: 20 },
+        { id: "parallel", label: "Parallel", configured: true, autoDetectOrder: 30 },
+        { id: "tavily", label: "Tavily", configured: true, autoDetectOrder: 40 },
+      ],
+      search: async ({ providerId, args }) => {
+        const id = providerId ?? "unknown";
+        seenArgs.set(id, args);
+        return {
+          provider: id,
+          result: {
+            results: [{ title: `${id} result`, url: `https://example.com/${id}` }],
+          },
+        };
+      },
+    }) as never,
+    config: {},
+    pluginConfig: {},
+    request: {
+      query: "native provider counts",
+      providers: ["brave", "exa", "parallel", "tavily"],
+    },
+  });
+
+  assert.deepEqual(
+    Object.fromEntries([...seenArgs].map(([providerId, args]) => [providerId, args.count])),
+    {
+      brave: 10,
+      exa: 100,
+      parallel: 40,
+      tavily: 20,
+    },
+  );
+  for (const args of seenArgs.values()) {
+    assert.equal("numResults" in args, false);
+    assert.equal("max_results" in args, false);
+    assert.equal("advanced_settings" in args, false);
+  }
+  assert.deepEqual(payload.providersSucceeded, ["brave", "exa", "parallel", "tavily"]);
+});
+
+test("runSearchFusion keeps the conservative default for unknown provider adapters", async () => {
+  let seenCount: unknown;
+  await runSearchFusion({
+    runtime: createRuntime({
+      providers: [
+        {
+          id: "custom-search",
+          label: "Custom Search",
+          configured: true,
+          autoDetectOrder: 10,
+        },
+      ],
+      search: async ({ providerId, args }) => {
+        seenCount = args.count;
+        return {
+          provider: providerId ?? "custom-search",
+          result: {
+            results: [{ title: "Custom result", url: "https://example.com/custom" }],
+          },
+        };
+      },
+    }) as never,
+    config: {},
+    pluginConfig: {},
+    request: {
+      query: "unknown provider count",
+      providers: ["custom-search"],
+    },
+  });
+
+  assert.equal(seenCount, 5);
+});
+
+test("runSearchFusion keeps keyless providers within their free adapter contracts", async () => {
+  const seenCounts = new Map<string, unknown>();
+  const payload = await runSearchFusion({
+    runtime: createRuntime({
+      providers: [
+        {
+          id: "duckduckgo",
+          label: "DuckDuckGo",
+          configured: true,
+          requiresCredential: false,
+          autoDetectOrder: 10,
+        },
+        {
+          id: "firecrawl-free",
+          label: "Firecrawl Free",
+          configured: true,
+          requiresCredential: false,
+          autoDetectOrder: 20,
+        },
+        {
+          id: "parallel-free",
+          label: "Parallel Free",
+          configured: true,
+          requiresCredential: false,
+          autoDetectOrder: 30,
+        },
+      ],
+      search: async ({ providerId, args }) => {
+        const id = providerId ?? "unknown";
+        seenCounts.set(id, args.count);
+        return {
+          provider: id,
+          result: {
+            results: [{ title: `${id} result`, url: `https://example.com/${id}` }],
+          },
+        };
+      },
+    }) as never,
+    config: {},
+    pluginConfig: {},
+    request: {
+      query: "free provider counts",
+      providers: ["duckduckgo", "firecrawl-free", "parallel-free"],
+    },
+  });
+
+  assert.deepEqual(Object.fromEntries(seenCounts), {
+    duckduckgo: 10,
+    "firecrawl-free": 10,
+    "parallel-free": 40,
+  });
+  assert.deepEqual(payload.providersSucceeded, [
+    "duckduckgo",
+    "firecrawl-free",
+    "parallel-free",
+  ]);
+});
+
+test("runSearchFusion clamps requests to configured and native provider maxima", async () => {
+  const seenCounts = new Map<string, unknown>();
+  await runSearchFusion({
+    runtime: createRuntime({
+      providers: [
+        { id: "brave", label: "Brave", configured: true, autoDetectOrder: 10 },
+        { id: "exa", label: "Exa", configured: true, autoDetectOrder: 20 },
+        { id: "parallel", label: "Parallel", configured: true, autoDetectOrder: 30 },
+        { id: "tavily", label: "Tavily", configured: true, autoDetectOrder: 40 },
+      ],
+      search: async ({ providerId, args }) => {
+        const id = providerId ?? "unknown";
+        seenCounts.set(id, args.count);
+        return {
+          provider: id,
+          result: {
+            results: [{ title: `${id} result`, url: `https://example.com/${id}` }],
+          },
+        };
+      },
+    }) as never,
+    config: {},
+    pluginConfig: {
+      providerConfig: {
+        brave: { maxResults: 4 },
+        exa: { maxResults: 12 },
+        parallel: { maxResults: 100 },
+        tavily: { maxResults: 8 },
+      },
+    },
+    request: {
+      query: "clamped provider counts",
+      providers: ["brave", "exa", "parallel", "tavily"],
+      count: 100,
+    },
+  });
+
+  assert.deepEqual(Object.fromEntries(seenCounts), {
+    brave: 4,
+    exa: 12,
+    parallel: 40,
+    tavily: 8,
+  });
+});
+
+test("runSearchFusion uses maxResults overrides as the default pull count", async () => {
+  let seenCount: unknown;
+  await runSearchFusion({
+    runtime: createRuntime({
+      providers: [{ id: "exa", label: "Exa", configured: true, autoDetectOrder: 10 }],
+      search: async ({ providerId, args }) => {
+        seenCount = args.count;
+        return {
+          provider: providerId ?? "exa",
+          result: {
+            results: [{ title: "Exa result", url: "https://example.com/exa" }],
+          },
+        };
+      },
+    }) as never,
+    config: {},
+    pluginConfig: {
+      providerConfig: {
+        exa: { maxResults: 17 },
+      },
+    },
+    request: {
+      query: "configured provider default",
+      providers: ["exa"],
+    },
+  });
+
+  assert.equal(seenCount, 17);
+});
+
+test("runSearchFusion keeps merged output capped while ranking deeper native pulls", async () => {
+  const seenCounts = new Map<string, number>();
+  const payload = await runSearchFusion({
+    runtime: createRuntime({
+      providers: [
+        { id: "exa", label: "Exa", configured: true, autoDetectOrder: 10 },
+        { id: "tavily", label: "Tavily", configured: true, autoDetectOrder: 20 },
+      ],
+      search: async ({ providerId, args }) => {
+        const id = providerId ?? "unknown";
+        const count = typeof args.count === "number" ? args.count : 0;
+        seenCounts.set(id, count);
+        return {
+          provider: id,
+          result: {
+            results: Array.from({ length: count }, (_, index) => ({
+              title: `${id} result ${index + 1}`,
+              url: `https://example.com/${id}/${index + 1}`,
+            })),
+          },
+        };
+      },
+    }) as never,
+    config: {},
+    pluginConfig: {},
+    request: {
+      query: "deep candidates bounded output",
+      providers: ["exa", "tavily"],
+      maxMergedResults: 7,
+    },
+  });
+
+  assert.deepEqual(Object.fromEntries(seenCounts), {
+    exa: 100,
+    tavily: 20,
+  });
+  assert.equal(payload.providerRuns.find((run) => run.provider === "exa")?.rawCount, 100);
+  assert.equal(payload.providerRuns.find((run) => run.provider === "tavily")?.rawCount, 20);
+  assert.equal(payload.ranking.consideredCount, 120);
+  assert.equal(payload.ranking.returnedCount, 7);
+  assert.equal(payload.ranking.droppedCount, 113);
+  assert.deepEqual(payload.ranking.dropped, []);
+  assert.equal(payload.results.length, 7);
+  assert.equal(
+    payload.providerRuns.reduce((total, run) => total + run.results.length, 0),
+    7,
+  );
+  assert.equal(payload.evidenceTable.rowCount, 7);
+  assert.equal(payload.count, 7);
+});
+
+test("runSearchFusion bounds duplicate merged evidence unless raw audit output is requested", async () => {
+  const runtime = createRuntime({
+    providers: [
+      { id: "exa", label: "Exa", configured: true, autoDetectOrder: 10 },
+      { id: "tavily", label: "Tavily", configured: true, autoDetectOrder: 20 },
+    ],
+    search: async ({ providerId, args }) => {
+      const id = providerId ?? "unknown";
+      const count = typeof args.count === "number" ? args.count : 0;
+      return {
+        provider: id,
+        result: {
+          results: Array.from({ length: count }, (_, index) => ({
+            title: `${id} duplicate ${index + 1}`,
+            url: "https://example.com/shared",
+            description: `${id} evidence ${index + 1}`,
+          })),
+        },
+      };
+    },
+  }) as never;
+
+  const bounded = await runSearchFusion({
+    runtime,
+    config: {},
+    pluginConfig: {},
+    request: {
+      query: "duplicate candidate evidence",
+      providers: ["exa", "tavily"],
+    },
+  });
+
+  assert.equal(bounded.results.length, 1);
+  assert.equal(bounded.results[0]?.providerCount, 2);
+  assert.deepEqual(
+    bounded.results[0]?.variants.map((variant) => variant.providerId),
+    ["exa", "tavily"],
+  );
+  assert.deepEqual(
+    bounded.results[0]?.rankings.map((ranking) => ranking.providerId),
+    ["exa", "tavily"],
+  );
+  assert.deepEqual(
+    bounded.providerRuns.map((run) => [run.provider, run.rawCount, run.results.length]),
+    [
+      ["exa", 100, 1],
+      ["tavily", 20, 1],
+    ],
+  );
+  assert.deepEqual(
+    bounded.evidenceTable.rows[0]?.providerEvidence.map((entry) => entry.providerId),
+    ["exa", "tavily"],
+  );
+
+  const audit = await runSearchFusion({
+    runtime,
+    config: {},
+    pluginConfig: {},
+    request: {
+      query: "duplicate candidate evidence",
+      providers: ["exa", "tavily"],
+      includeRawPayloads: true,
+    },
+  });
+
+  assert.equal(audit.results[0]?.variants.length, 120);
+  assert.equal(audit.results[0]?.rankings.length, 120);
+  assert.equal(
+    audit.providerRuns.reduce((total, run) => total + run.results.length, 0),
+    120,
+  );
+  assert.equal(audit.evidenceTable.rows[0]?.providerEvidence.length, 120);
+  assert.ok(audit.providerRuns.every((run) => Boolean(run.rawPayload)));
+});
+
 test("runSearchFusion passes providerConfig count overrides when request count is absent", async () => {
   let seenCount: unknown;
   const payload = await runSearchFusion({
@@ -2439,6 +2780,10 @@ test("runSearchFusion honors request maxMergedResults without losing provider pa
   assert.equal(payload.results.length, 2);
   assert.equal(payload.providerRuns.length, 3);
   assert.ok(payload.providerRuns.every((run) => (run.ok ? Boolean(run.rawPayload) : true)));
+  assert.equal(
+    payload.providerRuns.reduce((total, run) => total + run.results.length, 0),
+    5,
+  );
 
   assert.equal(payload.ranking.strategy, "merged-score-v1");
   assert.deepEqual(payload.ranking.sortOrder, [

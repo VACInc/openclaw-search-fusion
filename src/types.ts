@@ -50,6 +50,12 @@ export type SearchFusionScoreCalibrationConfig = {
 export type SearchFusionProviderConfig = {
   retry?: SearchFusionRetryConfig;
   timeoutMs?: number;
+  /**
+   * Maximum results this provider may be asked for. Defaults to the verified
+   * native maximum of the delegated OpenClaw adapter and cannot raise it.
+   */
+  maxResults?: number;
+  /** Legacy default count used when a request does not provide `count`. */
   count?: number;
   weight?: number;
   scoreCalibration?: SearchFusionScoreCalibrationConfig;
@@ -243,6 +249,7 @@ export type ProviderRunResult = {
   configured: boolean;
   ok: boolean;
   tookMs: number;
+  /** Transport result items encountered before missing-URL discards. */
   rawCount: number;
   attempts: number;
   rawPayload?: Record<string, unknown>;
@@ -304,6 +311,7 @@ export type FusionRankingMeta = {
   consideredCount: number;
   returnedCount: number;
   droppedCount: number;
+  /** Detailed records are omitted from bounded output unless raw audit output is enabled. */
   dropped: FusionDroppedResult[];
 };
 
@@ -320,7 +328,9 @@ export type FusionMergedResult = {
   bestRank: number;
   bestSourceTier: SearchResultSourceTier;
   flags: SearchResultFlag[];
+  /** One entry per provider by default; complete duplicate evidence in raw audit output. */
   rankings: SearchResultRanking[];
+  /** One entry per provider by default; complete duplicate evidence in raw audit output. */
   variants: NormalizedSearchResult[];
   ranking: FusionRankingExplanation;
 };

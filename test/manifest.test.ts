@@ -33,6 +33,7 @@ test("manifest advertises webSearch participation for runtime provider discovery
 
 test("manifest exposes deadline and bounded-output configuration", () => {
   const properties = manifest.configSchema?.properties ?? {};
+  assert.equal(asObject(properties.countPerProvider)?.maximum, 100);
   assert.deepEqual(asObject(properties.totalTimeoutMs), {
     type: "integer",
     minimum: 5000,
@@ -46,13 +47,17 @@ test("manifest exposes deadline and bounded-output configuration", () => {
   assert.equal(asObject(properties.maxSnippetLength)?.maximum, 5000);
 });
 
-test("manifest exposes providerConfig weight overrides", () => {
+test("manifest exposes providerConfig result ceilings and weight overrides", () => {
   const schemaProperties = manifest.configSchema?.properties ?? {};
   const providerConfig = asObject(schemaProperties.providerConfig);
   const providerConfigEntry = asObject(providerConfig?.additionalProperties);
   const providerProperties = asObject(providerConfigEntry?.properties);
+  const maxResultsSchema = asObject(providerProperties?.maxResults);
   const weightSchema = asObject(providerProperties?.weight);
 
+  assert.equal(maxResultsSchema?.type, "integer");
+  assert.equal(maxResultsSchema?.minimum, 1);
+  assert.equal(maxResultsSchema?.maximum, 100);
   assert.equal(weightSchema?.type, "number");
   assert.equal(weightSchema?.minimum, 0.1);
   assert.equal(weightSchema?.maximum, 5);

@@ -59,9 +59,10 @@ const SearchFusionParameters = Type.Object(
     ),
     count: Type.Optional(
       Type.Integer({
-        description: "Number of results to request from each provider (1-10).",
+        description:
+          "Number of results to request from each provider (1-100). Each request is clamped to providerConfig.<id>.maxResults and the delegated provider's native maximum.",
         minimum: 1,
-        maximum: 10,
+        maximum: 100,
       }),
     ),
     maxMergedResults: Type.Optional(
@@ -82,7 +83,10 @@ const SearchFusionParameters = Type.Object(
       Type.Boolean({ description: "Include provider failures in the human-readable summary." }),
     ),
     includeRawPayloads: Type.Optional(
-      Type.Boolean({ description: "Include full provider payloads and raw normalized items. Defaults to false." }),
+      Type.Boolean({
+        description:
+          "Include full provider payloads, complete normalized provider runs, duplicate merged evidence, and detailed dropped-result records. Defaults to false.",
+      }),
     ),
     includeDiscarded: Type.Optional(
       Type.Boolean({ description: "Include missing-URL items discarded from merging. Defaults to false." }),

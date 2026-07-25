@@ -80,7 +80,6 @@ Optional plugin config:
           "defaultMode": "balanced",
           "excludeProviders": ["grok"],
           "sourceTierMode": "balanced",
-          "countPerProvider": 5,
           "maxMergedResults": 10,
           "providerTimeoutMs": 15000,
           "totalTimeoutMs": 30000,
@@ -94,6 +93,9 @@ Optional plugin config:
             "maxBackoffMs": 5000
           },
           "providerConfig": {
+            "exa": {
+              "maxResults": 25
+            },
             "gemini": {
               "timeoutMs": 60000,
               "weight": 1.3,
@@ -141,13 +143,41 @@ Resolution order:
 - configured `defaultProviders` (backward compatibility)
 - otherwise all configured providers
 
-`providerConfig.<id>` is the canonical place for per-provider overrides like `retry`, `timeoutMs`, `count`, `weight`, and `scoreCalibration`.
+`providerConfig.<id>` is the canonical place for per-provider overrides like `maxResults`, `retry`, `timeoutMs`, `weight`, and `scoreCalibration`. The older `count` field remains supported as a default count when a request does not pass one.
+
+### Provider result counts
+
+Search Fusion pulls each provider's verified native maximum by default so dedupe and ranking have a deeper candidate pool. Every delegated OpenClaw provider receives its generic `count` argument; the provider adapter translates that to its native request field.
+
+| Provider | Default / native maximum | Adapter behavior |
+|---|---:|---|
+| `exa` | 100 | `count` becomes Exa `numResults` |
+| `parallel` | 40 | `count` becomes `advanced_settings.max_results` |
+| `parallel-free` | 40 | `count` only slices the free MCP's fixed-size response client-side |
+| `tavily` | 20 | `count` becomes Tavily `max_results` |
+| Other known generic providers | 10 | OpenClaw's generic provider contract caps `count` at 10 |
+
+The generic Firecrawl adapters are part of the 10-result row: both `firecrawl` and `firecrawl-free` intentionally accept at most 10 even though Firecrawl's separate provider-specific tool supports a larger count. This keeps the keyless starter tier within its adapter contract. Parallel Free does not ask its hosted MCP for a larger response; its count is applied only after the fixed response arrives. Runtime providers outside the documented OpenClaw catalog retain the historical default of 5 because Search Fusion cannot safely infer a third-party adapter's native ceiling.
+
+Use `providerConfig.<id>.maxResults` to lower a provider's ceiling:
+
+```json
+{
+  "providerConfig": {
+    "exa": { "maxResults": 25 },
+    "tavily": { "maxResults": 10 },
+    "parallel-free": { "maxResults": 10 }
+  }
+}
+```
+
+A per-call `count`, legacy `providerConfig.<id>.count`, or shared `countPerProvider` can select a smaller pull size. None can exceed `providerConfig.<id>.maxResults` or the native adapter maximum. `maxMergedResults` remains the independent fusion-level output cap, so deeper provider pulls improve dedupe and ranking without increasing the returned merged-result count. `rawCount` reports every transport result item encountered in the supported result arrays, including items later discarded for a missing URL.
 
 `totalTimeoutMs` bounds the whole fan-out, including credential preparation, provider attempts, retries, and backoff (default `30000`, range `5000`–`180000`). When it expires, completed providers are returned as partial results and unfinished providers report `deadline exceeded`. `providerTimeoutMs` still bounds each individual attempt; timed-out and aborted attempts are not retried.
 
 Model-visible output is compact by default:
 
-- `includeRawPayloads` (default `false`) controls provider `rawPayload` data and raw normalized items.
+- `includeRawPayloads` (default `false`) controls full provider payloads and complete audit evidence. Without it, `providerRuns[].results` includes one item per provider for each returned merged URL, merged `variants`/`rankings` and evidence-table provider evidence include one item per contributing provider, and `ranking.dropped` omits detailed records while retaining `droppedCount`.
 - `includeDiscarded` (default `false`) controls missing-URL items preserved outside the merged results.
 - `maxSnippetLength` (default `500`, range `100`–`5000`) caps result snippets, variant snippets, evidence snippets, and provider answer text. Affected objects carry `truncated: true`.
 
@@ -255,7 +285,7 @@ Supported arguments:
 - `intent` — optional routing hint: `research`, `keyword`, `answer`, `news`, or `local`
 - `mode` — mode name from configured modes, or starter modes (`fast`, `balanced`, `deep`) when custom modes are not set
 - `providers` — provider ids, or `all`
-- `count`
+- `count` — requested per-provider pull count (1–100), clamped independently to each provider's configured and native maximum
 - `maxMergedResults`
 - `country`
 - `language`
@@ -281,7 +311,7 @@ The structured payload retains `externalContent.untrusted: true` metadata for no
 Merged payloads include:
 
 - `results[].ranking` with the final rank, score breakdown (`bestVariantScore`, `corroborationBonus`, `bestRankBonus`, `tierAdjustment`, `flagPenalty`, `finalScore`), and tie-breaker values. `bestRankBonus` is retained as a compatibility field with value `0`; original rank is applied only as the explicit final tie-breaker.
-- top-level `ranking` metadata with the strategy, sort order, considered/returned counts, and `dropped[]` entries (with `reason: "maxMergedResults"`) for results trimmed by the output cap.
+- top-level `ranking` metadata with the strategy, sort order, considered/returned counts, and `droppedCount` for results trimmed by the output cap. Detailed `dropped[]` records (with `reason: "maxMergedResults"`) are included only with `includeRawPayloads: true`.
 
 Final ordering is deterministic: descending score, selected-provider priority, then original provider rank. Results still tied on all three keys retain their insertion order. The selected `providers`/mode order therefore acts as the provider-priority order and is exposed in `ranking.tieBreakers`.
 
