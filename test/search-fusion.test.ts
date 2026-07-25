@@ -1267,6 +1267,115 @@ test("runSearchFusion extends and overrides tracking-parameter dedupe safely", a
       "https://example.com/story?ref=two",
     ],
   );
+  assert.deepEqual(
+    overridden.results.map((result) => result.url).sort(),
+    [
+      "https://example.com/story?campaign_id=alpha&ref=one",
+      "https://example.com/story?campaign_id=beta&ref=two",
+    ],
+  );
+});
+
+test("runSearchFusion preserves override-mode display and navigation URLs", async () => {
+  const payload = await runSearchFusion({
+    runtime: createStaticResultsRuntime({
+      alpha: [
+        {
+          title: "Referenced story",
+          url: "https://example.com/story?ref=one",
+        },
+      ],
+    }) as never,
+    config: {},
+    pluginConfig: {
+      trackingParams: [],
+      trackingParamMode: "override",
+    },
+    request: {
+      query: "referenced story",
+      providers: ["alpha"],
+    },
+  });
+
+  assert.equal(payload.results[0]?.url, "https://example.com/story?ref=one");
+  assert.equal(
+    payload.results[0]?.canonicalUrl,
+    "https://example.com/story?ref=one",
+  );
+  assert.equal(
+    payload.results[0]?.variants[0]?.originalUrl,
+    "https://example.com/story?ref=one",
+  );
+});
+
+test("runSearchFusion attributes override-mode citations to the matching evidence row", async () => {
+  const payload = await runSearchFusion({
+    runtime: createRuntime({
+      providers: [
+        { id: "alpha", label: "alpha", configured: true },
+        { id: "beta", label: "beta", configured: true },
+        { id: "gamma", label: "gamma", configured: true },
+      ],
+      search: async ({ providerId }) => {
+        if (providerId === "alpha") {
+          return {
+            provider: "alpha",
+            result: {
+              results: [
+                {
+                  title: "Referenced story",
+                  url: "https://example.com/story?ref=one",
+                },
+              ],
+            },
+          };
+        }
+        if (providerId === "beta") {
+          return {
+            provider: "beta",
+            result: {
+              results: [
+                {
+                  title: "Base story",
+                  url: "https://example.com/story",
+                },
+              ],
+            },
+          };
+        }
+        return {
+          provider: "gamma",
+          result: {
+            content: "An answer supported by the referenced story.",
+            citations: ["https://example.com/story?ref=one"],
+          },
+        };
+      },
+    }) as never,
+    config: {},
+    pluginConfig: {
+      trackingParams: [],
+      trackingParamMode: "override",
+    },
+    request: {
+      query: "story",
+      providers: ["alpha", "beta", "gamma"],
+    },
+  });
+
+  assert.deepEqual(payload.answers[0]?.citations, [
+    "https://example.com/story?ref=one",
+  ]);
+  const referencedEvidence = payload.evidenceTable.rows.find(
+    (row) => row.canonicalUrl === "https://example.com/story?ref=one",
+  );
+  const baseEvidence = payload.evidenceTable.rows.find(
+    (row) => row.canonicalUrl === "https://example.com/story",
+  );
+  assert.equal(referencedEvidence?.answerCitationSupport.count, 1);
+  assert.deepEqual(referencedEvidence?.answerCitationSupport.providers, ["gamma"]);
+  assert.equal(baseEvidence?.answerCitationSupport.count, 0);
+  assert.deepEqual(baseEvidence?.answerCitationSupport.providers, []);
 });
 
 

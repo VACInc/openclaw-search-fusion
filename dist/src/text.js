@@ -101,6 +101,13 @@ function isTrackingParam(key, patterns) {
         ? normalizedKey.startsWith(pattern.slice(0, -1))
         : normalizedKey === pattern);
 }
+function resolvePresentationTrackingPatterns(options) {
+    if (options?.trackingParamMode !== "override") {
+        return LEGACY_TRACKING_PARAMS;
+    }
+    const configured = resolveTrackingPatterns(options);
+    return LEGACY_TRACKING_PARAMS.filter((pattern) => isTrackingParam(pattern, configured));
+}
 function stripTrackingParams(parsed, patterns) {
     let stripped = false;
     for (const key of [...parsed.searchParams.keys()]) {
@@ -140,7 +147,7 @@ function sortSearchParams(parsed) {
         parsed.searchParams.append(key, value);
     }
 }
-export function analyzeUrl(rawUrl) {
+export function analyzeUrl(rawUrl, trackingOptions) {
     const originalUrl = rawUrl.trim();
     const flags = new Set();
     const unwrapped = unwrapKnownRedirectUrl(originalUrl);
@@ -150,7 +157,11 @@ export function analyzeUrl(rawUrl) {
     try {
         const parsed = new URL(unwrapped.url);
         parsed.hash = "";
-        const strippedTracking = stripTrackingParams(parsed, LEGACY_TRACKING_PARAMS);
+        // Keep the established display-URL behavior: fuzzy-only patterns affect
+        // identity, not navigation. Override mode may narrow the legacy display
+        // stripping set so newly meaningful parameters are not lost upstream.
+        const trackingPatterns = resolvePresentationTrackingPatterns(trackingOptions);
+        const strippedTracking = stripTrackingParams(parsed, trackingPatterns);
         if (strippedTracking) {
             flags.add("tracking-stripped");
         }

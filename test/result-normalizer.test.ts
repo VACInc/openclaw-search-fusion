@@ -79,6 +79,37 @@ test("normalizeProviderPayload preserves full answer content and citation detail
   assert.equal(normalized.results[1]?.title, "GitHub");
 });
 
+test("normalizeProviderPayload preserves configured meaningful parameters in results and citations", () => {
+  const normalized = normalizeProviderPayload({
+    providerId: "gemini",
+    payload: {
+      content: "Grounded answer.",
+      results: [
+        {
+          title: "Referenced story",
+          url: "https://example.com/story?ref=one",
+        },
+      ],
+      citations: ["https://example.com/source?ref=answer"],
+    },
+    urlOptions: {
+      trackingParams: [],
+      trackingParamMode: "override",
+    },
+  });
+
+  assert.equal(normalized.results[0]?.url, "https://example.com/story?ref=one");
+  assert.equal(normalized.results[0]?.canonicalUrl, "https://example.com/story?ref=one");
+  assert.deepEqual(normalized.results[0]?.flags, []);
+  assert.deepEqual(normalized.answer?.citations, [
+    "https://example.com/source?ref=answer",
+  ]);
+  assert.equal(
+    normalized.answer?.citationDetails[0]?.url,
+    "https://example.com/source?ref=answer",
+  );
+});
+
 test("normalizeProviderPayload tags sponsored/video/community items deterministically", () => {
   const normalized = normalizeProviderPayload({
     providerId: "tavily",

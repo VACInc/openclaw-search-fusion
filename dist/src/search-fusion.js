@@ -917,6 +917,7 @@ async function runProvider(params) {
                 payload: response.result,
                 sourceTierMode: params.sourceTierMode,
                 maxSnippetLength: params.maxSnippetLength,
+                urlOptions: params.urlOptions,
             });
             if (normalized.error) {
                 throw new Error(normalized.error);
@@ -1072,6 +1073,7 @@ export async function runSearchFusion(params) {
                 provider,
                 sourceTierMode,
                 maxSnippetLength,
+                urlOptions: dedupe.enabled ? dedupe : undefined,
                 signal: runController.signal,
                 deadlineAt,
                 agentDir: params.agentDir,

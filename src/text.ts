@@ -132,6 +132,19 @@ function isTrackingParam(key: string, patterns: readonly string[]): boolean {
   );
 }
 
+function resolvePresentationTrackingPatterns(
+  options?: FuzzyUrlOptions,
+): readonly string[] {
+  if (options?.trackingParamMode !== "override") {
+    return LEGACY_TRACKING_PARAMS;
+  }
+
+  const configured = resolveTrackingPatterns(options);
+  return LEGACY_TRACKING_PARAMS.filter((pattern) =>
+    isTrackingParam(pattern, configured),
+  );
+}
+
 function stripTrackingParams(parsed: URL, patterns: readonly string[]): boolean {
   let stripped = false;
   for (const key of [...parsed.searchParams.keys()]) {
@@ -176,7 +189,10 @@ function sortSearchParams(parsed: URL): void {
   }
 }
 
-export function analyzeUrl(rawUrl: string): UrlAnalysis {
+export function analyzeUrl(
+  rawUrl: string,
+  trackingOptions?: FuzzyUrlOptions,
+): UrlAnalysis {
   const originalUrl = rawUrl.trim();
   const flags = new Set<string>();
   const unwrapped = unwrapKnownRedirectUrl(originalUrl);
@@ -187,7 +203,11 @@ export function analyzeUrl(rawUrl: string): UrlAnalysis {
   try {
     const parsed = new URL(unwrapped.url);
     parsed.hash = "";
-    const strippedTracking = stripTrackingParams(parsed, LEGACY_TRACKING_PARAMS);
+    // Keep the established display-URL behavior: fuzzy-only patterns affect
+    // identity, not navigation. Override mode may narrow the legacy display
+    // stripping set so newly meaningful parameters are not lost upstream.
+    const trackingPatterns = resolvePresentationTrackingPatterns(trackingOptions);
+    const strippedTracking = stripTrackingParams(parsed, trackingPatterns);
     if (strippedTracking) {
       flags.add("tracking-stripped");
     }

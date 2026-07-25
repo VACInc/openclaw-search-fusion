@@ -148,7 +148,7 @@ Both include flags can be set in plugin config or overridden per `search_fusion`
 
 Fuzzy dedupe is enabled by default through `fuzzyDedupe`. It folds HTTP into HTTPS, default ports, `www.`/`m.`/`amp.` host variants, terminal `/amp` paths, fragments, trailing slashes, and known tracking parameters. Meaningful query parameters remain part of URL identity. Normalized-title equality is used only for results on the same canonical host with the same remaining query, so equal titles never merge across sites or across conflicting query values.
 
-The default tracking list is `utm_*`, `fbclid`, `gclid`, `ref`, `mc_cid`, `mc_eid`, and `igshid`. Add site-specific names with `trackingParams`; its default `trackingParamMode` is `extend`. Set the mode to `override` to replace the defaults entirely. Set `fuzzyDedupe` to `false` to retain only the legacy exact canonical-URL merge.
+The default tracking list is `utm_*`, `fbclid`, `gclid`, `ref`, `mc_cid`, `mc_eid`, and `igshid`. Add site-specific names with `trackingParams`; its default `trackingParamMode` is `extend`. Set the mode to `override` to replace the defaults entirely. The active policy is also applied before result and answer-citation normalization, so a parameter omitted by an override remains present in navigation URLs and is attributed to the correct evidence row. Set `fuzzyDedupe` to `false` to retain only the legacy exact canonical-URL merge.
 
 ```json
 {

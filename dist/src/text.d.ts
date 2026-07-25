@@ -18,7 +18,7 @@ export declare function asSingleLine(value: string): string;
 export declare function truncate(value: string, max?: number): string;
 export declare function stripExternalWrapper(content: string): string;
 export declare function cleanProviderText(value: unknown): string;
-export declare function analyzeUrl(rawUrl: string): UrlAnalysis;
+export declare function analyzeUrl(rawUrl: string, trackingOptions?: FuzzyUrlOptions): UrlAnalysis;
 export declare function canonicalizeUrl(rawUrl: string): string;
 /**
  * Builds the conservative identity used for fuzzy result deduplication.
