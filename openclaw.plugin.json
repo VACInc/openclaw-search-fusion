@@ -198,7 +198,26 @@
             "scoreCalibration": {
               "type": "object",
               "additionalProperties": false,
-              "description": "Native relevance-score calibration for this provider. Defaults to minmax within each result set, with 1/rawRank fallback for missing, invalid, constant, or singleton scores.",
+              "description": "Native relevance-score calibration for this provider. Defaults to minmax within each result set. Minmax uses 1/rawRank for constant or singleton sets, and every strategy uses that fallback for missing or invalid scores.",
+              "allOf": [
+                {
+                  "if": {
+                    "properties": {
+                      "strategy": {
+                        "const": "fixed"
+                      }
+                    },
+                    "required": [
+                      "strategy"
+                    ]
+                  },
+                  "then": {
+                    "required": [
+                      "curve"
+                    ]
+                  }
+                }
+              ],
               "properties": {
                 "strategy": {
                   "type": "string",

@@ -256,14 +256,6 @@ export function calibrateProviderScores(
     return { scores: rankScores(results), strategy: "rank" };
   }
 
-  if (results.length === 1) {
-    return {
-      scores: rankScores(results),
-      strategy: "rank",
-      fallback: "single-result",
-    };
-  }
-
   const nativeScores = results.map((result) => result.nativeScore);
   if (
     nativeScores.some(
@@ -278,6 +270,23 @@ export function calibrateProviderScores(
   }
 
   const finiteScores = nativeScores as number[];
+  if (configuredStrategy === "fixed") {
+    return {
+      scores: finiteScores.map((score) =>
+        roundScore(applyCalibrationCurve(score, fixedCurve!)),
+      ),
+      strategy: "fixed",
+    };
+  }
+
+  if (results.length === 1) {
+    return {
+      scores: rankScores(results),
+      strategy: "rank",
+      fallback: "single-result",
+    };
+  }
+
   const minimum = Math.min(...finiteScores);
   const maximum = Math.max(...finiteScores);
   if (maximum === minimum) {
@@ -285,15 +294,6 @@ export function calibrateProviderScores(
       scores: rankScores(results),
       strategy: "rank",
       fallback: "constant-scores",
-    };
-  }
-
-  if (configuredStrategy === "fixed") {
-    return {
-      scores: finiteScores.map((score) =>
-        roundScore(applyCalibrationCurve(score, fixedCurve!)),
-      ),
-      strategy: "fixed",
     };
   }
 

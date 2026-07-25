@@ -226,6 +226,7 @@ export type SearchResultRanking = {
 export type FusionScoreBreakdown = {
     bestVariantScore: number;
     corroborationBonus: number;
+    /** Retained for payload compatibility; rank is now an explicit tie-breaker. */
     bestRankBonus: number;
     tierAdjustment: number;
     flagPenalty: number;

@@ -93,6 +93,32 @@ test("calibrateProviderScores handles strategies and degenerate score sets", () 
       expectedStrategy: "fixed",
     },
     {
+      name: "fixed curve calibrates a singleton absolutely",
+      scores: [0.1],
+      config: {
+        strategy: "fixed",
+        curve: [
+          { input: 0, output: 0 },
+          { input: 1, output: 1 },
+        ],
+      },
+      expectedScores: [0.1],
+      expectedStrategy: "fixed",
+    },
+    {
+      name: "fixed curve calibrates equal scores absolutely",
+      scores: [0.1, 0.1],
+      config: {
+        strategy: "fixed",
+        curve: [
+          { input: 0, output: 0 },
+          { input: 1, output: 1 },
+        ],
+      },
+      expectedScores: [0.1, 0.1],
+      expectedStrategy: "fixed",
+    },
+    {
       name: "curve implies fixed strategy",
       scores: [0, 0.5, 1],
       config: {

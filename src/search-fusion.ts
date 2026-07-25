@@ -701,7 +701,9 @@ function computeMergedScoreBreakdown(
 ): FusionScoreBreakdown {
   const bestVariantScore = entry.variants.reduce((max, variant) => Math.max(max, variant.score), 0);
   const corroborationBonus = Math.max(0, entry.providerCount - 1) * 0.12;
-  const bestRankBonus = Math.max(0, 0.35 - (entry.bestRank - 1) * 0.04);
+  // Rank is an explicit tie-breaker after provider priority. Folding it into
+  // the score would silently make rank take precedence over provider priority.
+  const bestRankBonus = 0;
   const tierAdjustment = sourceTierMergedAdjustment(entry.bestSourceTier, sourceTierMode);
   const flagPenalty = mergedFlagPenalty(entry.flags);
 

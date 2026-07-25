@@ -1,67 +1,76 @@
 # PF Summary: provider rank-score calibration
 
-## What was built
+## Final implementation
 
-- Added per-provider relevance-score calibration before fusion ranking.
-  - Default with no new config: `minmax` over each provider's current result set.
-  - Explicit `rank`: `1 / rawRank`.
-  - Explicit `fixed`: validated piecewise-linear `{ input, output }` curve with endpoint clamping.
-  - A curve without an explicit strategy also selects `fixed`.
-- Added set-wide rank fallback for singleton sets, constant native scores, or any missing, non-finite, or negative native score. Falling back as a complete set avoids mixing native and synthetic score scales.
-- Kept calibrated relevance in `[0,1]`, then applied existing source-type/trust quality adjustments and the existing optional provider weight. A configured weight above `1` can intentionally produce a merge input above `1`.
-- Added deterministic merged-result ordering by final calibrated/adjusted score, selected-provider priority, and original rank. Complete ties retain insertion order.
-- Exposed provider priority in ranking explanations and updated top-level ranking sort metadata.
-- Added `providerConfig.<id>.scoreCalibration` to TypeScript types, the OpenClaw plugin config schema, and README configuration/reference material.
-- Added fixed-curve preflight validation before provider execution so invalid calibration config does not call a provider or consume retries.
-- Added table-driven and integration coverage for minmax, rank, fixed interpolation/clamping, implicit fixed selection, singleton/equal/missing/NaN/negative inputs, invalid curves, provider-scale fairness, weights, and stable ties.
-- Rebuilt tracked `dist/` package artifacts.
+- Calibrates every provider's native relevance scores before cross-provider
+  fusion:
+  - default `minmax` within the provider result set
+  - explicit `rank` using `1 / rawRank`
+  - explicit or curve-implied `fixed` piecewise-linear calibration
+- Keeps fixed calibration absolute for finite singleton and constant-score
+  result sets. Those sets no longer fall through to rank calibration.
+- Uses complete-set rank fallback when a native-score strategy encounters a
+  missing, non-finite, or negative score. Default minmax also uses rank fallback
+  for singleton and constant-score sets.
+- Applies deterministic final ordering by merged score, selected-provider
+  priority, original rank, and stable insertion order. Original rank is no
+  longer folded into the numeric score before provider priority is evaluated.
+- Retains `scoreBreakdown.bestRankBonus` as a backward-compatible payload field
+  with value `0`; `bestRank` remains available in the explicit tie-breaker
+  metadata.
+- Requires a curve at the plugin-schema boundary whenever
+  `strategy: "fixed"` is selected. Runtime curve validation remains a second
+  line of defense.
+- Applies existing source-type/trust adjustments and optional provider weights
+  after calibration.
+- Documents the default, fixed-calibration degeneracies, schema requirement,
+  and deterministic ordering.
+- Rebuilt the tracked package artifacts in `dist/`.
+
+## Review findings resolved
+
+All three findings in `PF-REVIEW.md` reproduced before code changes and have
+root-cause fixes plus regression coverage. Detailed before/after evidence is in
+`PF-FIXES.md`.
 
 ## Files added
 
-- `test/score-calibration.test.ts` — table-driven strategy, interpolation, fallback, range, and invalid-config tests.
-- `PF-SUMMARY.md` — this handoff.
+- `test/score-calibration.test.ts` — table-driven calibration, degeneracy,
+  interpolation, range, and invalid-config coverage.
+- `PF-SUMMARY.md` — final implementation and verification handoff.
+- `PF-FIXES.md` — per-finding reproduction, fix, evidence, and test report.
 
 ## Files changed
 
-- `README.md` — documents the default, all strategies, curve format, degenerate fallback, score/weight ordering, tie order, and evidence semantics.
-- `openclaw.plugin.json` — adds the per-provider `scoreCalibration` schema.
-- `src/types.ts` — adds calibration config/curve types and provider-priority ranking metadata.
-- `src/result-normalizer.ts` — adds calibration, curve validation/interpolation, rank fallback, and reusable post-calibration quality scoring.
-- `src/search-fusion.ts` — applies calibration before weights/merge, validates config before calls, and adds stable provider-priority tie handling.
-- `test/manifest.test.ts` — verifies the new plugin config schema.
-- `test/search-fusion.test.ts` — adds cross-provider fairness, stable ordering, and invalid-config integration tests; updates expected calibrated scores and ranking metadata.
-- `dist/src/types.d.ts` — rebuilt type declarations.
+- `README.md`
+- `openclaw.plugin.json`
+- `src/types.ts`
+- `src/result-normalizer.ts`
+- `src/search-fusion.ts`
+- `test/manifest.test.ts`
+- `test/search-fusion.test.ts`
+- `dist/src/types.d.ts`
 - `dist/src/result-normalizer.d.ts`
 - `dist/src/result-normalizer.js`
 - `dist/src/search-fusion.js`
+- `PF-SUMMARY.md`
 
 ## Verification and observed results
 
-Dependency installation:
-
-- `npm install`
-  - Initial attempt stopped before installation with `EROFS` because npm selected `/home/vac/.npm` as its cache, outside the writable worktree.
-- `NPM_CONFIG_CACHE="$PWD/.npm-cache" npm install`
-  - Succeeded: 554 packages added, 555 audited.
-  - npm reported 12 dependency-tree vulnerabilities: 8 moderate, 3 high, 1 critical.
-  - The temporary local npm cache and npm-generated `package-lock.json` were removed afterward; this repository remains pnpm-lockfile managed.
-
-Required pre-change baseline:
-
-- `npm test`
-  - Passed: 131 tests, 0 failures, 0 skipped.
-
-Focused implementation verification:
+Focused fix verification:
 
 - `node --test --experimental-test-module-mocks --import tsx test/score-calibration.test.ts test/manifest.test.ts test/result-normalizer.test.ts test/search-fusion.test.ts`
-  - Passed: 65 tests, 0 failures.
+  - First fix iteration: 67 passed, 1 failed. The failure was an existing exact
+    score assertion that still included the removed `0.31` rank bonus.
+  - After correcting that expected contract value: 68 passed, 0 failed.
 
-Final verification after the packaging refactor:
+Required full verification:
 
 - `npm run build`
-  - Passed; tracked `dist/` artifacts rebuilt successfully.
+  - Passed; TypeScript build completed and tracked `dist/` artifacts were
+    rebuilt.
 - `npm test`
-  - Passed: 137 tests, 0 failures, 0 skipped.
+  - Passed: 139 tests, 0 failures, 0 skipped.
 - `npx tsc --noEmit`
   - Passed with exit code 0 and no diagnostics.
 - `pnpm run plugin:check`
@@ -71,16 +80,42 @@ Final verification after the packaging refactor:
 - `git diff --check`
   - Passed with no whitespace errors.
 
+Post-build packaged-code probes:
+
+- Fixed identity calibration returned `{ scores: [0.1], strategy: "fixed" }`
+  for a singleton and `{ scores: [0.1, 0.1], strategy: "fixed" }` for equal
+  native scores.
+- Four equal-score merged results ordered as Brave ranks 1 and 2, then Gemini
+  ranks 1 and 2, all at score `0.5`.
+- OpenClaw's `validateJsonSchemaValue` rejected fixed calibration without a
+  curve at `providerConfig.brave.scoreCalibration.curve`.
+
+Closeout review:
+
+- `codex review --uncommitted`
+  - Could not initialize. Exact error:
+    `failed to initialize in-process app-server client: Read-only file system
+    (os error 30)`.
+  - No clean Codex-review result is claimed.
+
 ## Known gaps and risks
 
-- Verification used synthetic provider distributions and the repository's mocked runtime. No paid or live provider calls were made, so empirical fixed-curve points still need to come from representative provider datasets.
-- Default minmax calibration is intentionally query/result-set relative; fixed curves are the option for stable provider-specific absolute calibration.
-- Provider weights are deliberately post-calibration. Values above `1` can move the weighted score above `[0,1]`, as documented.
-- The npm install audit reported 12 vulnerabilities in the installed dependency tree. Dependency remediation was outside this ranking feature and no dependency versions were changed.
-- Package/plugin versions remain `0.2.2`; a 0.3.x release/version/changelog update was not performed because the task requested the backlog feature implementation, not release publication.
+- No live or paid provider calls were made. Ranking behavior was verified with
+  deterministic synthetic distributions and the repository's mocked runtime.
+- Fixed-curve points still need to be derived from representative provider
+  datasets.
+- The dependency installation and pre-change baseline reported by the builder
+  were not re-run during this fix pass; dependencies were already present in
+  the worktree. This report makes no new claim about historical install output
+  or vulnerability counts.
+- The package/plugin version remains `0.2.2`; release versioning and publishing
+  are outside this task.
 
 ## Suggested follow-ups
 
-- Collect labeled score distributions from real providers and publish recommended fixed curves for providers whose native scores are stable enough to calibrate globally.
-- Add offline ranking-quality metrics such as NDCG or pairwise preference accuracy over captured provider fixtures.
-- Handle the version/changelog/publish step as a separate 0.3.x release task.
+- Collect labeled native-score distributions and publish recommended fixed
+  curves for providers with stable score semantics.
+- Add offline ranking-quality metrics such as NDCG or pairwise preference
+  accuracy over captured, redacted provider fixtures.
+- Run the Codex closeout review in an environment where its app-server state
+  directory is writable.

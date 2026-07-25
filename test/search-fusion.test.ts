@@ -1329,6 +1329,69 @@ test("runSearchFusion keeps fully tied calibrated results in stable provider ord
   ]);
 });
 
+test("runSearchFusion applies provider priority before original rank for calibrated ties", async () => {
+  const fixedTie = {
+    strategy: "fixed" as const,
+    curve: [
+      { input: 0, output: 0.5 },
+      { input: 1, output: 0.5 },
+    ],
+  };
+  const payload = await runSearchFusion({
+    runtime: createRuntime({
+      search: async ({ providerId }) => ({
+        provider: providerId ?? "brave",
+        result: {
+          results: [
+            {
+              title: `${providerId}-1`,
+              url: `https://example.com/${providerId}-1`,
+              score: 0,
+            },
+            {
+              title: `${providerId}-2`,
+              url: `https://example.com/${providerId}-2`,
+              score: 1,
+            },
+          ],
+        },
+      }),
+    }) as never,
+    config: {},
+    pluginConfig: {
+      sourceTierMode: "off",
+      providerConfig: {
+        brave: { scoreCalibration: fixedTie },
+        gemini: { scoreCalibration: fixedTie },
+      },
+    },
+    request: {
+      query: "provider priority before original rank",
+      providers: ["brave", "gemini"],
+    },
+  });
+
+  assert.deepEqual(
+    payload.results.map((result) => [
+      result.title,
+      result.ranking.tieBreakers.providerPriority,
+      result.bestRank,
+      result.score,
+    ]),
+    [
+      ["brave-1", 0, 1, 0.5],
+      ["brave-2", 0, 2, 0.5],
+      ["gemini-1", 1, 1, 0.5],
+      ["gemini-2", 1, 2, 0.5],
+    ],
+  );
+  assert.ok(
+    payload.results.every(
+      (result) => result.ranking.scoreBreakdown.bestRankBonus === 0,
+    ),
+  );
+});
+
 test("runSearchFusion rejects invalid fixed calibration before calling a provider", async () => {
   let searchCalls = 0;
   const payload = await runSearchFusion({
@@ -1853,7 +1916,7 @@ test("runSearchFusion honors request maxMergedResults without losing provider pa
   assert.equal(payload.ranking.dropped[0]?.canonicalUrl, "https://github.com/openclaw/openclaw");
   assert.equal(payload.ranking.dropped[0]?.bestRank, 2);
   assert.equal(payload.ranking.dropped[0]?.providerCount, 1);
-  assert.ok(Math.abs((payload.ranking.dropped[0]?.score ?? 0) - 0.32) < 0.0001);
+  assert.ok(Math.abs((payload.ranking.dropped[0]?.score ?? 0) - 0.01) < 0.0001);
   assert.deepEqual(
     payload.results.map((result) => result.ranking.rank),
     [1, 2],

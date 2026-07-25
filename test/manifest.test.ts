@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { validateJsonSchemaValue } from "openclaw/plugin-sdk/config-schema";
 
 const manifestPath = path.resolve(import.meta.dirname, "..", "openclaw.plugin.json");
 const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8")) as {
@@ -75,4 +76,49 @@ test("manifest exposes per-provider score calibration", () => {
   assert.deepEqual(curveItem?.required, ["input", "output"]);
   assert.equal(asObject(pointProperties?.output)?.minimum, 0);
   assert.equal(asObject(pointProperties?.output)?.maximum, 1);
+});
+
+test("manifest requires a curve when fixed calibration is selected", () => {
+  const schema = manifest.configSchema;
+  assert.ok(schema);
+
+  const fixedWithoutCurve = validateJsonSchemaValue({
+    schema: schema as never,
+    cacheKey: "search-fusion-manifest-score-calibration",
+    value: {
+      providerConfig: {
+        brave: {
+          scoreCalibration: {
+            strategy: "fixed",
+          },
+        },
+      },
+    },
+  });
+  const fixedWithCurve = validateJsonSchemaValue({
+    schema: schema as never,
+    cacheKey: "search-fusion-manifest-score-calibration",
+    value: {
+      providerConfig: {
+        brave: {
+          scoreCalibration: {
+            strategy: "fixed",
+            curve: [
+              { input: 0, output: 0 },
+              { input: 1, output: 1 },
+            ],
+          },
+        },
+      },
+    },
+  });
+
+  assert.equal(fixedWithoutCurve.ok, false);
+  if (!fixedWithoutCurve.ok) {
+    assert.match(
+      fixedWithoutCurve.errors.map((error) => error.text).join("\n"),
+      /scoreCalibration\.curve: must have required property 'curve'/,
+    );
+  }
+  assert.equal(fixedWithCurve.ok, true);
 });

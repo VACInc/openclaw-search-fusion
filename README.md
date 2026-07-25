@@ -162,7 +162,8 @@ Both include flags can be set in plugin config or overridden per `search_fusion`
 - No calibration config defaults to `minmax`, scaling that provider's native scores within the current result set to `[0,1]`.
 - `strategy: "rank"` ignores native score magnitude and uses `1 / rawRank`.
 - `strategy: "fixed"` uses a configured piecewise-linear `curve` of `{ "input", "output" }` points. Inputs must be strictly increasing, outputs must be non-decreasing within `[0,1]`, and at least two points are required. Values outside the curve use the nearest endpoint. Supplying `curve` without `strategy` also selects `fixed`.
-- A singleton set, equal native scores, or any missing, non-finite, or negative native score makes the complete provider set fall back to `1 / rawRank`. The set-wide fallback avoids mixing incomparable native and synthetic values.
+- With `minmax`, a singleton or equal native scores make the complete provider set fall back to `1 / rawRank`. A fixed curve remains absolute for singleton and equal-score sets.
+- With any strategy that needs native scores, a missing, non-finite, or negative native score makes the complete provider set fall back to `1 / rawRank`. The set-wide fallback avoids mixing incomparable native and synthetic values.
 
 Calibration happens before source-type/trust penalties and the optional provider weight. Clean result-style hits with the default weight retain their calibrated `[0,1]` score; an explicit weight above `1` can intentionally move the merge score above that interval. Native provider values remain available as `nativeScore`.
 
@@ -266,7 +267,7 @@ The structured payload retains `externalContent.untrusted: true` metadata for no
 
 Merged payloads include:
 
-- `results[].ranking` with the final rank, score breakdown (`bestVariantScore`, `corroborationBonus`, `bestRankBonus`, `tierAdjustment`, `flagPenalty`, `finalScore`), and tie-breaker values.
+- `results[].ranking` with the final rank, score breakdown (`bestVariantScore`, `corroborationBonus`, `bestRankBonus`, `tierAdjustment`, `flagPenalty`, `finalScore`), and tie-breaker values. `bestRankBonus` is retained as a compatibility field with value `0`; original rank is applied only as the explicit final tie-breaker.
 - top-level `ranking` metadata with the strategy, sort order, considered/returned counts, and `dropped[]` entries (with `reason: "maxMergedResults"`) for results trimmed by the output cap.
 
 Final ordering is deterministic: descending score, selected-provider priority, then original provider rank. Results still tied on all three keys retain their insertion order. The selected `providers`/mode order therefore acts as the provider-priority order and is exposed in `ranking.tieBreakers`.
