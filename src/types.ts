@@ -23,11 +23,35 @@ export type SearchFusionRetryConfig = {
   maxBackoffMs?: number;
 };
 
+export type ScoreCalibrationStrategy = "minmax" | "rank" | "fixed";
+
+export type ScoreCalibrationPoint = {
+  input: number;
+  output: number;
+};
+
+export type SearchFusionScoreCalibrationConfig = {
+  /**
+   * `minmax` scales the provider's native scores within each result set,
+   * `rank` uses `1 / rawRank`, and `fixed` applies `curve`.
+   *
+   * Defaults to `minmax`, or `fixed` when a curve is supplied without an
+   * explicit strategy.
+   */
+  strategy?: ScoreCalibrationStrategy;
+  /**
+   * Piecewise-linear native-score mapping for the `fixed` strategy. Inputs
+   * must be strictly increasing and outputs must be non-decreasing in [0, 1].
+   */
+  curve?: ScoreCalibrationPoint[];
+};
+
 export type SearchFusionProviderConfig = {
   retry?: SearchFusionRetryConfig;
   timeoutMs?: number;
   count?: number;
   weight?: number;
+  scoreCalibration?: SearchFusionScoreCalibrationConfig;
 };
 
 export type SourceTierMode = "off" | "balanced" | "strict";
@@ -240,6 +264,8 @@ export type FusionRankingExplanation = {
   rank: number;
   scoreBreakdown: FusionScoreBreakdown;
   tieBreakers: {
+    providerPriority?: number;
+    priorityProvider?: string;
     bestSourceTier: SearchResultSourceTier;
     bestRank: number;
     providerCount: number;

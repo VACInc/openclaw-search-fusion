@@ -1034,7 +1034,11 @@ test("runSearchFusion includes empty ranking metadata when no providers are avai
 
   assert.equal(payload.results.length, 0);
   assert.equal(payload.ranking.strategy, "merged-score-v1");
-  assert.deepEqual(payload.ranking.sortOrder, ["score:desc", "bestSourceTier:desc", "bestRank:asc", "providerCount:desc", "title:asc"]);
+  assert.deepEqual(payload.ranking.sortOrder, [
+    "score:desc",
+    "providerPriority:asc",
+    "bestRank:asc",
+  ]);
   assert.equal(payload.ranking.consideredCount, 0);
   assert.equal(payload.ranking.returnedCount, 0);
   assert.equal(payload.ranking.droppedCount, 0);
@@ -1206,6 +1210,163 @@ test("runSearchFusion ranks clean result-style hits ahead of sponsored noise", a
   assert.equal(payload.results[0]?.bestSourceTier, "high");
   assert.deepEqual(payload.results[1]?.flags, ["sponsored"]);
   assert.equal(payload.results[1]?.bestSourceTier, "suppressed");
+});
+
+test("runSearchFusion default calibration removes cross-provider score-scale bias", async () => {
+  const cases = [
+    {
+      name: "probability scores versus percentages",
+      preferredScores: [0.9, 0.2],
+      inflatedScores: [95, 20],
+    },
+    {
+      name: "small confidence values versus large retrieval scores",
+      preferredScores: [0.08, 0.01],
+      inflatedScores: [800, 100],
+    },
+  ];
+
+  for (const row of cases) {
+    const payload = await runSearchFusion({
+      runtime: createRuntime({
+        search: async ({ providerId }) => {
+          const scores =
+            providerId === "brave" ? row.preferredScores : row.inflatedScores;
+          return {
+            provider: providerId ?? "brave",
+            result: {
+              results: scores.map((score, index) => ({
+                title: `${providerId} result ${index + 1}`,
+                url: `https://example.com/${providerId}/${index + 1}`,
+                score,
+              })),
+            },
+          };
+        },
+      }) as never,
+      config: {},
+      pluginConfig: {},
+      request: {
+        query: row.name,
+        providers: ["brave", "gemini"],
+      },
+    });
+
+    const naiveTopProvider =
+      Math.max(...row.inflatedScores) > Math.max(...row.preferredScores)
+        ? "gemini"
+        : "brave";
+    const braveRun = payload.providerRuns.find((run) => run.provider === "brave");
+    const geminiRun = payload.providerRuns.find((run) => run.provider === "gemini");
+
+    assert.equal(naiveTopProvider, "gemini", row.name);
+    assert.deepEqual(braveRun?.results.map((result) => result.score), [1, 0], row.name);
+    assert.deepEqual(geminiRun?.results.map((result) => result.score), [1, 0], row.name);
+    assert.equal(payload.results[0]?.providers[0], "brave", row.name);
+    assert.equal(payload.results[0]?.ranking.tieBreakers.providerPriority, 0, row.name);
+    assert.equal(payload.results[0]?.ranking.tieBreakers.priorityProvider, "brave", row.name);
+  }
+});
+
+test("runSearchFusion keeps fully tied calibrated results in stable provider order", async () => {
+  const payload = await runSearchFusion({
+    runtime: createRuntime({
+      search: async ({ providerId }) => ({
+        provider: providerId ?? "brave",
+        result: {
+          results: [
+            {
+              title: "Zulu inserted first",
+              url: "https://example.com/first",
+              score: 0,
+            },
+          ],
+          web: {
+            results: [
+              {
+                title: "Alpha inserted second",
+                url: "https://example.com/second",
+                score: 1,
+              },
+            ],
+          },
+        },
+      }),
+    }) as never,
+    config: {},
+    pluginConfig: {
+      sourceTierMode: "off",
+      providerConfig: {
+        brave: {
+          scoreCalibration: {
+            strategy: "fixed",
+            curve: [
+              { input: 0, output: 0.5 },
+              { input: 1, output: 0.5 },
+            ],
+          },
+        },
+      },
+    },
+    request: {
+      query: "stable calibrated tie",
+      providers: ["brave"],
+    },
+  });
+
+  assert.deepEqual(
+    payload.providerRuns[0]?.results.map((result) => result.score),
+    [0.5, 0.5],
+  );
+  assert.deepEqual(
+    payload.results.map((result) => result.title),
+    ["Zulu inserted first", "Alpha inserted second"],
+  );
+  assert.deepEqual(payload.ranking.sortOrder, [
+    "score:desc",
+    "providerPriority:asc",
+    "bestRank:asc",
+  ]);
+});
+
+test("runSearchFusion rejects invalid fixed calibration before calling a provider", async () => {
+  let searchCalls = 0;
+  const payload = await runSearchFusion({
+    runtime: createRuntime({
+      search: async ({ providerId }) => {
+        searchCalls += 1;
+        return {
+          provider: providerId ?? "brave",
+          result: {
+            results: [{ title: "Unexpected", url: "https://example.com/unexpected" }],
+          },
+        };
+      },
+    }) as never,
+    config: {},
+    pluginConfig: {
+      retry: { maxAttempts: 5, backoffMs: 0 },
+      providerConfig: {
+        brave: {
+          scoreCalibration: {
+            strategy: "fixed",
+            curve: [
+              { input: 0, output: 1 },
+              { input: 1, output: 0 },
+            ],
+          },
+        },
+      },
+    },
+    request: {
+      query: "invalid fixed curve",
+      providers: ["brave"],
+    },
+  });
+
+  assert.equal(searchCalls, 0);
+  assert.equal(payload.providerRuns[0]?.attempts, 1);
+  assert.match(payload.providersFailed[0]?.error ?? "", /non-decreasing/);
 });
 
 test("runSearchFusion treats keyless providers like DuckDuckGo as configured", async () => {
@@ -1427,8 +1588,8 @@ test("runSearchFusion applies provider weight multipliers to ranking scores", as
   const braveRun = payload.providerRuns.find((run) => run.provider === "brave");
   const geminiRun = payload.providerRuns.find((run) => run.provider === "gemini");
 
-  assert.equal(braveRun?.results[0]?.score, 0.54);
-  assert.equal(geminiRun?.results[0]?.score, 1.62);
+  assert.equal(braveRun?.results[0]?.score, 0.5);
+  assert.equal(geminiRun?.results[0]?.score, 1.5);
   assert.equal(payload.results[0]?.canonicalUrl, "https://example.com/zulu");
 });
 
@@ -1474,8 +1635,8 @@ test("runSearchFusion clamps provider weight overrides to a safe range", async (
     },
   });
 
-  assert.equal(highWeightPayload.providerRuns[0]?.results[0]?.score, 5.4);
-  assert.equal(lowWeightPayload.providerRuns[0]?.results[0]?.score, 0.108);
+  assert.equal(highWeightPayload.providerRuns[0]?.results[0]?.score, 5);
+  assert.equal(lowWeightPayload.providerRuns[0]?.results[0]?.score, 0.1);
 });
 
 test("runSearchFusion still honors legacy providerRetries overrides", async () => {
@@ -1677,7 +1838,11 @@ test("runSearchFusion honors request maxMergedResults without losing provider pa
   assert.ok(payload.providerRuns.every((run) => (run.ok ? Boolean(run.rawPayload) : true)));
 
   assert.equal(payload.ranking.strategy, "merged-score-v1");
-  assert.deepEqual(payload.ranking.sortOrder, ["score:desc", "bestSourceTier:desc", "bestRank:asc", "providerCount:desc", "title:asc"]);
+  assert.deepEqual(payload.ranking.sortOrder, [
+    "score:desc",
+    "providerPriority:asc",
+    "bestRank:asc",
+  ]);
   assert.equal(payload.ranking.consideredCount, 3);
   assert.equal(payload.ranking.returnedCount, 2);
   assert.equal(payload.ranking.droppedCount, 1);
@@ -1688,7 +1853,7 @@ test("runSearchFusion honors request maxMergedResults without losing provider pa
   assert.equal(payload.ranking.dropped[0]?.canonicalUrl, "https://github.com/openclaw/openclaw");
   assert.equal(payload.ranking.dropped[0]?.bestRank, 2);
   assert.equal(payload.ranking.dropped[0]?.providerCount, 1);
-  assert.ok(Math.abs((payload.ranking.dropped[0]?.score ?? 0) - 0.46808) < 0.0001);
+  assert.ok(Math.abs((payload.ranking.dropped[0]?.score ?? 0) - 0.32) < 0.0001);
   assert.deepEqual(
     payload.results.map((result) => result.ranking.rank),
     [1, 2],

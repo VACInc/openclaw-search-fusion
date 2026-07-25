@@ -1,7 +1,7 @@
 import { getRuntimeConfigSnapshot } from "openclaw/plugin-sdk/runtime-config-snapshot";
 import { discoverProviders, resolveSelectedProviders } from "./provider-discovery.js";
 import { KNOWN_PROVIDERS } from "./provider-catalog.js";
-import { normalizeProviderPayload } from "./result-normalizer.js";
+import { applySearchResultQuality, calibrateProviderScores, normalizeProviderPayload, validateScoreCalibrationConfig, } from "./result-normalizer.js";
 import { compareSourceTierDesc, coerceSourceTierMode, pickHigherSourceTier, sourceTierMergedAdjustment, } from "./source-tier.js";
 import { canonicalizeUrl } from "./text.js";
 const DEFAULT_COUNT_PER_PROVIDER = 5;
@@ -18,7 +18,11 @@ const MIN_PROVIDER_WEIGHT = 0.1;
 const MAX_PROVIDER_WEIGHT = 5;
 const SEARCH_FUSION_PROVIDER_ID = "search-fusion";
 const MERGED_RANKING_STRATEGY = "merged-score-v1";
-const MERGED_SORT_ORDER = ["score:desc", "bestRank:asc", "providerCount:desc", "title:asc"];
+const MERGED_SORT_ORDER = [
+    "score:desc",
+    "providerPriority:asc",
+    "bestRank:asc",
+];
 function isRecord(value) {
     return value !== null && typeof value === "object" && !Array.isArray(value);
 }
@@ -354,7 +358,7 @@ function roundScore(value) {
     return Math.round(value * 1_000_000) / 1_000_000;
 }
 function applyProviderWeight(score, weight) {
-    return Math.max(0.01, roundScore(score * weight));
+    return Math.max(0, roundScore(score * weight));
 }
 function resolveProviderConfig(config, providerId) {
     return config.providerConfig?.[providerId] ?? {};
@@ -382,6 +386,7 @@ function resolveRuntimeProviderConfig(request, config, providerId) {
         timeoutMs: clamp(providerConfig.timeoutMs ?? config.providerTimeoutMs ?? DEFAULT_PROVIDER_TIMEOUT_MS, 1000, 120000),
         retry: resolveRetryConfig(config, providerId),
         weight: clamp(providerConfig.weight ?? DEFAULT_PROVIDER_WEIGHT, MIN_PROVIDER_WEIGHT, MAX_PROVIDER_WEIGHT),
+        scoreCalibration: providerConfig.scoreCalibration,
     };
 }
 function buildProviderArgs(request, config, providerId) {
@@ -511,10 +516,8 @@ function mergedFlagPenalty(flags) {
         penalty += 0.02;
     return penalty;
 }
-function mergedSortOrder(sourceTierMode) {
-    return sourceTierMode === "off"
-        ? [...MERGED_SORT_ORDER]
-        : ["score:desc", "bestSourceTier:desc", "bestRank:asc", "providerCount:desc", "title:asc"];
+function mergedSortOrder() {
+    return [...MERGED_SORT_ORDER];
 }
 function computeMergedScoreBreakdown(entry, sourceTierMode) {
     const bestVariantScore = entry.variants.reduce((max, variant) => Math.max(max, variant.score), 0);
@@ -531,19 +534,15 @@ function computeMergedScoreBreakdown(entry, sourceTierMode) {
         finalScore: Math.max(0.01, bestVariantScore + corroborationBonus + bestRankBonus + tierAdjustment - flagPenalty),
     };
 }
-function compareMergedCandidates(a, b, sourceTierMode) {
+function compareMergedCandidates(a, b) {
     if (b.score !== a.score)
         return b.score - a.score;
-    if (sourceTierMode !== "off") {
-        const tierDelta = compareSourceTierDesc(a.bestSourceTier, b.bestSourceTier);
-        if (tierDelta !== 0)
-            return tierDelta;
+    if (a.providerPriority !== b.providerPriority) {
+        return a.providerPriority - b.providerPriority;
     }
     if (a.bestRank !== b.bestRank)
         return a.bestRank - b.bestRank;
-    if (b.providerCount !== a.providerCount)
-        return b.providerCount - a.providerCount;
-    return a.title.localeCompare(b.title);
+    return a.insertionIndex - b.insertionIndex;
 }
 function buildRankingExplanation(params) {
     return {
@@ -551,6 +550,8 @@ function buildRankingExplanation(params) {
         rank: params.rank,
         scoreBreakdown: params.scoreBreakdown,
         tieBreakers: {
+            providerPriority: params.providerPriority,
+            priorityProvider: params.priorityProvider,
             bestSourceTier: params.bestSourceTier,
             bestRank: params.bestRank,
             providerCount: params.providerCount,
@@ -558,19 +559,22 @@ function buildRankingExplanation(params) {
         },
     };
 }
-function emptyRankingMeta(sourceTierMode) {
+function emptyRankingMeta() {
     return {
         strategy: MERGED_RANKING_STRATEGY,
-        sortOrder: mergedSortOrder(sourceTierMode),
+        sortOrder: mergedSortOrder(),
         consideredCount: 0,
         returnedCount: 0,
         droppedCount: 0,
         dropped: [],
     };
 }
-function mergeResults(results, maxMergedResults, sourceTierMode) {
+function mergeResults(results, maxMergedResults, sourceTierMode, providerOrder = results.map((provider) => provider.providerId)) {
     const merged = new Map();
+    const providerPriorities = new Map(providerOrder.map((providerId, index) => [providerId, index]));
+    let insertionIndex = 0;
     for (const provider of results) {
+        const providerPriority = providerPriorities.get(provider.providerId) ?? Number.MAX_SAFE_INTEGER;
         for (const item of provider.results) {
             const existing = merged.get(item.canonicalUrl);
             if (!existing) {
@@ -598,7 +602,11 @@ function mergeResults(results, maxMergedResults, sourceTierMode) {
                         },
                     ],
                     variants: [item],
+                    providerPriority,
+                    priorityProvider: item.providerId,
+                    insertionIndex,
                 });
+                insertionIndex += 1;
                 continue;
             }
             existing.variants.push(item);
@@ -606,6 +614,10 @@ function mergeResults(results, maxMergedResults, sourceTierMode) {
                 existing.providers.push(item.providerId);
             }
             existing.providerCount = existing.providers.length;
+            if (providerPriority < existing.providerPriority) {
+                existing.providerPriority = providerPriority;
+                existing.priorityProvider = item.providerId;
+            }
             existing.bestRank = Math.min(existing.bestRank, item.rawRank);
             existing.bestSourceTier = pickHigherSourceTier(existing.bestSourceTier, item.sourceTier);
             existing.flags = mergeFlags(existing.flags, item.flags);
@@ -667,11 +679,12 @@ function mergeResults(results, maxMergedResults, sourceTierMode) {
             scoreBreakdown,
         };
     })
-        .sort((a, b) => compareMergedCandidates(a, b, sourceTierMode));
+        .sort(compareMergedCandidates);
     const mergedResults = rankedCandidates
         .slice(0, maxMergedResults)
         .map((entry, index) => {
-        const { scoreBreakdown, ...base } = entry;
+        const { scoreBreakdown, providerPriority, priorityProvider, insertionIndex: _insertionIndex, ...base } = entry;
+        void _insertionIndex;
         return {
             ...base,
             ranking: buildRankingExplanation({
@@ -680,6 +693,8 @@ function mergeResults(results, maxMergedResults, sourceTierMode) {
                 bestRank: base.bestRank,
                 bestSourceTier: base.bestSourceTier,
                 providerCount: base.providerCount,
+                providerPriority,
+                priorityProvider,
                 scoreBreakdown,
             }),
         };
@@ -697,10 +712,10 @@ function mergeResults(results, maxMergedResults, sourceTierMode) {
     return {
         results: mergedResults,
         ranking: rankedCandidates.length === 0
-            ? emptyRankingMeta(sourceTierMode)
+            ? emptyRankingMeta()
             : {
                 strategy: MERGED_RANKING_STRATEGY,
-                sortOrder: mergedSortOrder(sourceTierMode),
+                sortOrder: mergedSortOrder(),
                 consideredCount: rankedCandidates.length,
                 returnedCount: mergedResults.length,
                 droppedCount: dropped.length,
@@ -773,6 +788,7 @@ function buildEvidenceTable(results, answers) {
 async function runProvider(params) {
     const start = Date.now();
     const providerConfig = resolveRuntimeProviderConfig(params.request, params.brokerConfig, params.provider.id);
+    validateScoreCalibrationConfig(providerConfig.scoreCalibration);
     const retryPolicy = providerConfig.retry;
     const providerArgs = buildProviderArgs(params.request, params.brokerConfig, params.provider.id);
     const retryHistory = [];
@@ -829,9 +845,17 @@ async function runProvider(params) {
             if (normalized.error) {
                 throw new Error(normalized.error);
             }
-            const weightedResults = normalized.results.map((result) => ({
+            const calibrated = calibrateProviderScores(normalized.results, providerConfig.scoreCalibration);
+            const weightedResults = normalized.results.map((result, index) => ({
                 ...result,
-                score: applyProviderWeight(result.score, providerConfig.weight),
+                score: applyProviderWeight(applySearchResultQuality({
+                    relevanceScore: calibrated.scores[index] ?? 0,
+                    sourceType: result.sourceType,
+                    sourceTier: result.sourceTier,
+                    flags: result.flags,
+                    sourceTierMode: params.sourceTierMode,
+                    normalizeHighTier: true,
+                }), providerConfig.weight),
             }));
             return {
                 providerId: params.provider.id,
@@ -944,7 +968,7 @@ export async function runSearchFusion(params) {
             discardedResults: [],
             answers: [],
             results: [],
-            ranking: emptyRankingMeta(sourceTierMode),
+            ranking: emptyRankingMeta(),
             evidenceTable: buildEvidenceTable([], []),
             output,
             externalContent: {
@@ -1011,7 +1035,7 @@ export async function runSearchFusion(params) {
             error: rejection?.error ?? settled.reason,
         });
     });
-    const merged = mergeResults(providerRuns.filter((run) => run.ok), maxMergedResults, sourceTierMode);
+    const merged = mergeResults(providerRuns.filter((run) => run.ok), maxMergedResults, sourceTierMode, selectedProviders.map((provider) => provider.id));
     const mergedResults = merged.results;
     const internalDiscardedResults = providerRuns.flatMap((run) => run.discardedResults);
     const internalAnswers = providerRuns

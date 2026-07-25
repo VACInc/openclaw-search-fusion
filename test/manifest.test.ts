@@ -56,3 +56,23 @@ test("manifest exposes providerConfig weight overrides", () => {
   assert.equal(weightSchema?.minimum, 0.1);
   assert.equal(weightSchema?.maximum, 5);
 });
+
+test("manifest exposes per-provider score calibration", () => {
+  const schemaProperties = manifest.configSchema?.properties ?? {};
+  const providerConfig = asObject(schemaProperties.providerConfig);
+  const providerConfigEntry = asObject(providerConfig?.additionalProperties);
+  const providerProperties = asObject(providerConfigEntry?.properties);
+  const scoreCalibration = asObject(providerProperties?.scoreCalibration);
+  const calibrationProperties = asObject(scoreCalibration?.properties);
+  const strategy = asObject(calibrationProperties?.strategy);
+  const curve = asObject(calibrationProperties?.curve);
+  const curveItem = asObject(curve?.items);
+  const pointProperties = asObject(curveItem?.properties);
+
+  assert.equal(scoreCalibration?.additionalProperties, false);
+  assert.deepEqual(strategy?.enum, ["minmax", "rank", "fixed"]);
+  assert.equal(curve?.minItems, 2);
+  assert.deepEqual(curveItem?.required, ["input", "output"]);
+  assert.equal(asObject(pointProperties?.output)?.minimum, 0);
+  assert.equal(asObject(pointProperties?.output)?.maximum, 1);
+});
