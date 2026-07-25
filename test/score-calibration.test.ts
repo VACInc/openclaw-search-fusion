@@ -28,7 +28,7 @@ test("calibrateProviderScores handles strategies and degenerate score sets", () 
     scores: Array<number | undefined>;
     config?: Parameters<typeof calibrateProviderScores>[1];
     expectedScores: number[];
-    expectedStrategy: "minmax" | "rank" | "fixed";
+    expectedStrategy: "minmax" | "rank" | "fixed" | "none";
     expectedFallback?: string;
   }> = [
     {
@@ -36,6 +36,35 @@ test("calibrateProviderScores handles strategies and degenerate score sets", () 
       scores: [100, 60, 20],
       expectedScores: [1, 0.5, 0],
       expectedStrategy: "minmax",
+    },
+    {
+      name: "none passes native scores through uncalibrated",
+      scores: [0.9, 0.2, 0.5],
+      config: { strategy: "none" },
+      expectedScores: [0.9, 0.2, 0.5],
+      expectedStrategy: "none",
+    },
+    {
+      name: "none clamps native scores above one",
+      scores: [500, 0.4],
+      config: { strategy: "none" },
+      expectedScores: [1, 0.4],
+      expectedStrategy: "none",
+    },
+    {
+      name: "none keeps singleton and constant sets as-is",
+      scores: [0.7],
+      config: { strategy: "none" },
+      expectedScores: [0.7],
+      expectedStrategy: "none",
+    },
+    {
+      name: "none falls back to rank on missing scores",
+      scores: [0.9, undefined, 0.5],
+      config: { strategy: "none" },
+      expectedScores: [1, 0.5, 0.333333],
+      expectedStrategy: "rank",
+      expectedFallback: "missing-or-invalid-scores",
     },
     {
       name: "explicit rank ignores native scale",

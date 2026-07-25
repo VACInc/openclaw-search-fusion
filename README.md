@@ -162,6 +162,7 @@ Both include flags can be set in plugin config or overridden per `search_fusion`
 - No calibration config defaults to `minmax`, scaling that provider's native scores within the current result set to `[0,1]`.
 - `strategy: "rank"` ignores native score magnitude and uses `1 / rawRank`.
 - `strategy: "fixed"` uses a configured piecewise-linear `curve` of `{ "input", "output" }` points. Inputs must be strictly increasing, outputs must be non-decreasing within `[0,1]`, and at least two points are required. Values outside the curve use the nearest endpoint. Supplying `curve` without `strategy` also selects `fixed`.
+- `strategy: "none"` disables calibration for that provider: native scores pass through unchanged (clamped to `[0,1]`), matching pre-calibration behavior.
 - With `minmax`, a singleton or equal native scores make the complete provider set fall back to `1 / rawRank`. A fixed curve remains absolute for singleton and equal-score sets.
 - With any strategy that needs native scores, a missing, non-finite, or negative native score makes the complete provider set fall back to `1 / rawRank`. The set-wide fallback avoids mixing incomparable native and synthetic values.
 

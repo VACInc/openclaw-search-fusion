@@ -163,7 +163,7 @@ function resolveCalibrationStrategy(
   config: SearchFusionScoreCalibrationConfig | undefined,
 ): ScoreCalibrationStrategy {
   if (config?.strategy) {
-    if (!["minmax", "rank", "fixed"].includes(config.strategy)) {
+    if (!["minmax", "rank", "fixed", "none"].includes(config.strategy)) {
       throw new Error(`Unknown score calibration strategy: ${String(config.strategy)}`);
     }
     return config.strategy;
@@ -270,6 +270,13 @@ export function calibrateProviderScores(
   }
 
   const finiteScores = nativeScores as number[];
+  if (configuredStrategy === "none") {
+    return {
+      scores: finiteScores.map((score) => roundScore(Math.min(1, score))),
+      strategy: "none",
+    };
+  }
+
   if (configuredStrategy === "fixed") {
     return {
       scores: finiteScores.map((score) =>

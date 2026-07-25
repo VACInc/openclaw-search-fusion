@@ -23,7 +23,7 @@ export type SearchFusionRetryConfig = {
   maxBackoffMs?: number;
 };
 
-export type ScoreCalibrationStrategy = "minmax" | "rank" | "fixed";
+export type ScoreCalibrationStrategy = "minmax" | "rank" | "fixed" | "none";
 
 export type ScoreCalibrationPoint = {
   input: number;
@@ -33,7 +33,8 @@ export type ScoreCalibrationPoint = {
 export type SearchFusionScoreCalibrationConfig = {
   /**
    * `minmax` scales the provider's native scores within each result set,
-   * `rank` uses `1 / rawRank`, and `fixed` applies `curve`.
+   * `rank` uses `1 / rawRank`, `fixed` applies `curve`, and `none` passes
+   * native scores through uncalibrated (clamped to [0, 1]).
    *
    * Defaults to `minmax`, or `fixed` when a curve is supplied without an
    * explicit strategy.
