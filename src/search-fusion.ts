@@ -673,15 +673,140 @@ function parseNumericHeader(value: string): number | undefined {
   if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(normalized)) {
     return undefined;
   }
-  const parsed = Number(normalized);
-  return Number.isFinite(parsed) ? parsed : undefined;
+  return Number(normalized);
 }
 
 function clampRateLimitDelay(delayMs: number): number | undefined {
-  if (!Number.isFinite(delayMs)) {
+  if (Number.isNaN(delayMs)) {
     return undefined;
   }
+  if (delayMs <= 0) return 0;
+  if (delayMs >= MAX_RATE_LIMIT_WAIT_MS) return MAX_RATE_LIMIT_WAIT_MS;
   return clamp(Math.ceil(delayMs), 0, MAX_RATE_LIMIT_WAIT_MS);
+}
+
+const HTTP_DATE_SHORT_WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+const HTTP_DATE_LONG_WEEKDAYS = [
+  "Sunday",
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+] as const;
+const HTTP_DATE_MONTHS = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+] as const;
+
+function buildHttpDate(params: {
+  weekday: string;
+  day: string;
+  month: string;
+  year: number;
+  hour: string;
+  minute: string;
+  second: string;
+}): number | undefined {
+  const weekday = [...HTTP_DATE_SHORT_WEEKDAYS, ...HTTP_DATE_LONG_WEEKDAYS].indexOf(
+    params.weekday as (typeof HTTP_DATE_SHORT_WEEKDAYS)[number],
+  );
+  const weekdayIndex =
+    weekday >= HTTP_DATE_SHORT_WEEKDAYS.length ? weekday - HTTP_DATE_SHORT_WEEKDAYS.length : weekday;
+  const monthIndex = HTTP_DATE_MONTHS.indexOf(
+    params.month as (typeof HTTP_DATE_MONTHS)[number],
+  );
+  const day = Number(params.day);
+  const hour = Number(params.hour);
+  const minute = Number(params.minute);
+  const second = Number(params.second);
+  if (
+    weekdayIndex < 0 ||
+    monthIndex < 0 ||
+    day < 1 ||
+    day > 31 ||
+    hour > 23 ||
+    minute > 59 ||
+    second > 59
+  ) {
+    return undefined;
+  }
+
+  const dateMs = Date.UTC(params.year, monthIndex, day, hour, minute, second);
+  const date = new Date(dateMs);
+  if (
+    date.getUTCFullYear() !== params.year ||
+    date.getUTCMonth() !== monthIndex ||
+    date.getUTCDate() !== day ||
+    date.getUTCDay() !== weekdayIndex
+  ) {
+    return undefined;
+  }
+  return dateMs;
+}
+
+function parseHttpDate(value: string, nowMs: number): number | undefined {
+  const normalized = value.trim();
+  const imfFixdate =
+    /^(Sun|Mon|Tue|Wed|Thu|Fri|Sat), (\d{2}) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) (\d{4}) (\d{2}):(\d{2}):(\d{2}) GMT$/.exec(
+      normalized,
+    );
+  if (imfFixdate) {
+    return buildHttpDate({
+      weekday: imfFixdate[1],
+      day: imfFixdate[2],
+      month: imfFixdate[3],
+      year: Number(imfFixdate[4]),
+      hour: imfFixdate[5],
+      minute: imfFixdate[6],
+      second: imfFixdate[7],
+    });
+  }
+
+  const rfc850Date =
+    /^(Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday), (\d{2})-(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)-(\d{2}) (\d{2}):(\d{2}):(\d{2}) GMT$/.exec(
+      normalized,
+    );
+  if (rfc850Date) {
+    const currentYear = new Date(nowMs).getUTCFullYear();
+    let year = Math.floor(currentYear / 100) * 100 + Number(rfc850Date[4]);
+    if (year - currentYear > 50) year -= 100;
+    return buildHttpDate({
+      weekday: rfc850Date[1],
+      day: rfc850Date[2],
+      month: rfc850Date[3],
+      year,
+      hour: rfc850Date[5],
+      minute: rfc850Date[6],
+      second: rfc850Date[7],
+    });
+  }
+
+  const asctimeDate =
+    /^(Sun|Mon|Tue|Wed|Thu|Fri|Sat) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) ( \d|\d{2}) (\d{2}):(\d{2}):(\d{2}) (\d{4})$/.exec(
+      normalized,
+    );
+  if (!asctimeDate) return undefined;
+  return buildHttpDate({
+    weekday: asctimeDate[1],
+    day: asctimeDate[3].trim(),
+    month: asctimeDate[2],
+    year: Number(asctimeDate[7]),
+    hour: asctimeDate[4],
+    minute: asctimeDate[5],
+    second: asctimeDate[6],
+  });
 }
 
 function parseRetryAfter(value: string, nowMs: number): number | undefined {
@@ -690,15 +815,15 @@ function parseRetryAfter(value: string, nowMs: number): number | undefined {
     return clampRateLimitDelay(deltaSeconds * 1000);
   }
 
-  const dateMs = Date.parse(value);
-  return Number.isFinite(dateMs) ? clampRateLimitDelay(dateMs - nowMs) : undefined;
+  const dateMs = parseHttpDate(value, nowMs);
+  return dateMs === undefined ? undefined : clampRateLimitDelay(dateMs - nowMs);
 }
 
 function parseResetSeconds(value: string, nowMs: number): number | undefined {
   const numeric = parseNumericHeader(value);
   if (numeric === undefined) {
-    const dateMs = Date.parse(value);
-    return Number.isFinite(dateMs) ? clampRateLimitDelay(dateMs - nowMs) : undefined;
+    const dateMs = parseHttpDate(value, nowMs);
+    return dateMs === undefined ? undefined : clampRateLimitDelay(dateMs - nowMs);
   }
   if (numeric >= 1_000_000_000_000) {
     return clampRateLimitDelay(numeric - nowMs);
@@ -897,17 +1022,21 @@ function resolveRetryTiming(
 ): {
   delayMs: number;
   rateLimited: boolean;
+  overridesMessageHeuristics: boolean;
   source?: string;
 } {
   const configured = computeBackoffDelay(policy, attempt);
   const { status, header } = extractRateLimitHeader(error, nowMs);
   const explicitRateLimit = status === 429 || /429|rate limit/i.test(errorMessage);
   const rateLimited = explicitRateLimit || (status === 503 && header.hadHeader);
+  const overridesMessageHeuristics =
+    explicitRateLimit || (status === 503 && header.delayMs !== undefined);
 
   if (header.delayMs !== undefined) {
     return {
       delayMs: Math.max(configured, header.delayMs),
       rateLimited,
+      overridesMessageHeuristics,
       source: header.source,
     };
   }
@@ -917,6 +1046,7 @@ function resolveRetryTiming(
       ? Math.max(DEFAULT_RATE_LIMIT_BACKOFF_MS, configured)
       : configured,
     rateLimited,
+    overridesMessageHeuristics,
   };
 }
 
@@ -1376,12 +1506,6 @@ async function runProvider(params: {
         params.signal.reason instanceof DeadlineExceededError ||
         Date.now() >= params.deadlineAt;
       lastError = deadlineExceeded ? "deadline exceeded" : asErrorMessage(error);
-      const canRetry =
-        !params.signal.aborted &&
-        !deadlineExceeded &&
-        attempt < retryPolicy.maxAttempts &&
-        shouldRetry(error, lastError);
-
       const retryStartedAt = Date.now();
       const retryTiming = resolveRetryTiming(
         retryPolicy,
@@ -1390,6 +1514,11 @@ async function runProvider(params: {
         lastError,
         retryStartedAt,
       );
+      const canRetry =
+        !params.signal.aborted &&
+        !deadlineExceeded &&
+        attempt < retryPolicy.maxAttempts &&
+        (retryTiming.overridesMessageHeuristics || shouldRetry(error, lastError));
       if (retryTiming.rateLimited && retryTiming.delayMs > 0) {
         const nextCooldown: ProviderCooldown = {
           untilMs: retryStartedAt + retryTiming.delayMs,
