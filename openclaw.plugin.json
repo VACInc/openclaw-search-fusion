@@ -139,6 +139,26 @@
         "maximum": 5000,
         "description": "Maximum model-visible length for snippets and provider answers. Defaults to 500; truncated fields are marked."
       },
+      "fuzzyDedupe": {
+        "type": "boolean",
+        "description": "Enable conservative fuzzy URL and same-host normalized-title deduplication. Defaults to true; false retains exact canonical-URL merging only."
+      },
+      "trackingParams": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": "Tracking parameter names or prefix patterns ending in * to add to, or replace, the default fuzzy-dedupe tracking list."
+      },
+      "trackingParamMode": {
+        "type": "string",
+        "enum": [
+          "extend",
+          "override"
+        ],
+        "description": "Whether trackingParams extends the safe default list (default) or replaces it entirely."
+      },
       "retry": {
         "type": "object",
         "additionalProperties": false,
@@ -200,6 +220,67 @@
               "minimum": 0.1,
               "maximum": 5,
               "description": "Ranking score multiplier for this provider. 1 is neutral, higher values trust this provider more, and lower values down-weight it."
+            },
+            "scoreCalibration": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "Native relevance-score calibration for this provider. Defaults to minmax within each result set. Minmax uses 1/rawRank for constant or singleton sets, and every strategy uses that fallback for missing or invalid scores.",
+              "allOf": [
+                {
+                  "if": {
+                    "properties": {
+                      "strategy": {
+                        "const": "fixed"
+                      }
+                    },
+                    "required": [
+                      "strategy"
+                    ]
+                  },
+                  "then": {
+                    "required": [
+                      "curve"
+                    ]
+                  }
+                }
+              ],
+              "properties": {
+                "strategy": {
+                  "type": "string",
+                  "enum": [
+                    "minmax",
+                    "rank",
+                    "fixed",
+                    "none"
+                  ],
+                  "description": "minmax scales this result set to [0,1], rank uses 1/rawRank, fixed applies the configured piecewise-linear curve, and none passes native scores through clamped to [0,1]."
+                },
+                "curve": {
+                  "type": "array",
+                  "minItems": 2,
+                  "description": "Fixed calibration points. Inputs must be strictly increasing; outputs must be non-decreasing from 0 to 1. Values between points are linearly interpolated and values outside the curve use the nearest endpoint.",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "input",
+                      "output"
+                    ],
+                    "properties": {
+                      "input": {
+                        "type": "number",
+                        "description": "Native provider score."
+                      },
+                      "output": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 1,
+                        "description": "Calibrated score."
+                      }
+                    }
+                  }
+                }
+              }
             },
             "retry": {
               "type": "object",

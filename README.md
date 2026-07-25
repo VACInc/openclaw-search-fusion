@@ -99,13 +99,24 @@ Optional plugin config:
             "gemini": {
               "timeoutMs": 60000,
               "weight": 1.3,
+              "scoreCalibration": {
+                "strategy": "fixed",
+                "curve": [
+                  { "input": 0, "output": 0 },
+                  { "input": 0.5, "output": 0.4 },
+                  { "input": 1, "output": 1 }
+                ]
+              },
               "retry": {
                 "maxAttempts": 4,
                 "backoffMs": 1500
               }
             },
             "duckduckgo": {
-              "weight": 0.8
+              "weight": 0.8,
+              "scoreCalibration": {
+                "strategy": "rank"
+              }
             }
           }
         }
@@ -132,7 +143,7 @@ Resolution order:
 - configured `defaultProviders` (backward compatibility)
 - otherwise all configured providers
 
-`providerConfig.<id>` is the canonical place for per-provider overrides like `maxResults`, `retry`, `timeoutMs`, and `weight`. The older `count` field remains supported as a default count when a request does not pass one.
+`providerConfig.<id>` is the canonical place for per-provider overrides like `maxResults`, `retry`, `timeoutMs`, `weight`, and `scoreCalibration`. The older `count` field remains supported as a default count when a request does not pass one.
 
 ### Provider result counts
 
@@ -175,6 +186,29 @@ Both include flags can be set in plugin config or overridden per `search_fusion`
 `excludeProviders` applies to automatic intent/default fallback selection. Explicit `providers` and explicit custom modes can deliberately select an excluded provider.
 
 `providerConfig.<id>.weight` is a ranking multiplier (default `1`, range `0.1` to `5`). Higher values boost trusted providers, lower values down-weight noisier ones.
+
+`providerConfig.<id>.scoreCalibration` makes heterogeneous provider scores comparable before fusion:
+
+- No calibration config defaults to `minmax`, scaling that provider's native scores within the current result set to `[0,1]`.
+- `strategy: "rank"` ignores native score magnitude and uses `1 / rawRank`.
+- `strategy: "fixed"` uses a configured piecewise-linear `curve` of `{ "input", "output" }` points. Inputs must be strictly increasing, outputs must be non-decreasing within `[0,1]`, and at least two points are required. Values outside the curve use the nearest endpoint. Supplying `curve` without `strategy` also selects `fixed`.
+- `strategy: "none"` disables calibration for that provider: native scores pass through unchanged (clamped to `[0,1]`), matching pre-calibration behavior.
+- With `minmax`, a singleton or equal native scores make the complete provider set fall back to `1 / rawRank`. A fixed curve remains absolute for singleton and equal-score sets.
+- With any strategy that needs native scores, a missing, non-finite, or negative native score makes the complete provider set fall back to `1 / rawRank`. The set-wide fallback avoids mixing incomparable native and synthetic values.
+
+Calibration happens before source-type/trust penalties and the optional provider weight. Clean result-style hits with the default weight retain their calibrated `[0,1]` score; an explicit weight above `1` can intentionally move the merge score above that interval. Native provider values remain available as `nativeScore`.
+
+Fuzzy dedupe is a fusion feature controlled by `fuzzyDedupe`: it activates by default only when more than one provider contributes results, so single-provider searches return that provider's result set untouched (legacy exact canonical-URL merge only). Set `fuzzyDedupe` to `true` to force it for single-provider runs, or `false` to disable it everywhere. When active, it folds HTTP into HTTPS, default ports, `www.`/`m.`/`amp.` host variants, terminal `/amp` paths, fragments, trailing slashes, and known tracking parameters. Meaningful query parameters remain part of URL identity. Normalized-title equality is used only for results on the same canonical host with the same remaining query, so equal titles never merge across sites or across conflicting query values.
+
+The default tracking list is `utm_*`, `fbclid`, `gclid`, `ref`, `mc_cid`, `mc_eid`, and `igshid`. Add site-specific names with `trackingParams`; its default `trackingParamMode` is `extend`. Set the mode to `override` to replace the defaults entirely. The active policy is also applied before result and answer-citation normalization, so a parameter omitted by an override remains present in navigation URLs and is attributed to the correct evidence row. Set `fuzzyDedupe` to `false` to retain only the legacy exact canonical-URL merge.
+
+```json
+{
+  "fuzzyDedupe": true,
+  "trackingParams": ["campaign_id", "pk_*"],
+  "trackingParamMode": "extend"
+}
+```
 
 `sourceTierMode` controls deterministic trust-tier downranking:
 
@@ -276,8 +310,10 @@ The structured payload retains `externalContent.untrusted: true` metadata for no
 
 Merged payloads include:
 
-- `results[].ranking` with the final rank, score breakdown (`bestVariantScore`, `corroborationBonus`, `bestRankBonus`, `tierAdjustment`, `flagPenalty`, `finalScore`), and tie-breaker values.
+- `results[].ranking` with the final rank, score breakdown (`bestVariantScore`, `corroborationBonus`, `bestRankBonus`, `tierAdjustment`, `flagPenalty`, `finalScore`), and tie-breaker values. `bestRankBonus` is retained as a compatibility field with value `0`; original rank is applied only as the explicit final tie-breaker.
 - top-level `ranking` metadata with the strategy, sort order, considered/returned counts, and `dropped[]` entries (with `reason: "maxMergedResults"`) for results trimmed by the output cap.
+
+Final ordering is deterministic: descending score, selected-provider priority, then original provider rank. Results still tied on all three keys retain their insertion order. The selected `providers`/mode order therefore acts as the provider-priority order and is exposed in `ranking.tieBreakers`.
 
 ### `search_fusion_providers`
 
@@ -334,7 +370,7 @@ Search Fusion emits a table-ready structure for downstream consumers like Atlas.
 - `columns[]` provides stable column metadata (`key`, `label`, `description`)
 - `rows[]` has one row per merged URL (`rowId` is the canonical URL)
 - `rows[].answerCitationSupport` tracks citation count and citing providers from answer-style runs
-- `rows[].providerEvidence[]` keeps provider-level rank, score, source type, flags, and snippets for drill-down cells
+- `rows[].providerEvidence[]` keeps provider-level rank, calibrated/weighted score, native score when supplied, source type, flags, and snippets for drill-down cells
 
 Example flattening transform:
 
@@ -369,8 +405,9 @@ pnpm test
 - prefers a paid sibling only when it is configured; otherwise keeps the keyless sibling
 - reports native providers whose plugins are disabled/not enabled, with plugin ids and boolean-only credential detection hints
 - excludes itself to avoid recursion
-- dedupes by canonical URL
+- dedupes fuzzy URL variants by default, with same-host normalized titles as a guarded secondary signal
 - retries transient provider failures with global defaults and per-provider overrides via `providerConfig.<id>.retry`
+- calibrates each provider's relevance scores with default minmax normalization, rank fallback for degenerate score sets, and optional fixed curves
 - supports deterministic provider weighting via `providerConfig.<id>.weight` to bias ranking by provider trust/value
 - isolates unexpected provider pipeline crashes so one provider cannot abort the whole fusion run
 - omits raw provider payloads and discarded items by default; exposes them through explicit output flags

@@ -6,6 +6,7 @@ import type {
   FusionRankingMeta,
   FusionScoreBreakdown,
   FusionSearchPayload,
+  NormalizedSearchResult,
   ProviderAnswerDigest,
   ProviderRunResult,
   ProviderSelectionRequest,
@@ -20,14 +21,25 @@ import type {
 } from "./types.js";
 import { discoverProviders, resolveSelectedProviders } from "./provider-discovery.js";
 import { KNOWN_PROVIDERS } from "./provider-catalog.js";
-import { normalizeProviderPayload } from "./result-normalizer.js";
+import {
+  applySearchResultQuality,
+  calibrateProviderScores,
+  normalizeProviderPayload,
+  validateScoreCalibrationConfig,
+} from "./result-normalizer.js";
 import {
   compareSourceTierDesc,
   coerceSourceTierMode,
   pickHigherSourceTier,
   sourceTierMergedAdjustment,
 } from "./source-tier.js";
-import { canonicalizeUrl } from "./text.js";
+import {
+  analyzeFuzzyUrl,
+  canonicalizeUrl,
+  normalizeTitle,
+  type FuzzyUrlAnalysis,
+  type FuzzyUrlOptions,
+} from "./text.js";
 
 const DEFAULT_UNKNOWN_PROVIDER_COUNT = 5;
 const DEFAULT_GENERIC_PROVIDER_MAX_RESULTS = 10;
@@ -39,12 +51,18 @@ const DEFAULT_RETRY_MAX_ATTEMPTS = 3;
 const DEFAULT_RETRY_BACKOFF_MS = 750;
 const DEFAULT_RETRY_BACKOFF_MULTIPLIER = 2;
 const DEFAULT_RETRY_MAX_BACKOFF_MS = 5000;
+const DEFAULT_RATE_LIMIT_BACKOFF_MS = 2000;
+const MAX_RATE_LIMIT_WAIT_MS = 60 * 60 * 1000;
 const DEFAULT_PROVIDER_WEIGHT = 1;
 const MIN_PROVIDER_WEIGHT = 0.1;
 const MAX_PROVIDER_WEIGHT = 5;
 const SEARCH_FUSION_PROVIDER_ID = "search-fusion";
 const MERGED_RANKING_STRATEGY = "merged-score-v1" as const;
-const MERGED_SORT_ORDER = ["score:desc", "bestRank:asc", "providerCount:desc", "title:asc"] as const;
+const MERGED_SORT_ORDER = [
+  "score:desc",
+  "providerPriority:asc",
+  "bestRank:asc",
+] as const;
 
 type ProviderResultCountContract = {
   maxResults: number;
@@ -453,6 +471,12 @@ type ResolvedProviderConfig = {
   timeoutMs: number;
   retry: ResolvedRetryConfig;
   weight: number;
+  scoreCalibration: SearchFusionProviderConfig["scoreCalibration"];
+};
+
+type ProviderCooldown = {
+  untilMs: number;
+  source: string;
 };
 
 class DeadlineExceededError extends Error {
@@ -542,6 +566,14 @@ function asConfig(pluginConfig: unknown): SearchFusionConfig {
     : {};
 }
 
+function resolveMergeDedupeOptions(config: SearchFusionConfig): MergeDedupeOptions {
+  return {
+    enabled: config.fuzzyDedupe !== false,
+    trackingParams: config.trackingParams,
+    trackingParamMode: config.trackingParamMode,
+  };
+}
+
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
@@ -570,7 +602,7 @@ function roundScore(value: number): number {
 }
 
 function applyProviderWeight(score: number, weight: number): number {
-  return Math.max(0.01, roundScore(score * weight));
+  return Math.max(0, roundScore(score * weight));
 }
 
 function resolveProviderConfig(
@@ -628,6 +660,7 @@ function resolveRuntimeProviderConfig(
     ),
     retry: resolveRetryConfig(config, providerId),
     weight: clamp(providerConfig.weight ?? DEFAULT_PROVIDER_WEIGHT, MIN_PROVIDER_WEIGHT, MAX_PROVIDER_WEIGHT),
+    scoreCalibration: providerConfig.scoreCalibration,
   };
 }
 
@@ -703,6 +736,366 @@ function asErrorMessage(error: unknown): string {
   return "Unknown error";
 }
 
+function asHttpStatus(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isInteger(value)) {
+    return value;
+  }
+  if (typeof value === "string" && /^\d{3}$/.test(value.trim())) {
+    return Number(value);
+  }
+  return undefined;
+}
+
+function extractHttpFailureDetails(error: unknown): {
+  status?: number;
+  headers: unknown[];
+} {
+  const queue: unknown[] = [error];
+  const visited = new Set<object>();
+  const headers: unknown[] = [];
+  let status: number | undefined;
+
+  while (queue.length > 0 && visited.size < 12) {
+    const candidate = queue.shift();
+    if (!candidate || typeof candidate !== "object" || visited.has(candidate)) {
+      continue;
+    }
+    visited.add(candidate);
+
+    const record = candidate as Record<string, unknown>;
+    status ??=
+      asHttpStatus(record.status) ??
+      asHttpStatus(record.statusCode) ??
+      asHttpStatus(record.httpStatus);
+    if (record.headers !== undefined) {
+      headers.push(record.headers);
+    }
+    for (const key of ["response", "cause", "error"]) {
+      if (record[key] && typeof record[key] === "object") {
+        queue.push(record[key]);
+      }
+    }
+  }
+
+  if (status === undefined) {
+    const match = asErrorMessage(error).match(/(?:^|\D)(429|503)(?:\D|$)/);
+    status = match ? Number(match[1]) : undefined;
+  }
+
+  return { status, headers };
+}
+
+function asHeaderStrings(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.flatMap((entry) => asHeaderStrings(entry));
+  }
+  if (typeof value === "string" || typeof value === "number") {
+    return [String(value).trim()].filter(Boolean);
+  }
+  return [];
+}
+
+function readHeaderValues(headers: unknown, name: string): string[] {
+  if (!headers || typeof headers !== "object") {
+    return [];
+  }
+
+  const values: string[] = [];
+  const getter = (headers as { get?: unknown }).get;
+  if (typeof getter === "function") {
+    try {
+      values.push(...asHeaderStrings(getter.call(headers, name)));
+    } catch {
+      // Fall through to plain-object lookup.
+    }
+  }
+
+  const plainHeaders = headers as Record<string, unknown>;
+  for (const [key, value] of Object.entries(plainHeaders)) {
+    if (key.toLowerCase() === name) {
+      values.push(...asHeaderStrings(value));
+    }
+  }
+
+  return [...new Set(values)];
+}
+
+function parseNumericHeader(value: string): number | undefined {
+  const normalized = value.trim();
+  if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(normalized)) {
+    return undefined;
+  }
+  return Number(normalized);
+}
+
+function clampRateLimitDelay(delayMs: number): number | undefined {
+  if (Number.isNaN(delayMs)) {
+    return undefined;
+  }
+  if (delayMs <= 0) return 0;
+  if (delayMs >= MAX_RATE_LIMIT_WAIT_MS) return MAX_RATE_LIMIT_WAIT_MS;
+  return clamp(Math.ceil(delayMs), 0, MAX_RATE_LIMIT_WAIT_MS);
+}
+
+const HTTP_DATE_SHORT_WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+const HTTP_DATE_LONG_WEEKDAYS = [
+  "Sunday",
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+] as const;
+const HTTP_DATE_MONTHS = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+] as const;
+
+function buildHttpDate(params: {
+  weekday: string;
+  day: string;
+  month: string;
+  year: number;
+  hour: string;
+  minute: string;
+  second: string;
+}): number | undefined {
+  const weekday = [...HTTP_DATE_SHORT_WEEKDAYS, ...HTTP_DATE_LONG_WEEKDAYS].indexOf(
+    params.weekday as (typeof HTTP_DATE_SHORT_WEEKDAYS)[number],
+  );
+  const weekdayIndex =
+    weekday >= HTTP_DATE_SHORT_WEEKDAYS.length ? weekday - HTTP_DATE_SHORT_WEEKDAYS.length : weekday;
+  const monthIndex = HTTP_DATE_MONTHS.indexOf(
+    params.month as (typeof HTTP_DATE_MONTHS)[number],
+  );
+  const day = Number(params.day);
+  const hour = Number(params.hour);
+  const minute = Number(params.minute);
+  const second = Number(params.second);
+  if (
+    weekdayIndex < 0 ||
+    monthIndex < 0 ||
+    day < 1 ||
+    day > 31 ||
+    hour > 23 ||
+    minute > 59 ||
+    second > 59
+  ) {
+    return undefined;
+  }
+
+  const dateMs = Date.UTC(params.year, monthIndex, day, hour, minute, second);
+  const date = new Date(dateMs);
+  if (
+    date.getUTCFullYear() !== params.year ||
+    date.getUTCMonth() !== monthIndex ||
+    date.getUTCDate() !== day ||
+    date.getUTCDay() !== weekdayIndex
+  ) {
+    return undefined;
+  }
+  return dateMs;
+}
+
+function parseHttpDate(value: string, nowMs: number): number | undefined {
+  const normalized = value.trim();
+  const imfFixdate =
+    /^(Sun|Mon|Tue|Wed|Thu|Fri|Sat), (\d{2}) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) (\d{4}) (\d{2}):(\d{2}):(\d{2}) GMT$/.exec(
+      normalized,
+    );
+  if (imfFixdate) {
+    return buildHttpDate({
+      weekday: imfFixdate[1],
+      day: imfFixdate[2],
+      month: imfFixdate[3],
+      year: Number(imfFixdate[4]),
+      hour: imfFixdate[5],
+      minute: imfFixdate[6],
+      second: imfFixdate[7],
+    });
+  }
+
+  const rfc850Date =
+    /^(Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday), (\d{2})-(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)-(\d{2}) (\d{2}):(\d{2}):(\d{2}) GMT$/.exec(
+      normalized,
+    );
+  if (rfc850Date) {
+    const currentYear = new Date(nowMs).getUTCFullYear();
+    let year = Math.floor(currentYear / 100) * 100 + Number(rfc850Date[4]);
+    if (year - currentYear > 50) year -= 100;
+    return buildHttpDate({
+      weekday: rfc850Date[1],
+      day: rfc850Date[2],
+      month: rfc850Date[3],
+      year,
+      hour: rfc850Date[5],
+      minute: rfc850Date[6],
+      second: rfc850Date[7],
+    });
+  }
+
+  const asctimeDate =
+    /^(Sun|Mon|Tue|Wed|Thu|Fri|Sat) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) ( \d|\d{2}) (\d{2}):(\d{2}):(\d{2}) (\d{4})$/.exec(
+      normalized,
+    );
+  if (!asctimeDate) return undefined;
+  return buildHttpDate({
+    weekday: asctimeDate[1],
+    day: asctimeDate[3].trim(),
+    month: asctimeDate[2],
+    year: Number(asctimeDate[7]),
+    hour: asctimeDate[4],
+    minute: asctimeDate[5],
+    second: asctimeDate[6],
+  });
+}
+
+function parseRetryAfter(value: string, nowMs: number): number | undefined {
+  const deltaSeconds = parseNumericHeader(value);
+  if (deltaSeconds !== undefined) {
+    return clampRateLimitDelay(deltaSeconds * 1000);
+  }
+
+  const dateMs = parseHttpDate(value, nowMs);
+  return dateMs === undefined ? undefined : clampRateLimitDelay(dateMs - nowMs);
+}
+
+function parseResetSeconds(value: string, nowMs: number): number | undefined {
+  const numeric = parseNumericHeader(value);
+  if (numeric === undefined) {
+    const dateMs = parseHttpDate(value, nowMs);
+    return dateMs === undefined ? undefined : clampRateLimitDelay(dateMs - nowMs);
+  }
+  if (numeric >= 1_000_000_000_000) {
+    return clampRateLimitDelay(numeric - nowMs);
+  }
+  if (numeric >= 1_000_000_000) {
+    return clampRateLimitDelay(numeric * 1000 - nowMs);
+  }
+  return clampRateLimitDelay(numeric * 1000);
+}
+
+function parseResetMilliseconds(value: string, nowMs: number): number | undefined {
+  const numeric = parseNumericHeader(value);
+  if (numeric === undefined) {
+    return undefined;
+  }
+  return clampRateLimitDelay(
+    numeric >= 1_000_000_000_000 ? numeric - nowMs : numeric,
+  );
+}
+
+function parseDurationHeader(value: string): number | undefined {
+  const normalized = value.trim().toLowerCase();
+  const matcher = /(\d+(?:\.\d+)?)(ms|s|m|h)/g;
+  const multipliers = { ms: 1, s: 1000, m: 60_000, h: 3_600_000 } as const;
+  let totalMs = 0;
+  let consumed = "";
+  for (const match of normalized.matchAll(matcher)) {
+    totalMs += Number(match[1]) * multipliers[match[2] as keyof typeof multipliers];
+    consumed += match[0];
+  }
+  if (!consumed || consumed !== normalized.replace(/\s+/g, "")) {
+    return undefined;
+  }
+  return clampRateLimitDelay(totalMs);
+}
+
+type RateLimitHeader = {
+  delayMs?: number;
+  hadHeader: boolean;
+  source?: string;
+};
+
+function extractRateLimitHeader(error: unknown, nowMs: number): {
+  status?: number;
+  header: RateLimitHeader;
+} {
+  const details = extractHttpFailureDetails(error);
+  if (details.status !== 429 && details.status !== 503) {
+    return { status: details.status, header: { hadHeader: false } };
+  }
+
+  const specifications: Array<{
+    names: string[];
+    parse: (value: string) => number | undefined;
+  }> = [
+    {
+      names: ["retry-after"],
+      parse: (value) => parseRetryAfter(value, nowMs),
+    },
+    {
+      names: [
+        "retry-after-ms",
+        "x-retry-after-ms",
+        "x-ms-retry-after-ms",
+        "x-ratelimit-reset-ms",
+        "x-rate-limit-reset-ms",
+        "ratelimit-reset-ms",
+      ],
+      parse: (value) => parseResetMilliseconds(value, nowMs),
+    },
+    {
+      names: [
+        "x-ratelimit-reset",
+        "x-rate-limit-reset",
+        "ratelimit-reset",
+        "x-ratelimit-reset-after",
+        "x-rate-limit-reset-after",
+        "ratelimit-reset-after",
+      ],
+      parse: (value) => parseResetSeconds(value, nowMs),
+    },
+    {
+      names: [
+        "x-ratelimit-reset-requests",
+        "x-rate-limit-reset-requests",
+        "x-ratelimit-reset-tokens",
+        "x-rate-limit-reset-tokens",
+      ],
+      parse: parseDurationHeader,
+    },
+  ];
+  const parsed: Array<{ delayMs: number; source: string }> = [];
+  let hadHeader = false;
+
+  for (const specification of specifications) {
+    for (const name of specification.names) {
+      for (const headers of details.headers) {
+        const values = readHeaderValues(headers, name);
+        hadHeader ||= values.length > 0;
+        for (const value of values) {
+          const delayMs = specification.parse(value);
+          if (delayMs !== undefined) {
+            parsed.push({ delayMs, source: name });
+          }
+        }
+      }
+    }
+  }
+
+  const longest = parsed.sort((a, b) => b.delayMs - a.delayMs)[0];
+  return {
+    status: details.status,
+    header: {
+      delayMs: longest?.delayMs,
+      hadHeader,
+      source: longest?.source,
+    },
+  };
+}
+
 function isProviderRunTaskRejection(value: unknown): value is ProviderRunTaskRejection {
   return (
     value !== null &&
@@ -772,24 +1165,65 @@ function computeBackoffDelay(policy: ResolvedRetryConfig, attempt: number): numb
   );
 }
 
-function computeRetryDelay(
+function resolveRetryTiming(
   policy: ResolvedRetryConfig,
   attempt: number,
+  error: unknown,
   errorMessage: string,
-): number {
+  nowMs: number,
+): {
+  delayMs: number;
+  rateLimited: boolean;
+  overridesMessageHeuristics: boolean;
+  source?: string;
+} {
   const configured = computeBackoffDelay(policy, attempt);
-  return /429|rate limit/i.test(errorMessage) ? Math.max(2000, configured) : configured;
+  const { status, header } = extractRateLimitHeader(error, nowMs);
+  const explicitRateLimit = status === 429 || /429|rate limit/i.test(errorMessage);
+  const rateLimited = explicitRateLimit || (status === 503 && header.hadHeader);
+  const overridesMessageHeuristics =
+    explicitRateLimit || (status === 503 && header.delayMs !== undefined);
+
+  if (header.delayMs !== undefined) {
+    return {
+      delayMs: Math.max(configured, header.delayMs),
+      rateLimited,
+      overridesMessageHeuristics,
+      source: header.source,
+    };
+  }
+
+  return {
+    delayMs: explicitRateLimit
+      ? Math.max(DEFAULT_RATE_LIMIT_BACKOFF_MS, configured)
+      : configured,
+    rateLimited,
+    overridesMessageHeuristics,
+  };
 }
 
 function mergeFlags(...flagLists: Array<readonly SearchResultFlag[]>): SearchResultFlag[] {
   return [...new Set(flagLists.flatMap((flags) => [...flags]))].sort();
 }
 
-type MergeCandidate = Omit<FusionMergedResult, "score" | "ranking">;
+type MergeCandidate = Omit<FusionMergedResult, "score" | "ranking"> & {
+  providerPriority: number;
+  priorityProvider: string;
+  insertionIndex: number;
+};
 
 type ScoredMergeCandidate = MergeCandidate & {
   score: number;
   scoreBreakdown: FusionScoreBreakdown;
+};
+
+type MergeDedupeOptions = FuzzyUrlOptions & {
+  enabled: boolean;
+};
+
+type IndexedMergeResult = {
+  item: NormalizedSearchResult;
+  fuzzyUrl: FuzzyUrlAnalysis;
 };
 
 function mergedFlagPenalty(flags: readonly SearchResultFlag[]): number {
@@ -802,10 +1236,8 @@ function mergedFlagPenalty(flags: readonly SearchResultFlag[]): number {
   return penalty;
 }
 
-function mergedSortOrder(sourceTierMode: SourceTierMode): string[] {
-  return sourceTierMode === "off"
-    ? [...MERGED_SORT_ORDER]
-    : ["score:desc", "bestSourceTier:desc", "bestRank:asc", "providerCount:desc", "title:asc"];
+function mergedSortOrder(): string[] {
+  return [...MERGED_SORT_ORDER];
 }
 
 function computeMergedScoreBreakdown(
@@ -814,7 +1246,9 @@ function computeMergedScoreBreakdown(
 ): FusionScoreBreakdown {
   const bestVariantScore = entry.variants.reduce((max, variant) => Math.max(max, variant.score), 0);
   const corroborationBonus = Math.max(0, entry.providerCount - 1) * 0.12;
-  const bestRankBonus = Math.max(0, 0.35 - (entry.bestRank - 1) * 0.04);
+  // Rank is an explicit tie-breaker after provider priority. Folding it into
+  // the score would silently make rank take precedence over provider priority.
+  const bestRankBonus = 0;
   const tierAdjustment = sourceTierMergedAdjustment(entry.bestSourceTier, sourceTierMode);
   const flagPenalty = mergedFlagPenalty(entry.flags);
 
@@ -829,18 +1263,15 @@ function computeMergedScoreBreakdown(
 }
 
 function compareMergedCandidates(
-  a: Pick<FusionMergedResult, "score" | "bestSourceTier" | "bestRank" | "providerCount" | "title">,
-  b: Pick<FusionMergedResult, "score" | "bestSourceTier" | "bestRank" | "providerCount" | "title">,
-  sourceTierMode: SourceTierMode,
+  a: ScoredMergeCandidate,
+  b: ScoredMergeCandidate,
 ): number {
   if (b.score !== a.score) return b.score - a.score;
-  if (sourceTierMode !== "off") {
-    const tierDelta = compareSourceTierDesc(a.bestSourceTier, b.bestSourceTier);
-    if (tierDelta !== 0) return tierDelta;
+  if (a.providerPriority !== b.providerPriority) {
+    return a.providerPriority - b.providerPriority;
   }
   if (a.bestRank !== b.bestRank) return a.bestRank - b.bestRank;
-  if (b.providerCount !== a.providerCount) return b.providerCount - a.providerCount;
-  return a.title.localeCompare(b.title);
+  return a.insertionIndex - b.insertionIndex;
 }
 
 function buildRankingExplanation(params: {
@@ -849,6 +1280,8 @@ function buildRankingExplanation(params: {
   bestRank: number;
   bestSourceTier: FusionMergedResult["bestSourceTier"];
   providerCount: number;
+  providerPriority: number;
+  priorityProvider: string;
   scoreBreakdown: FusionScoreBreakdown;
 }): FusionMergedResult["ranking"] {
   return {
@@ -856,6 +1289,8 @@ function buildRankingExplanation(params: {
     rank: params.rank,
     scoreBreakdown: params.scoreBreakdown,
     tieBreakers: {
+      providerPriority: params.providerPriority,
+      priorityProvider: params.priorityProvider,
       bestSourceTier: params.bestSourceTier,
       bestRank: params.bestRank,
       providerCount: params.providerCount,
@@ -864,10 +1299,10 @@ function buildRankingExplanation(params: {
   };
 }
 
-function emptyRankingMeta(sourceTierMode: SourceTierMode): FusionRankingMeta {
+function emptyRankingMeta(): FusionRankingMeta {
   return {
     strategy: MERGED_RANKING_STRATEGY,
-    sortOrder: mergedSortOrder(sourceTierMode),
+    sortOrder: mergedSortOrder(),
     consideredCount: 0,
     returnedCount: 0,
     droppedCount: 0,
@@ -875,76 +1310,194 @@ function emptyRankingMeta(sourceTierMode: SourceTierMode): FusionRankingMeta {
   };
 }
 
+function compareRepresentativeResults(
+  a: NormalizedSearchResult,
+  b: NormalizedSearchResult,
+  sourceTierMode: SourceTierMode,
+): number {
+  if (a.rawRank !== b.rawRank) return a.rawRank - b.rawRank;
+  if (b.score !== a.score) return b.score - a.score;
+  if (sourceTierMode !== "off") {
+    const tierDelta = compareSourceTierDesc(a.sourceTier, b.sourceTier);
+    if (tierDelta !== 0) return tierDelta;
+  }
+  const providerDelta = a.providerId.localeCompare(b.providerId);
+  if (providerDelta !== 0) return providerDelta;
+  return a.originalUrl.localeCompare(b.originalUrl);
+}
+
+function pickBestSnippet(
+  items: readonly NormalizedSearchResult[],
+): Pick<MergeCandidate, "snippet" | "truncated"> {
+  const withSnippets = items.filter(
+    (item): item is NormalizedSearchResult & { snippet: string } =>
+      typeof item.snippet === "string" && item.snippet.trim().length > 0,
+  );
+  if (withSnippets.length === 0) {
+    return {};
+  }
+
+  const informative = withSnippets.filter((item) => normalizeTitle(item.snippet).length > 0);
+  const candidates = informative.length > 0 ? informative : withSnippets;
+  const best = candidates.reduce((current, item) =>
+    item.snippet.length > current.snippet.length ? item : current,
+  );
+  return {
+    snippet: best.snippet,
+    ...(best.truncated ? { truncated: true as const } : {}),
+  };
+}
+
+function buildMergeGroups(
+  results: ProviderRunResult[],
+  dedupe: MergeDedupeOptions,
+): IndexedMergeResult[][] {
+  const indexed = results.flatMap((provider) =>
+    provider.results.map((item) => ({
+      item,
+      fuzzyUrl: dedupe.enabled
+        ? analyzeFuzzyUrl(item.originalUrl, dedupe)
+        : {
+            canonicalUrl: item.canonicalUrl,
+            meaningfulQuery: "",
+          },
+    })),
+  );
+  const parent = indexed.map((_, index) => index);
+
+  const find = (index: number): number => {
+    let root = index;
+    while (parent[root] !== root) {
+      root = parent[root];
+    }
+    while (parent[index] !== index) {
+      const next = parent[index];
+      parent[index] = root;
+      index = next;
+    }
+    return root;
+  };
+  const union = (left: number, right: number): void => {
+    const leftRoot = find(left);
+    const rightRoot = find(right);
+    if (leftRoot !== rightRoot) {
+      parent[rightRoot] = leftRoot;
+    }
+  };
+
+  const byCanonicalUrl = new Map<string, number>();
+  indexed.forEach((entry, index) => {
+    const prior = byCanonicalUrl.get(entry.fuzzyUrl.canonicalUrl);
+    if (prior === undefined) {
+      byCanonicalUrl.set(entry.fuzzyUrl.canonicalUrl, index);
+    } else {
+      union(prior, index);
+    }
+  });
+
+  if (dedupe.enabled) {
+    const byTitleHostAndQuery = new Map<string, number>();
+    indexed.forEach((entry, index) => {
+      const title = normalizeTitle(entry.item.title);
+      if (
+        !entry.fuzzyUrl.host ||
+        !entry.fuzzyUrl.canonicalUrl.startsWith("https://") ||
+        !title
+      ) {
+        return;
+      }
+      const titleKey = [
+        entry.fuzzyUrl.host,
+        entry.fuzzyUrl.meaningfulQuery,
+        title,
+      ].join("\u0000");
+      const prior = byTitleHostAndQuery.get(titleKey);
+      if (prior === undefined) {
+        byTitleHostAndQuery.set(titleKey, index);
+      } else {
+        union(prior, index);
+      }
+    });
+  }
+
+  const groups = new Map<number, IndexedMergeResult[]>();
+  indexed.forEach((entry, index) => {
+    const root = find(index);
+    const group = groups.get(root);
+    if (group) {
+      group.push(entry);
+    } else {
+      groups.set(root, [entry]);
+    }
+  });
+  return [...groups.values()];
+}
+
 function mergeResults(
   results: ProviderRunResult[],
   maxMergedResults: number,
   sourceTierMode: SourceTierMode,
+  dedupe: MergeDedupeOptions,
+  providerOrder: readonly string[] = results.map((provider) => provider.providerId),
 ): { results: FusionMergedResult[]; ranking: FusionRankingMeta } {
-  const merged = new Map<string, MergeCandidate>();
+  const providerPriorities = new Map(
+    providerOrder.map((providerId, index) => [providerId, index] as const),
+  );
+  const mergeCandidates = buildMergeGroups(results, dedupe).map(
+    (group, groupIndex): MergeCandidate => {
+      const representative = [...group].sort((a, b) =>
+        compareRepresentativeResults(a.item, b.item, sourceTierMode),
+      )[0];
+      const items = group.map((entry) => entry.item);
+      const providers = [...new Set(items.map((item) => item.providerId))];
+      const flags = mergeFlags(...items.map((item) => item.flags));
+      const bestSourceTier = items.reduce(
+        (best, item) => pickHigherSourceTier(best, item.sourceTier),
+        representative.item.sourceTier,
+      );
+      const priority = items.reduce(
+        (best, item) => {
+          const itemPriority =
+            providerPriorities.get(item.providerId) ?? Number.MAX_SAFE_INTEGER;
+          return itemPriority < best.providerPriority
+            ? { providerPriority: itemPriority, priorityProvider: item.providerId }
+            : best;
+        },
+        {
+          providerPriority: Number.MAX_SAFE_INTEGER,
+          priorityProvider: representative.item.providerId,
+        },
+      );
 
-  for (const provider of results) {
-    for (const item of provider.results) {
-      const existing = merged.get(item.canonicalUrl);
-      if (!existing) {
-        merged.set(item.canonicalUrl, {
-          title: item.title,
-          url: item.url,
-          canonicalUrl: item.canonicalUrl,
-          snippet: item.snippet,
-          truncated: item.truncated,
-          siteName: item.siteName,
-          providers: [item.providerId],
-          providerCount: 1,
-          bestRank: item.rawRank,
-          bestSourceTier: item.sourceTier,
+      return {
+        title: representative.item.title,
+        url: representative.item.url,
+        canonicalUrl: representative.fuzzyUrl.canonicalUrl,
+        ...pickBestSnippet(items),
+        siteName: representative.item.siteName ?? items.find((item) => item.siteName)?.siteName,
+        providers,
+        providerCount: providers.length,
+        bestRank: Math.min(...items.map((item) => item.rawRank)),
+        bestSourceTier,
+        flags,
+        rankings: items.map((item) => ({
+          providerId: item.providerId,
+          rawRank: item.rawRank,
+          score: item.score,
+          nativeScore: item.nativeScore,
+          sourceType: item.sourceType,
+          sourceTier: item.sourceTier,
           flags: [...item.flags],
-          rankings: [
-            {
-              providerId: item.providerId,
-              rawRank: item.rawRank,
-              score: item.score,
-              nativeScore: item.nativeScore,
-              sourceType: item.sourceType,
-              sourceTier: item.sourceTier,
-              flags: [...item.flags],
-            },
-          ],
-          variants: [item],
-        });
-        continue;
-      }
+        })),
+        variants: items,
+        providerPriority: priority.providerPriority,
+        priorityProvider: priority.priorityProvider,
+        insertionIndex: groupIndex,
+      };
+    },
+  );
 
-      existing.variants.push(item);
-      if (!existing.providers.includes(item.providerId)) {
-        existing.providers.push(item.providerId);
-      }
-      existing.providerCount = existing.providers.length;
-      existing.bestRank = Math.min(existing.bestRank, item.rawRank);
-      existing.bestSourceTier = pickHigherSourceTier(existing.bestSourceTier, item.sourceTier);
-      existing.flags = mergeFlags(existing.flags, item.flags);
-      existing.rankings.push({
-        providerId: item.providerId,
-        rawRank: item.rawRank,
-        score: item.score,
-        nativeScore: item.nativeScore,
-        sourceType: item.sourceType,
-        sourceTier: item.sourceTier,
-        flags: [...item.flags],
-      });
-      if ((!existing.snippet || existing.snippet.length < (item.snippet?.length ?? 0)) && item.snippet) {
-        existing.snippet = item.snippet;
-        existing.truncated = item.truncated;
-      }
-      if (existing.title.length < item.title.length) {
-        existing.title = item.title;
-      }
-      if (!existing.siteName && item.siteName) {
-        existing.siteName = item.siteName;
-      }
-    }
-  }
-
-  const rankedCandidates: ScoredMergeCandidate[] = [...merged.values()]
+  const rankedCandidates: ScoredMergeCandidate[] = mergeCandidates
     .map((entry) => {
       const normalized: MergeCandidate = {
         ...entry,
@@ -977,12 +1530,19 @@ function mergeResults(
         scoreBreakdown,
       };
     })
-    .sort((a, b) => compareMergedCandidates(a, b, sourceTierMode));
+    .sort(compareMergedCandidates);
 
   const mergedResults: FusionMergedResult[] = rankedCandidates
     .slice(0, maxMergedResults)
     .map((entry, index) => {
-      const { scoreBreakdown, ...base } = entry;
+      const {
+        scoreBreakdown,
+        providerPriority,
+        priorityProvider,
+        insertionIndex: _insertionIndex,
+        ...base
+      } = entry;
+      void _insertionIndex;
       return {
         ...base,
         ranking: buildRankingExplanation({
@@ -991,6 +1551,8 @@ function mergeResults(
           bestRank: base.bestRank,
           bestSourceTier: base.bestSourceTier,
           providerCount: base.providerCount,
+          providerPriority,
+          priorityProvider,
           scoreBreakdown,
         }),
       };
@@ -1011,10 +1573,10 @@ function mergeResults(
     results: mergedResults,
     ranking:
       rankedCandidates.length === 0
-        ? emptyRankingMeta(sourceTierMode)
+        ? emptyRankingMeta()
         : {
             strategy: MERGED_RANKING_STRATEGY,
-            sortOrder: mergedSortOrder(sourceTierMode),
+            sortOrder: mergedSortOrder(),
             consideredCount: rankedCandidates.length,
             returnedCount: mergedResults.length,
             droppedCount: dropped.length,
@@ -1031,12 +1593,28 @@ type CitationSupportStats = {
 function buildEvidenceTable(
   results: FusionMergedResult[],
   answers: ProviderAnswerDigest[],
+  dedupe: MergeDedupeOptions,
 ): FusionEvidenceTable {
   const citationSupportByUrl = new Map<string, CitationSupportStats>();
+  const mergedUrlByVariantUrl = new Map<string, string>();
+
+  for (const result of results) {
+    mergedUrlByVariantUrl.set(result.canonicalUrl, result.canonicalUrl);
+    for (const variant of result.variants) {
+      const variantUrl = dedupe.enabled
+        ? analyzeFuzzyUrl(variant.originalUrl, dedupe).canonicalUrl
+        : variant.canonicalUrl;
+      mergedUrlByVariantUrl.set(variantUrl, result.canonicalUrl);
+    }
+  }
 
   for (const answer of answers) {
     for (const citationUrl of answer.citations) {
-      const canonicalCitationUrl = canonicalizeUrl(citationUrl);
+      const citationVariantUrl = dedupe.enabled
+        ? analyzeFuzzyUrl(citationUrl, dedupe).canonicalUrl
+        : canonicalizeUrl(citationUrl);
+      const canonicalCitationUrl =
+        mergedUrlByVariantUrl.get(citationVariantUrl) ?? citationVariantUrl;
       if (!canonicalCitationUrl) {
         continue;
       }
@@ -1108,8 +1686,10 @@ async function runProvider(params: {
   provider: ResolvedProvider;
   sourceTierMode: SourceTierMode;
   maxSnippetLength: number;
+  urlOptions?: FuzzyUrlOptions;
   signal: AbortSignal;
   deadlineAt: number;
+  cooldowns: Map<string, ProviderCooldown>;
   agentDir?: string;
   runtimeMetadata?: unknown;
 }): Promise<ProviderRunResult> {
@@ -1119,6 +1699,7 @@ async function runProvider(params: {
     params.brokerConfig,
     params.provider.id,
   );
+  validateScoreCalibrationConfig(providerConfig.scoreCalibration);
   const retryPolicy = providerConfig.retry;
   const providerArgs = buildProviderArgs(params.request, params.brokerConfig, params.provider.id);
   const retryHistory: ProviderRunResult["retryHistory"] = [];
@@ -1141,8 +1722,7 @@ async function runProvider(params: {
     error,
   });
 
-  for (let attempt = 1; attempt <= retryPolicy.maxAttempts; attempt += 1) {
-    attempts = attempt;
+  while (attempts < retryPolicy.maxAttempts) {
     if (Date.now() >= params.deadlineAt) {
       return failure("deadline exceeded");
     }
@@ -1154,6 +1734,31 @@ async function runProvider(params: {
       );
     }
 
+    const cooldown = params.cooldowns.get(params.provider.id);
+    const cooldownRemainingMs = cooldown ? cooldown.untilMs - Date.now() : 0;
+    if (cooldown && cooldownRemainingMs <= 0) {
+      params.cooldowns.delete(params.provider.id);
+    } else if (cooldown && cooldownRemainingMs > 0) {
+      const remainingBudgetMs = Math.max(0, params.deadlineAt - Date.now());
+      if (cooldownRemainingMs >= remainingBudgetMs) {
+        return failure(
+          `Rate-limit wait of ${cooldownRemainingMs}ms from ${cooldown.source} exceeds the remaining total timeout budget of ${remainingBudgetMs}ms.`,
+        );
+      }
+      try {
+        await sleep(cooldownRemainingMs, params.signal);
+      } catch (sleepError) {
+        return failure(
+          params.signal.reason instanceof DeadlineExceededError
+            ? "deadline exceeded"
+            : asErrorMessage(sleepError),
+        );
+      }
+      continue;
+    }
+
+    attempts += 1;
+    const attempt = attempts;
     try {
       const remainingMs = Math.max(1, params.deadlineAt - Date.now());
       const attemptTimeoutMs = Math.min(providerConfig.timeoutMs, remainingMs);
@@ -1179,15 +1784,32 @@ async function runProvider(params: {
         payload: response.result,
         sourceTierMode: params.sourceTierMode,
         maxSnippetLength: params.maxSnippetLength,
+        urlOptions: params.urlOptions,
       });
 
       if (normalized.error) {
-        throw new Error(normalized.error);
+        const providerError = new Error(normalized.error) as Error & { response?: unknown };
+        providerError.response = response.result;
+        throw providerError;
       }
 
-      const weightedResults = normalized.results.map((result) => ({
+      const calibrated = calibrateProviderScores(
+        normalized.results,
+        providerConfig.scoreCalibration,
+      );
+      const weightedResults = normalized.results.map((result, index) => ({
         ...result,
-        score: applyProviderWeight(result.score, providerConfig.weight),
+        score: applyProviderWeight(
+          applySearchResultQuality({
+            relevanceScore: calibrated.scores[index] ?? 0,
+            sourceType: result.sourceType,
+            sourceTier: result.sourceTier,
+            flags: result.flags,
+            sourceTierMode: params.sourceTierMode,
+            normalizeHighTier: true,
+          }),
+          providerConfig.weight,
+        ),
       }));
 
       return {
@@ -1197,7 +1819,7 @@ async function runProvider(params: {
         ok: true,
         tookMs: Date.now() - start,
         rawCount: normalized.results.length,
-        attempts: attempt,
+        attempts,
         rawPayload: response.result,
         results: weightedResults,
         discardedResults: normalized.discardedResults,
@@ -1210,20 +1832,47 @@ async function runProvider(params: {
         params.signal.reason instanceof DeadlineExceededError ||
         Date.now() >= params.deadlineAt;
       lastError = deadlineExceeded ? "deadline exceeded" : asErrorMessage(error);
+      const retryStartedAt = Date.now();
+      const retryTiming = resolveRetryTiming(
+        retryPolicy,
+        attempt,
+        error,
+        lastError,
+        retryStartedAt,
+      );
       const canRetry =
         !params.signal.aborted &&
         !deadlineExceeded &&
         attempt < retryPolicy.maxAttempts &&
-        shouldRetry(error, lastError);
+        (retryTiming.overridesMessageHeuristics || shouldRetry(error, lastError));
+      if (retryTiming.rateLimited && retryTiming.delayMs > 0) {
+        const nextCooldown: ProviderCooldown = {
+          untilMs: retryStartedAt + retryTiming.delayMs,
+          source: retryTiming.source ?? "rate-limit response",
+        };
+        const currentCooldown = params.cooldowns.get(params.provider.id);
+        if (!currentCooldown || nextCooldown.untilMs > currentCooldown.untilMs) {
+          params.cooldowns.set(params.provider.id, nextCooldown);
+        }
+      }
+
       if (!canRetry) {
         return failure(lastError);
       }
 
-      const delayMs = computeRetryDelay(retryPolicy, attempt, lastError);
-      if (Date.now() + delayMs >= params.deadlineAt) {
-        return failure("deadline exceeded");
+      const delayMs = retryTiming.delayMs;
+      const remainingBudgetMs = Math.max(0, params.deadlineAt - Date.now());
+      if (delayMs >= remainingBudgetMs) {
+        return failure(
+          retryTiming.rateLimited
+            ? `Rate-limit wait of ${delayMs}ms${retryTiming.source ? ` from ${retryTiming.source}` : ""} exceeds the remaining total timeout budget of ${remainingBudgetMs}ms.`
+            : "deadline exceeded",
+        );
       }
       retryHistory.push({ attempt, error: lastError, delayMs });
+      if (retryTiming.rateLimited) {
+        continue;
+      }
       try {
         await sleep(delayMs, params.signal);
       } catch (sleepError) {
@@ -1284,6 +1933,7 @@ export async function runSearchFusion(params: {
   const start = Date.now();
   const brokerConfig = asConfig(params.pluginConfig);
   const sourceTierMode = coerceSourceTierMode(brokerConfig.sourceTierMode);
+  const dedupe = resolveMergeDedupeOptions(brokerConfig);
   const includeRawPayloads =
     params.request.includeRawPayloads ?? brokerConfig.includeRawPayloads ?? false;
   const includeDiscarded =
@@ -1333,8 +1983,8 @@ export async function runSearchFusion(params: {
       discardedResults: [],
       answers: [],
       results: [],
-      ranking: emptyRankingMeta(sourceTierMode),
-      evidenceTable: buildEvidenceTable([], []),
+      ranking: emptyRankingMeta(),
+      evidenceTable: buildEvidenceTable([], [], dedupe),
       output,
       externalContent: {
         untrusted: true,
@@ -1362,6 +2012,7 @@ export async function runSearchFusion(params: {
     () => runController.abort(new DeadlineExceededError()),
     Math.max(0, deadlineAt - Date.now()),
   );
+  const providerCooldowns = new Map<string, ProviderCooldown>();
 
   const providerRunTasks = selectedProviders.map((provider) => {
     const startedAt = Date.now();
@@ -1383,8 +2034,10 @@ export async function runSearchFusion(params: {
             provider,
             sourceTierMode,
             maxSnippetLength,
+            urlOptions: dedupe.enabled ? dedupe : undefined,
             signal: runController.signal,
             deadlineAt,
+            cooldowns: providerCooldowns,
             agentDir: params.agentDir,
             runtimeMetadata: params.runtimeMetadata,
           }),
@@ -1422,7 +2075,23 @@ export async function runSearchFusion(params: {
     });
   });
 
-  const merged = mergeResults(providerRuns.filter((run) => run.ok), maxMergedResults, sourceTierMode);
+  const okRuns = providerRuns.filter((run) => run.ok);
+  const contributingProviders = new Set(
+    okRuns.filter((run) => run.results.length > 0).map((run) => run.providerId),
+  ).size;
+  // Fuzzy dedupe is a fusion feature: a single contributing provider keeps its
+  // raw result set (exact-match dedupe only) unless fuzzyDedupe is explicitly true.
+  const mergeDedupe =
+    brokerConfig.fuzzyDedupe !== true && contributingProviders <= 1
+      ? { ...dedupe, enabled: false }
+      : dedupe;
+  const merged = mergeResults(
+    okRuns,
+    maxMergedResults,
+    sourceTierMode,
+    mergeDedupe,
+    selectedProviders.map((provider) => provider.id),
+  );
   const mergedResults = merged.results;
   const internalDiscardedResults = providerRuns.flatMap((run) => run.discardedResults);
   const internalAnswers = providerRuns
@@ -1486,7 +2155,7 @@ export async function runSearchFusion(params: {
     answers,
     results: visibleMergedResults,
     ranking: merged.ranking,
-    evidenceTable: buildEvidenceTable(visibleMergedResults, answers),
+    evidenceTable: buildEvidenceTable(visibleMergedResults, answers, dedupe),
     output,
     externalContent: {
       untrusted: true,

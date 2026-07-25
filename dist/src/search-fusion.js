@@ -1,9 +1,9 @@
 import { getRuntimeConfigSnapshot } from "openclaw/plugin-sdk/runtime-config-snapshot";
 import { discoverProviders, resolveSelectedProviders } from "./provider-discovery.js";
 import { KNOWN_PROVIDERS } from "./provider-catalog.js";
-import { normalizeProviderPayload } from "./result-normalizer.js";
+import { applySearchResultQuality, calibrateProviderScores, normalizeProviderPayload, validateScoreCalibrationConfig, } from "./result-normalizer.js";
 import { compareSourceTierDesc, coerceSourceTierMode, pickHigherSourceTier, sourceTierMergedAdjustment, } from "./source-tier.js";
-import { canonicalizeUrl } from "./text.js";
+import { analyzeFuzzyUrl, canonicalizeUrl, normalizeTitle, } from "./text.js";
 const DEFAULT_COUNT_PER_PROVIDER = 5;
 const DEFAULT_MAX_MERGED_RESULTS = 10;
 const DEFAULT_PROVIDER_TIMEOUT_MS = 15000;
@@ -13,12 +13,18 @@ const DEFAULT_RETRY_MAX_ATTEMPTS = 3;
 const DEFAULT_RETRY_BACKOFF_MS = 750;
 const DEFAULT_RETRY_BACKOFF_MULTIPLIER = 2;
 const DEFAULT_RETRY_MAX_BACKOFF_MS = 5000;
+const DEFAULT_RATE_LIMIT_BACKOFF_MS = 2000;
+const MAX_RATE_LIMIT_WAIT_MS = 60 * 60 * 1000;
 const DEFAULT_PROVIDER_WEIGHT = 1;
 const MIN_PROVIDER_WEIGHT = 0.1;
 const MAX_PROVIDER_WEIGHT = 5;
 const SEARCH_FUSION_PROVIDER_ID = "search-fusion";
 const MERGED_RANKING_STRATEGY = "merged-score-v1";
-const MERGED_SORT_ORDER = ["score:desc", "bestRank:asc", "providerCount:desc", "title:asc"];
+const MERGED_SORT_ORDER = [
+    "score:desc",
+    "providerPriority:asc",
+    "bestRank:asc",
+];
 function isRecord(value) {
     return value !== null && typeof value === "object" && !Array.isArray(value);
 }
@@ -347,6 +353,13 @@ function asConfig(pluginConfig) {
         ? pluginConfig
         : {};
 }
+function resolveMergeDedupeOptions(config) {
+    return {
+        enabled: config.fuzzyDedupe !== false,
+        trackingParams: config.trackingParams,
+        trackingParamMode: config.trackingParamMode,
+    };
+}
 function clamp(value, min, max) {
     return Math.min(max, Math.max(min, value));
 }
@@ -354,7 +367,7 @@ function roundScore(value) {
     return Math.round(value * 1_000_000) / 1_000_000;
 }
 function applyProviderWeight(score, weight) {
-    return Math.max(0.01, roundScore(score * weight));
+    return Math.max(0, roundScore(score * weight));
 }
 function resolveProviderConfig(config, providerId) {
     return config.providerConfig?.[providerId] ?? {};
@@ -382,6 +395,7 @@ function resolveRuntimeProviderConfig(request, config, providerId) {
         timeoutMs: clamp(providerConfig.timeoutMs ?? config.providerTimeoutMs ?? DEFAULT_PROVIDER_TIMEOUT_MS, 1000, 120000),
         retry: resolveRetryConfig(config, providerId),
         weight: clamp(providerConfig.weight ?? DEFAULT_PROVIDER_WEIGHT, MIN_PROVIDER_WEIGHT, MAX_PROVIDER_WEIGHT),
+        scoreCalibration: providerConfig.scoreCalibration,
     };
 }
 function buildProviderArgs(request, config, providerId) {
@@ -435,6 +449,300 @@ function asErrorMessage(error) {
         // Ignore stringify errors and fall back to a generic message.
     }
     return "Unknown error";
+}
+function asHttpStatus(value) {
+    if (typeof value === "number" && Number.isInteger(value)) {
+        return value;
+    }
+    if (typeof value === "string" && /^\d{3}$/.test(value.trim())) {
+        return Number(value);
+    }
+    return undefined;
+}
+function extractHttpFailureDetails(error) {
+    const queue = [error];
+    const visited = new Set();
+    const headers = [];
+    let status;
+    while (queue.length > 0 && visited.size < 12) {
+        const candidate = queue.shift();
+        if (!candidate || typeof candidate !== "object" || visited.has(candidate)) {
+            continue;
+        }
+        visited.add(candidate);
+        const record = candidate;
+        status ??=
+            asHttpStatus(record.status) ??
+                asHttpStatus(record.statusCode) ??
+                asHttpStatus(record.httpStatus);
+        if (record.headers !== undefined) {
+            headers.push(record.headers);
+        }
+        for (const key of ["response", "cause", "error"]) {
+            if (record[key] && typeof record[key] === "object") {
+                queue.push(record[key]);
+            }
+        }
+    }
+    if (status === undefined) {
+        const match = asErrorMessage(error).match(/(?:^|\D)(429|503)(?:\D|$)/);
+        status = match ? Number(match[1]) : undefined;
+    }
+    return { status, headers };
+}
+function asHeaderStrings(value) {
+    if (Array.isArray(value)) {
+        return value.flatMap((entry) => asHeaderStrings(entry));
+    }
+    if (typeof value === "string" || typeof value === "number") {
+        return [String(value).trim()].filter(Boolean);
+    }
+    return [];
+}
+function readHeaderValues(headers, name) {
+    if (!headers || typeof headers !== "object") {
+        return [];
+    }
+    const values = [];
+    const getter = headers.get;
+    if (typeof getter === "function") {
+        try {
+            values.push(...asHeaderStrings(getter.call(headers, name)));
+        }
+        catch {
+            // Fall through to plain-object lookup.
+        }
+    }
+    const plainHeaders = headers;
+    for (const [key, value] of Object.entries(plainHeaders)) {
+        if (key.toLowerCase() === name) {
+            values.push(...asHeaderStrings(value));
+        }
+    }
+    return [...new Set(values)];
+}
+function parseNumericHeader(value) {
+    const normalized = value.trim();
+    if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(normalized)) {
+        return undefined;
+    }
+    return Number(normalized);
+}
+function clampRateLimitDelay(delayMs) {
+    if (Number.isNaN(delayMs)) {
+        return undefined;
+    }
+    if (delayMs <= 0)
+        return 0;
+    if (delayMs >= MAX_RATE_LIMIT_WAIT_MS)
+        return MAX_RATE_LIMIT_WAIT_MS;
+    return clamp(Math.ceil(delayMs), 0, MAX_RATE_LIMIT_WAIT_MS);
+}
+const HTTP_DATE_SHORT_WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const HTTP_DATE_LONG_WEEKDAYS = [
+    "Sunday",
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+];
+const HTTP_DATE_MONTHS = [
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec",
+];
+function buildHttpDate(params) {
+    const weekday = [...HTTP_DATE_SHORT_WEEKDAYS, ...HTTP_DATE_LONG_WEEKDAYS].indexOf(params.weekday);
+    const weekdayIndex = weekday >= HTTP_DATE_SHORT_WEEKDAYS.length ? weekday - HTTP_DATE_SHORT_WEEKDAYS.length : weekday;
+    const monthIndex = HTTP_DATE_MONTHS.indexOf(params.month);
+    const day = Number(params.day);
+    const hour = Number(params.hour);
+    const minute = Number(params.minute);
+    const second = Number(params.second);
+    if (weekdayIndex < 0 ||
+        monthIndex < 0 ||
+        day < 1 ||
+        day > 31 ||
+        hour > 23 ||
+        minute > 59 ||
+        second > 59) {
+        return undefined;
+    }
+    const dateMs = Date.UTC(params.year, monthIndex, day, hour, minute, second);
+    const date = new Date(dateMs);
+    if (date.getUTCFullYear() !== params.year ||
+        date.getUTCMonth() !== monthIndex ||
+        date.getUTCDate() !== day ||
+        date.getUTCDay() !== weekdayIndex) {
+        return undefined;
+    }
+    return dateMs;
+}
+function parseHttpDate(value, nowMs) {
+    const normalized = value.trim();
+    const imfFixdate = /^(Sun|Mon|Tue|Wed|Thu|Fri|Sat), (\d{2}) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) (\d{4}) (\d{2}):(\d{2}):(\d{2}) GMT$/.exec(normalized);
+    if (imfFixdate) {
+        return buildHttpDate({
+            weekday: imfFixdate[1],
+            day: imfFixdate[2],
+            month: imfFixdate[3],
+            year: Number(imfFixdate[4]),
+            hour: imfFixdate[5],
+            minute: imfFixdate[6],
+            second: imfFixdate[7],
+        });
+    }
+    const rfc850Date = /^(Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday), (\d{2})-(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)-(\d{2}) (\d{2}):(\d{2}):(\d{2}) GMT$/.exec(normalized);
+    if (rfc850Date) {
+        const currentYear = new Date(nowMs).getUTCFullYear();
+        let year = Math.floor(currentYear / 100) * 100 + Number(rfc850Date[4]);
+        if (year - currentYear > 50)
+            year -= 100;
+        return buildHttpDate({
+            weekday: rfc850Date[1],
+            day: rfc850Date[2],
+            month: rfc850Date[3],
+            year,
+            hour: rfc850Date[5],
+            minute: rfc850Date[6],
+            second: rfc850Date[7],
+        });
+    }
+    const asctimeDate = /^(Sun|Mon|Tue|Wed|Thu|Fri|Sat) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) ( \d|\d{2}) (\d{2}):(\d{2}):(\d{2}) (\d{4})$/.exec(normalized);
+    if (!asctimeDate)
+        return undefined;
+    return buildHttpDate({
+        weekday: asctimeDate[1],
+        day: asctimeDate[3].trim(),
+        month: asctimeDate[2],
+        year: Number(asctimeDate[7]),
+        hour: asctimeDate[4],
+        minute: asctimeDate[5],
+        second: asctimeDate[6],
+    });
+}
+function parseRetryAfter(value, nowMs) {
+    const deltaSeconds = parseNumericHeader(value);
+    if (deltaSeconds !== undefined) {
+        return clampRateLimitDelay(deltaSeconds * 1000);
+    }
+    const dateMs = parseHttpDate(value, nowMs);
+    return dateMs === undefined ? undefined : clampRateLimitDelay(dateMs - nowMs);
+}
+function parseResetSeconds(value, nowMs) {
+    const numeric = parseNumericHeader(value);
+    if (numeric === undefined) {
+        const dateMs = parseHttpDate(value, nowMs);
+        return dateMs === undefined ? undefined : clampRateLimitDelay(dateMs - nowMs);
+    }
+    if (numeric >= 1_000_000_000_000) {
+        return clampRateLimitDelay(numeric - nowMs);
+    }
+    if (numeric >= 1_000_000_000) {
+        return clampRateLimitDelay(numeric * 1000 - nowMs);
+    }
+    return clampRateLimitDelay(numeric * 1000);
+}
+function parseResetMilliseconds(value, nowMs) {
+    const numeric = parseNumericHeader(value);
+    if (numeric === undefined) {
+        return undefined;
+    }
+    return clampRateLimitDelay(numeric >= 1_000_000_000_000 ? numeric - nowMs : numeric);
+}
+function parseDurationHeader(value) {
+    const normalized = value.trim().toLowerCase();
+    const matcher = /(\d+(?:\.\d+)?)(ms|s|m|h)/g;
+    const multipliers = { ms: 1, s: 1000, m: 60_000, h: 3_600_000 };
+    let totalMs = 0;
+    let consumed = "";
+    for (const match of normalized.matchAll(matcher)) {
+        totalMs += Number(match[1]) * multipliers[match[2]];
+        consumed += match[0];
+    }
+    if (!consumed || consumed !== normalized.replace(/\s+/g, "")) {
+        return undefined;
+    }
+    return clampRateLimitDelay(totalMs);
+}
+function extractRateLimitHeader(error, nowMs) {
+    const details = extractHttpFailureDetails(error);
+    if (details.status !== 429 && details.status !== 503) {
+        return { status: details.status, header: { hadHeader: false } };
+    }
+    const specifications = [
+        {
+            names: ["retry-after"],
+            parse: (value) => parseRetryAfter(value, nowMs),
+        },
+        {
+            names: [
+                "retry-after-ms",
+                "x-retry-after-ms",
+                "x-ms-retry-after-ms",
+                "x-ratelimit-reset-ms",
+                "x-rate-limit-reset-ms",
+                "ratelimit-reset-ms",
+            ],
+            parse: (value) => parseResetMilliseconds(value, nowMs),
+        },
+        {
+            names: [
+                "x-ratelimit-reset",
+                "x-rate-limit-reset",
+                "ratelimit-reset",
+                "x-ratelimit-reset-after",
+                "x-rate-limit-reset-after",
+                "ratelimit-reset-after",
+            ],
+            parse: (value) => parseResetSeconds(value, nowMs),
+        },
+        {
+            names: [
+                "x-ratelimit-reset-requests",
+                "x-rate-limit-reset-requests",
+                "x-ratelimit-reset-tokens",
+                "x-rate-limit-reset-tokens",
+            ],
+            parse: parseDurationHeader,
+        },
+    ];
+    const parsed = [];
+    let hadHeader = false;
+    for (const specification of specifications) {
+        for (const name of specification.names) {
+            for (const headers of details.headers) {
+                const values = readHeaderValues(headers, name);
+                hadHeader ||= values.length > 0;
+                for (const value of values) {
+                    const delayMs = specification.parse(value);
+                    if (delayMs !== undefined) {
+                        parsed.push({ delayMs, source: name });
+                    }
+                }
+            }
+        }
+    }
+    const longest = parsed.sort((a, b) => b.delayMs - a.delayMs)[0];
+    return {
+        status: details.status,
+        header: {
+            delayMs: longest?.delayMs,
+            hadHeader,
+            source: longest?.source,
+        },
+    };
 }
 function isProviderRunTaskRejection(value) {
     return (value !== null &&
@@ -490,9 +798,27 @@ function computeBackoffDelay(policy, attempt) {
         return 0;
     return Math.min(policy.maxBackoffMs, Math.round(policy.backoffMs * Math.pow(policy.backoffMultiplier, Math.max(0, attempt - 1))));
 }
-function computeRetryDelay(policy, attempt, errorMessage) {
+function resolveRetryTiming(policy, attempt, error, errorMessage, nowMs) {
     const configured = computeBackoffDelay(policy, attempt);
-    return /429|rate limit/i.test(errorMessage) ? Math.max(2000, configured) : configured;
+    const { status, header } = extractRateLimitHeader(error, nowMs);
+    const explicitRateLimit = status === 429 || /429|rate limit/i.test(errorMessage);
+    const rateLimited = explicitRateLimit || (status === 503 && header.hadHeader);
+    const overridesMessageHeuristics = explicitRateLimit || (status === 503 && header.delayMs !== undefined);
+    if (header.delayMs !== undefined) {
+        return {
+            delayMs: Math.max(configured, header.delayMs),
+            rateLimited,
+            overridesMessageHeuristics,
+            source: header.source,
+        };
+    }
+    return {
+        delayMs: explicitRateLimit
+            ? Math.max(DEFAULT_RATE_LIMIT_BACKOFF_MS, configured)
+            : configured,
+        rateLimited,
+        overridesMessageHeuristics,
+    };
 }
 function mergeFlags(...flagLists) {
     return [...new Set(flagLists.flatMap((flags) => [...flags]))].sort();
@@ -511,15 +837,15 @@ function mergedFlagPenalty(flags) {
         penalty += 0.02;
     return penalty;
 }
-function mergedSortOrder(sourceTierMode) {
-    return sourceTierMode === "off"
-        ? [...MERGED_SORT_ORDER]
-        : ["score:desc", "bestSourceTier:desc", "bestRank:asc", "providerCount:desc", "title:asc"];
+function mergedSortOrder() {
+    return [...MERGED_SORT_ORDER];
 }
 function computeMergedScoreBreakdown(entry, sourceTierMode) {
     const bestVariantScore = entry.variants.reduce((max, variant) => Math.max(max, variant.score), 0);
     const corroborationBonus = Math.max(0, entry.providerCount - 1) * 0.12;
-    const bestRankBonus = Math.max(0, 0.35 - (entry.bestRank - 1) * 0.04);
+    // Rank is an explicit tie-breaker after provider priority. Folding it into
+    // the score would silently make rank take precedence over provider priority.
+    const bestRankBonus = 0;
     const tierAdjustment = sourceTierMergedAdjustment(entry.bestSourceTier, sourceTierMode);
     const flagPenalty = mergedFlagPenalty(entry.flags);
     return {
@@ -531,19 +857,15 @@ function computeMergedScoreBreakdown(entry, sourceTierMode) {
         finalScore: Math.max(0.01, bestVariantScore + corroborationBonus + bestRankBonus + tierAdjustment - flagPenalty),
     };
 }
-function compareMergedCandidates(a, b, sourceTierMode) {
+function compareMergedCandidates(a, b) {
     if (b.score !== a.score)
         return b.score - a.score;
-    if (sourceTierMode !== "off") {
-        const tierDelta = compareSourceTierDesc(a.bestSourceTier, b.bestSourceTier);
-        if (tierDelta !== 0)
-            return tierDelta;
+    if (a.providerPriority !== b.providerPriority) {
+        return a.providerPriority - b.providerPriority;
     }
     if (a.bestRank !== b.bestRank)
         return a.bestRank - b.bestRank;
-    if (b.providerCount !== a.providerCount)
-        return b.providerCount - a.providerCount;
-    return a.title.localeCompare(b.title);
+    return a.insertionIndex - b.insertionIndex;
 }
 function buildRankingExplanation(params) {
     return {
@@ -551,6 +873,8 @@ function buildRankingExplanation(params) {
         rank: params.rank,
         scoreBreakdown: params.scoreBreakdown,
         tieBreakers: {
+            providerPriority: params.providerPriority,
+            priorityProvider: params.priorityProvider,
             bestSourceTier: params.bestSourceTier,
             bestRank: params.bestRank,
             providerCount: params.providerCount,
@@ -558,58 +882,149 @@ function buildRankingExplanation(params) {
         },
     };
 }
-function emptyRankingMeta(sourceTierMode) {
+function emptyRankingMeta() {
     return {
         strategy: MERGED_RANKING_STRATEGY,
-        sortOrder: mergedSortOrder(sourceTierMode),
+        sortOrder: mergedSortOrder(),
         consideredCount: 0,
         returnedCount: 0,
         droppedCount: 0,
         dropped: [],
     };
 }
-function mergeResults(results, maxMergedResults, sourceTierMode) {
-    const merged = new Map();
-    for (const provider of results) {
-        for (const item of provider.results) {
-            const existing = merged.get(item.canonicalUrl);
-            if (!existing) {
-                merged.set(item.canonicalUrl, {
-                    title: item.title,
-                    url: item.url,
-                    canonicalUrl: item.canonicalUrl,
-                    snippet: item.snippet,
-                    truncated: item.truncated,
-                    siteName: item.siteName,
-                    providers: [item.providerId],
-                    providerCount: 1,
-                    bestRank: item.rawRank,
-                    bestSourceTier: item.sourceTier,
-                    flags: [...item.flags],
-                    rankings: [
-                        {
-                            providerId: item.providerId,
-                            rawRank: item.rawRank,
-                            score: item.score,
-                            nativeScore: item.nativeScore,
-                            sourceType: item.sourceType,
-                            sourceTier: item.sourceTier,
-                            flags: [...item.flags],
-                        },
-                    ],
-                    variants: [item],
-                });
-                continue;
+function compareRepresentativeResults(a, b, sourceTierMode) {
+    if (a.rawRank !== b.rawRank)
+        return a.rawRank - b.rawRank;
+    if (b.score !== a.score)
+        return b.score - a.score;
+    if (sourceTierMode !== "off") {
+        const tierDelta = compareSourceTierDesc(a.sourceTier, b.sourceTier);
+        if (tierDelta !== 0)
+            return tierDelta;
+    }
+    const providerDelta = a.providerId.localeCompare(b.providerId);
+    if (providerDelta !== 0)
+        return providerDelta;
+    return a.originalUrl.localeCompare(b.originalUrl);
+}
+function pickBestSnippet(items) {
+    const withSnippets = items.filter((item) => typeof item.snippet === "string" && item.snippet.trim().length > 0);
+    if (withSnippets.length === 0) {
+        return {};
+    }
+    const informative = withSnippets.filter((item) => normalizeTitle(item.snippet).length > 0);
+    const candidates = informative.length > 0 ? informative : withSnippets;
+    const best = candidates.reduce((current, item) => item.snippet.length > current.snippet.length ? item : current);
+    return {
+        snippet: best.snippet,
+        ...(best.truncated ? { truncated: true } : {}),
+    };
+}
+function buildMergeGroups(results, dedupe) {
+    const indexed = results.flatMap((provider) => provider.results.map((item) => ({
+        item,
+        fuzzyUrl: dedupe.enabled
+            ? analyzeFuzzyUrl(item.originalUrl, dedupe)
+            : {
+                canonicalUrl: item.canonicalUrl,
+                meaningfulQuery: "",
+            },
+    })));
+    const parent = indexed.map((_, index) => index);
+    const find = (index) => {
+        let root = index;
+        while (parent[root] !== root) {
+            root = parent[root];
+        }
+        while (parent[index] !== index) {
+            const next = parent[index];
+            parent[index] = root;
+            index = next;
+        }
+        return root;
+    };
+    const union = (left, right) => {
+        const leftRoot = find(left);
+        const rightRoot = find(right);
+        if (leftRoot !== rightRoot) {
+            parent[rightRoot] = leftRoot;
+        }
+    };
+    const byCanonicalUrl = new Map();
+    indexed.forEach((entry, index) => {
+        const prior = byCanonicalUrl.get(entry.fuzzyUrl.canonicalUrl);
+        if (prior === undefined) {
+            byCanonicalUrl.set(entry.fuzzyUrl.canonicalUrl, index);
+        }
+        else {
+            union(prior, index);
+        }
+    });
+    if (dedupe.enabled) {
+        const byTitleHostAndQuery = new Map();
+        indexed.forEach((entry, index) => {
+            const title = normalizeTitle(entry.item.title);
+            if (!entry.fuzzyUrl.host ||
+                !entry.fuzzyUrl.canonicalUrl.startsWith("https://") ||
+                !title) {
+                return;
             }
-            existing.variants.push(item);
-            if (!existing.providers.includes(item.providerId)) {
-                existing.providers.push(item.providerId);
+            const titleKey = [
+                entry.fuzzyUrl.host,
+                entry.fuzzyUrl.meaningfulQuery,
+                title,
+            ].join("\u0000");
+            const prior = byTitleHostAndQuery.get(titleKey);
+            if (prior === undefined) {
+                byTitleHostAndQuery.set(titleKey, index);
             }
-            existing.providerCount = existing.providers.length;
-            existing.bestRank = Math.min(existing.bestRank, item.rawRank);
-            existing.bestSourceTier = pickHigherSourceTier(existing.bestSourceTier, item.sourceTier);
-            existing.flags = mergeFlags(existing.flags, item.flags);
-            existing.rankings.push({
+            else {
+                union(prior, index);
+            }
+        });
+    }
+    const groups = new Map();
+    indexed.forEach((entry, index) => {
+        const root = find(index);
+        const group = groups.get(root);
+        if (group) {
+            group.push(entry);
+        }
+        else {
+            groups.set(root, [entry]);
+        }
+    });
+    return [...groups.values()];
+}
+function mergeResults(results, maxMergedResults, sourceTierMode, dedupe, providerOrder = results.map((provider) => provider.providerId)) {
+    const providerPriorities = new Map(providerOrder.map((providerId, index) => [providerId, index]));
+    const mergeCandidates = buildMergeGroups(results, dedupe).map((group, groupIndex) => {
+        const representative = [...group].sort((a, b) => compareRepresentativeResults(a.item, b.item, sourceTierMode))[0];
+        const items = group.map((entry) => entry.item);
+        const providers = [...new Set(items.map((item) => item.providerId))];
+        const flags = mergeFlags(...items.map((item) => item.flags));
+        const bestSourceTier = items.reduce((best, item) => pickHigherSourceTier(best, item.sourceTier), representative.item.sourceTier);
+        const priority = items.reduce((best, item) => {
+            const itemPriority = providerPriorities.get(item.providerId) ?? Number.MAX_SAFE_INTEGER;
+            return itemPriority < best.providerPriority
+                ? { providerPriority: itemPriority, priorityProvider: item.providerId }
+                : best;
+        }, {
+            providerPriority: Number.MAX_SAFE_INTEGER,
+            priorityProvider: representative.item.providerId,
+        });
+        return {
+            title: representative.item.title,
+            url: representative.item.url,
+            canonicalUrl: representative.fuzzyUrl.canonicalUrl,
+            ...pickBestSnippet(items),
+            siteName: representative.item.siteName ?? items.find((item) => item.siteName)?.siteName,
+            providers,
+            providerCount: providers.length,
+            bestRank: Math.min(...items.map((item) => item.rawRank)),
+            bestSourceTier,
+            flags,
+            rankings: items.map((item) => ({
                 providerId: item.providerId,
                 rawRank: item.rawRank,
                 score: item.score,
@@ -617,20 +1032,14 @@ function mergeResults(results, maxMergedResults, sourceTierMode) {
                 sourceType: item.sourceType,
                 sourceTier: item.sourceTier,
                 flags: [...item.flags],
-            });
-            if ((!existing.snippet || existing.snippet.length < (item.snippet?.length ?? 0)) && item.snippet) {
-                existing.snippet = item.snippet;
-                existing.truncated = item.truncated;
-            }
-            if (existing.title.length < item.title.length) {
-                existing.title = item.title;
-            }
-            if (!existing.siteName && item.siteName) {
-                existing.siteName = item.siteName;
-            }
-        }
-    }
-    const rankedCandidates = [...merged.values()]
+            })),
+            variants: items,
+            providerPriority: priority.providerPriority,
+            priorityProvider: priority.priorityProvider,
+            insertionIndex: groupIndex,
+        };
+    });
+    const rankedCandidates = mergeCandidates
         .map((entry) => {
         const normalized = {
             ...entry,
@@ -667,11 +1076,12 @@ function mergeResults(results, maxMergedResults, sourceTierMode) {
             scoreBreakdown,
         };
     })
-        .sort((a, b) => compareMergedCandidates(a, b, sourceTierMode));
+        .sort(compareMergedCandidates);
     const mergedResults = rankedCandidates
         .slice(0, maxMergedResults)
         .map((entry, index) => {
-        const { scoreBreakdown, ...base } = entry;
+        const { scoreBreakdown, providerPriority, priorityProvider, insertionIndex: _insertionIndex, ...base } = entry;
+        void _insertionIndex;
         return {
             ...base,
             ranking: buildRankingExplanation({
@@ -680,6 +1090,8 @@ function mergeResults(results, maxMergedResults, sourceTierMode) {
                 bestRank: base.bestRank,
                 bestSourceTier: base.bestSourceTier,
                 providerCount: base.providerCount,
+                providerPriority,
+                priorityProvider,
                 scoreBreakdown,
             }),
         };
@@ -697,10 +1109,10 @@ function mergeResults(results, maxMergedResults, sourceTierMode) {
     return {
         results: mergedResults,
         ranking: rankedCandidates.length === 0
-            ? emptyRankingMeta(sourceTierMode)
+            ? emptyRankingMeta()
             : {
                 strategy: MERGED_RANKING_STRATEGY,
-                sortOrder: mergedSortOrder(sourceTierMode),
+                sortOrder: mergedSortOrder(),
                 consideredCount: rankedCandidates.length,
                 returnedCount: mergedResults.length,
                 droppedCount: dropped.length,
@@ -708,11 +1120,24 @@ function mergeResults(results, maxMergedResults, sourceTierMode) {
             },
     };
 }
-function buildEvidenceTable(results, answers) {
+function buildEvidenceTable(results, answers, dedupe) {
     const citationSupportByUrl = new Map();
+    const mergedUrlByVariantUrl = new Map();
+    for (const result of results) {
+        mergedUrlByVariantUrl.set(result.canonicalUrl, result.canonicalUrl);
+        for (const variant of result.variants) {
+            const variantUrl = dedupe.enabled
+                ? analyzeFuzzyUrl(variant.originalUrl, dedupe).canonicalUrl
+                : variant.canonicalUrl;
+            mergedUrlByVariantUrl.set(variantUrl, result.canonicalUrl);
+        }
+    }
     for (const answer of answers) {
         for (const citationUrl of answer.citations) {
-            const canonicalCitationUrl = canonicalizeUrl(citationUrl);
+            const citationVariantUrl = dedupe.enabled
+                ? analyzeFuzzyUrl(citationUrl, dedupe).canonicalUrl
+                : canonicalizeUrl(citationUrl);
+            const canonicalCitationUrl = mergedUrlByVariantUrl.get(citationVariantUrl) ?? citationVariantUrl;
             if (!canonicalCitationUrl) {
                 continue;
             }
@@ -773,6 +1198,7 @@ function buildEvidenceTable(results, answers) {
 async function runProvider(params) {
     const start = Date.now();
     const providerConfig = resolveRuntimeProviderConfig(params.request, params.brokerConfig, params.provider.id);
+    validateScoreCalibrationConfig(providerConfig.scoreCalibration);
     const retryPolicy = providerConfig.retry;
     const providerArgs = buildProviderArgs(params.request, params.brokerConfig, params.provider.id);
     const retryHistory = [];
@@ -793,8 +1219,7 @@ async function runProvider(params) {
         retryHistory,
         error,
     });
-    for (let attempt = 1; attempt <= retryPolicy.maxAttempts; attempt += 1) {
-        attempts = attempt;
+    while (attempts < retryPolicy.maxAttempts) {
         if (Date.now() >= params.deadlineAt) {
             return failure("deadline exceeded");
         }
@@ -803,6 +1228,28 @@ async function runProvider(params) {
                 ? "deadline exceeded"
                 : asErrorMessage(createAbortError(params.signal.reason)));
         }
+        const cooldown = params.cooldowns.get(params.provider.id);
+        const cooldownRemainingMs = cooldown ? cooldown.untilMs - Date.now() : 0;
+        if (cooldown && cooldownRemainingMs <= 0) {
+            params.cooldowns.delete(params.provider.id);
+        }
+        else if (cooldown && cooldownRemainingMs > 0) {
+            const remainingBudgetMs = Math.max(0, params.deadlineAt - Date.now());
+            if (cooldownRemainingMs >= remainingBudgetMs) {
+                return failure(`Rate-limit wait of ${cooldownRemainingMs}ms from ${cooldown.source} exceeds the remaining total timeout budget of ${remainingBudgetMs}ms.`);
+            }
+            try {
+                await sleep(cooldownRemainingMs, params.signal);
+            }
+            catch (sleepError) {
+                return failure(params.signal.reason instanceof DeadlineExceededError
+                    ? "deadline exceeded"
+                    : asErrorMessage(sleepError));
+            }
+            continue;
+        }
+        attempts += 1;
+        const attempt = attempts;
         try {
             const remainingMs = Math.max(1, params.deadlineAt - Date.now());
             const attemptTimeoutMs = Math.min(providerConfig.timeoutMs, remainingMs);
@@ -825,13 +1272,24 @@ async function runProvider(params) {
                 payload: response.result,
                 sourceTierMode: params.sourceTierMode,
                 maxSnippetLength: params.maxSnippetLength,
+                urlOptions: params.urlOptions,
             });
             if (normalized.error) {
-                throw new Error(normalized.error);
+                const providerError = new Error(normalized.error);
+                providerError.response = response.result;
+                throw providerError;
             }
-            const weightedResults = normalized.results.map((result) => ({
+            const calibrated = calibrateProviderScores(normalized.results, providerConfig.scoreCalibration);
+            const weightedResults = normalized.results.map((result, index) => ({
                 ...result,
-                score: applyProviderWeight(result.score, providerConfig.weight),
+                score: applyProviderWeight(applySearchResultQuality({
+                    relevanceScore: calibrated.scores[index] ?? 0,
+                    sourceType: result.sourceType,
+                    sourceTier: result.sourceTier,
+                    flags: result.flags,
+                    sourceTierMode: params.sourceTierMode,
+                    normalizeHighTier: true,
+                }), providerConfig.weight),
             }));
             return {
                 providerId: params.provider.id,
@@ -840,7 +1298,7 @@ async function runProvider(params) {
                 ok: true,
                 tookMs: Date.now() - start,
                 rawCount: normalized.results.length,
-                attempts: attempt,
+                attempts,
                 rawPayload: response.result,
                 results: weightedResults,
                 discardedResults: normalized.discardedResults,
@@ -853,18 +1311,36 @@ async function runProvider(params) {
                 params.signal.reason instanceof DeadlineExceededError ||
                 Date.now() >= params.deadlineAt;
             lastError = deadlineExceeded ? "deadline exceeded" : asErrorMessage(error);
+            const retryStartedAt = Date.now();
+            const retryTiming = resolveRetryTiming(retryPolicy, attempt, error, lastError, retryStartedAt);
             const canRetry = !params.signal.aborted &&
                 !deadlineExceeded &&
                 attempt < retryPolicy.maxAttempts &&
-                shouldRetry(error, lastError);
+                (retryTiming.overridesMessageHeuristics || shouldRetry(error, lastError));
+            if (retryTiming.rateLimited && retryTiming.delayMs > 0) {
+                const nextCooldown = {
+                    untilMs: retryStartedAt + retryTiming.delayMs,
+                    source: retryTiming.source ?? "rate-limit response",
+                };
+                const currentCooldown = params.cooldowns.get(params.provider.id);
+                if (!currentCooldown || nextCooldown.untilMs > currentCooldown.untilMs) {
+                    params.cooldowns.set(params.provider.id, nextCooldown);
+                }
+            }
             if (!canRetry) {
                 return failure(lastError);
             }
-            const delayMs = computeRetryDelay(retryPolicy, attempt, lastError);
-            if (Date.now() + delayMs >= params.deadlineAt) {
-                return failure("deadline exceeded");
+            const delayMs = retryTiming.delayMs;
+            const remainingBudgetMs = Math.max(0, params.deadlineAt - Date.now());
+            if (delayMs >= remainingBudgetMs) {
+                return failure(retryTiming.rateLimited
+                    ? `Rate-limit wait of ${delayMs}ms${retryTiming.source ? ` from ${retryTiming.source}` : ""} exceeds the remaining total timeout budget of ${remainingBudgetMs}ms.`
+                    : "deadline exceeded");
             }
             retryHistory.push({ attempt, error: lastError, delayMs });
+            if (retryTiming.rateLimited) {
+                continue;
+            }
             try {
                 await sleep(delayMs, params.signal);
             }
@@ -905,6 +1381,7 @@ export async function runSearchFusion(params) {
     const start = Date.now();
     const brokerConfig = asConfig(params.pluginConfig);
     const sourceTierMode = coerceSourceTierMode(brokerConfig.sourceTierMode);
+    const dedupe = resolveMergeDedupeOptions(brokerConfig);
     const includeRawPayloads = params.request.includeRawPayloads ?? brokerConfig.includeRawPayloads ?? false;
     const includeDiscarded = params.request.includeDiscarded ?? brokerConfig.includeDiscarded ?? false;
     const maxSnippetLength = clamp(brokerConfig.maxSnippetLength ?? DEFAULT_MAX_SNIPPET_LENGTH, 100, 5000);
@@ -944,8 +1421,8 @@ export async function runSearchFusion(params) {
             discardedResults: [],
             answers: [],
             results: [],
-            ranking: emptyRankingMeta(sourceTierMode),
-            evidenceTable: buildEvidenceTable([], []),
+            ranking: emptyRankingMeta(),
+            evidenceTable: buildEvidenceTable([], [], dedupe),
             output,
             externalContent: {
                 untrusted: true,
@@ -961,6 +1438,7 @@ export async function runSearchFusion(params) {
     const runController = new AbortController();
     const removeOuterRelay = relayAbort(params.signal, runController);
     const deadlineTimer = setTimeout(() => runController.abort(new DeadlineExceededError()), Math.max(0, deadlineAt - Date.now()));
+    const providerCooldowns = new Map();
     const providerRunTasks = selectedProviders.map((provider) => {
         const startedAt = Date.now();
         return {
@@ -979,8 +1457,10 @@ export async function runSearchFusion(params) {
                 provider,
                 sourceTierMode,
                 maxSnippetLength,
+                urlOptions: dedupe.enabled ? dedupe : undefined,
                 signal: runController.signal,
                 deadlineAt,
+                cooldowns: providerCooldowns,
                 agentDir: params.agentDir,
                 runtimeMetadata: params.runtimeMetadata,
             })), runController.signal).catch((error) => {
@@ -1011,7 +1491,14 @@ export async function runSearchFusion(params) {
             error: rejection?.error ?? settled.reason,
         });
     });
-    const merged = mergeResults(providerRuns.filter((run) => run.ok), maxMergedResults, sourceTierMode);
+    const okRuns = providerRuns.filter((run) => run.ok);
+    const contributingProviders = new Set(okRuns.filter((run) => run.results.length > 0).map((run) => run.providerId)).size;
+    // Fuzzy dedupe is a fusion feature: a single contributing provider keeps its
+    // raw result set (exact-match dedupe only) unless fuzzyDedupe is explicitly true.
+    const mergeDedupe = brokerConfig.fuzzyDedupe !== true && contributingProviders <= 1
+        ? { ...dedupe, enabled: false }
+        : dedupe;
+    const merged = mergeResults(okRuns, maxMergedResults, sourceTierMode, mergeDedupe, selectedProviders.map((provider) => provider.id));
     const mergedResults = merged.results;
     const internalDiscardedResults = providerRuns.flatMap((run) => run.discardedResults);
     const internalAnswers = providerRuns
@@ -1064,7 +1551,7 @@ export async function runSearchFusion(params) {
         answers,
         results: visibleMergedResults,
         ranking: merged.ranking,
-        evidenceTable: buildEvidenceTable(visibleMergedResults, answers),
+        evidenceTable: buildEvidenceTable(visibleMergedResults, answers, dedupe),
         output,
         externalContent: {
             untrusted: true,

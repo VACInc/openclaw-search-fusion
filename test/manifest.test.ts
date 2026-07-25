@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { validateJsonSchemaValue } from "openclaw/plugin-sdk/config-schema";
 
 const manifestPath = path.resolve(import.meta.dirname, "..", "openclaw.plugin.json");
 const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8")) as {
@@ -60,4 +61,76 @@ test("manifest exposes providerConfig result ceilings and weight overrides", () 
   assert.equal(weightSchema?.type, "number");
   assert.equal(weightSchema?.minimum, 0.1);
   assert.equal(weightSchema?.maximum, 5);
+});
+
+test("manifest exposes per-provider score calibration", () => {
+  const schemaProperties = manifest.configSchema?.properties ?? {};
+  const providerConfig = asObject(schemaProperties.providerConfig);
+  const providerConfigEntry = asObject(providerConfig?.additionalProperties);
+  const providerProperties = asObject(providerConfigEntry?.properties);
+  const scoreCalibration = asObject(providerProperties?.scoreCalibration);
+  const calibrationProperties = asObject(scoreCalibration?.properties);
+  const strategy = asObject(calibrationProperties?.strategy);
+  const curve = asObject(calibrationProperties?.curve);
+  const curveItem = asObject(curve?.items);
+  const pointProperties = asObject(curveItem?.properties);
+
+  assert.equal(scoreCalibration?.additionalProperties, false);
+  assert.deepEqual(strategy?.enum, ["minmax", "rank", "fixed", "none"]);
+  assert.equal(curve?.minItems, 2);
+  assert.deepEqual(curveItem?.required, ["input", "output"]);
+  assert.equal(asObject(pointProperties?.output)?.minimum, 0);
+  assert.equal(asObject(pointProperties?.output)?.maximum, 1);
+});
+
+test("manifest requires a curve when fixed calibration is selected", () => {
+  const schema = manifest.configSchema;
+  assert.ok(schema);
+
+  const fixedWithoutCurve = validateJsonSchemaValue({
+    schema: schema as never,
+    cacheKey: "search-fusion-manifest-score-calibration",
+    value: {
+      providerConfig: {
+        brave: {
+          scoreCalibration: {
+            strategy: "fixed",
+          },
+        },
+      },
+    },
+  });
+  const fixedWithCurve = validateJsonSchemaValue({
+    schema: schema as never,
+    cacheKey: "search-fusion-manifest-score-calibration",
+    value: {
+      providerConfig: {
+        brave: {
+          scoreCalibration: {
+            strategy: "fixed",
+            curve: [
+              { input: 0, output: 0 },
+              { input: 1, output: 1 },
+            ],
+          },
+        },
+      },
+    },
+  });
+
+  assert.equal(fixedWithoutCurve.ok, false);
+  if (!fixedWithoutCurve.ok) {
+    assert.match(
+      fixedWithoutCurve.errors.map((error) => error.text).join("\n"),
+      /scoreCalibration\.curve: must have required property 'curve'/,
+    );
+  }
+  assert.equal(fixedWithCurve.ok, true);
+});
+
+test("manifest exposes configurable fuzzy dedupe and tracking parameters", () => {
+  const properties = manifest.configSchema?.properties ?? {};
+  assert.equal(asObject(properties.fuzzyDedupe)?.type, "boolean");
+  assert.equal(asObject(properties.trackingParams)?.type, "array");
+  assert.deepEqual(asObject(properties.trackingParamMode)?.enum, ["extend", "override"]);
 });

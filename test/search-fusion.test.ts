@@ -167,6 +167,47 @@ function createRuntime(overrides?: {
   };
 }
 
+function createHttpError(params: {
+  status: 429 | 503;
+  headers: Headers | Record<string, string>;
+  message?: string;
+  shape?: "direct" | "response" | "cause";
+}): Error {
+  const error = new Error(params.message ?? `HTTP ${params.status}`);
+  const response = { status: params.status, headers: params.headers };
+  if (params.shape === "direct") {
+    Object.assign(error, { statusCode: params.status, headers: params.headers });
+  } else if (params.shape === "cause") {
+    Object.assign(error, { cause: { response } });
+  } else {
+    Object.assign(error, { response });
+  }
+  return error;
+}
+
+type StaticResult = {
+  title: string;
+  url: string;
+  description?: string;
+};
+
+function createStaticResultsRuntime(resultsByProvider: Record<string, StaticResult[]>) {
+  return createRuntime({
+    providers: Object.keys(resultsByProvider).map((providerId, index) => ({
+      id: providerId,
+      label: providerId,
+      configured: true,
+      autoDetectOrder: index + 1,
+    })),
+    search: async ({ providerId }) => ({
+      provider: providerId ?? "unknown",
+      result: {
+        results: resultsByProvider[providerId ?? ""] ?? [],
+      },
+    }),
+  });
+}
+
 test("runSearchFusion passes catalog-stub plain-string credentials through unchanged", async () => {
   clearRuntimeConfigSnapshot();
   const config = {
@@ -898,6 +939,505 @@ test("runSearchFusion merges duplicate URLs across providers and keeps provider 
   assert.equal(payload.providersSucceeded.length, 3);
 });
 
+test("runSearchFusion fuzzy-merges URL variants, keeps the highest-ranked instance, and merges provenance", async () => {
+  const payload = await runSearchFusion({
+    runtime: createStaticResultsRuntime({
+      alpha: [
+        {
+          title: "Primary story title",
+          url: "http://www.Example.com:80/story/amp/?utm_custom=value#comments",
+          description: "Useful short snippet",
+        },
+      ],
+      beta: [
+        {
+          title: "Unrelated result",
+          url: "https://elsewhere.example/first",
+          description: "A separate result",
+        },
+        {
+          title: "A much longer title from the lower-ranked duplicate",
+          url: "https://m.example.com/story/?fbclid=value",
+          description:
+            "The lower-ranked provider supplied this longer and more informative snippet.",
+        },
+      ],
+      gamma: [
+        {
+          title: "Primary story title",
+          url: "https://amp.example.com/story/amp.html?gclid=value",
+          description: "Another snippet",
+        },
+      ],
+    }) as never,
+    config: {},
+    pluginConfig: {},
+    request: {
+      query: "primary story",
+      providers: ["alpha", "beta", "gamma"],
+    },
+  });
+
+  const merged = payload.results.find(
+    (result) => result.canonicalUrl === "https://example.com/story",
+  );
+  assert.equal(payload.results.length, 2);
+  assert.equal(merged?.title, "Primary story title");
+  assert.equal(merged?.url, "http://www.example.com/story/amp?utm_custom=value");
+  assert.equal(
+    merged?.snippet,
+    "The lower-ranked provider supplied this longer and more informative snippet.",
+  );
+  assert.deepEqual(merged?.providers, ["alpha", "beta", "gamma"]);
+  assert.equal(merged?.providerCount, 3);
+  assert.equal(merged?.variants.length, 3);
+  assert.equal(merged?.rankings.length, 3);
+  assert.equal(merged?.bestRank, 1);
+});
+
+test("runSearchFusion applies fuzzy URL identity to evidence citation support", async () => {
+  const payload = await runSearchFusion({
+    runtime: createRuntime({
+      providers: [
+        { id: "alpha", label: "alpha", configured: true },
+        { id: "beta", label: "beta", configured: true },
+      ],
+      search: async ({ providerId }) =>
+        providerId === "alpha"
+          ? {
+              provider: "alpha",
+              result: {
+                results: [
+                  {
+                    title: "Canonical story",
+                    url: "https://example.com/story",
+                    description: "Canonical result",
+                  },
+                ],
+              },
+            }
+          : {
+              provider: "beta",
+              result: {
+                content: "An answer supported by a same-host alternate URL for the same story.",
+                citations: [
+                  {
+                    title: " canonical story ",
+                    url: "http://m.example.com/news/alternate/amp/?utm_source=answer#section",
+                  },
+                ],
+              },
+            },
+    }) as never,
+    config: {},
+    pluginConfig: {},
+    request: {
+      query: "canonical story",
+      providers: ["alpha", "beta"],
+    },
+  });
+
+  const evidence = payload.evidenceTable.rows.find(
+    (row) => row.canonicalUrl === "https://example.com/story",
+  );
+  assert.equal(evidence?.answerCitationSupport.count, 1);
+  assert.deepEqual(evidence?.answerCitationSupport.providers, ["beta"]);
+});
+
+test("runSearchFusion merges normalized-title matches only on the same canonical host", async () => {
+  const payload = await runSearchFusion({
+    runtime: createStaticResultsRuntime({
+      alpha: [
+        {
+          title: "Quarterly Results — Q2",
+          url: "https://www.example.com/press/q2",
+          description: "Press release",
+        },
+      ],
+      beta: [
+        {
+          title: " quarterly results q2 ",
+          url: "https://m.example.com/news/results",
+          description: "A longer same-host account of the quarterly results",
+        },
+      ],
+      gamma: [
+        {
+          title: "Quarterly Results Q2",
+          url: "https://different.example/press/q2",
+          description: "Different publisher",
+        },
+      ],
+    }) as never,
+    config: {},
+    pluginConfig: {},
+    request: {
+      query: "quarterly results",
+      providers: ["alpha", "beta", "gamma"],
+    },
+  });
+
+  assert.equal(payload.results.length, 2);
+  const sameHost = payload.results.find((result) => result.providerCount === 2);
+  assert.deepEqual(sameHost?.providers, ["alpha", "beta"]);
+  assert.equal(sameHost?.canonicalUrl, "https://example.com/press/q2");
+  assert.ok(
+    payload.results.some(
+      (result) => result.canonicalUrl === "https://different.example/press/q2",
+    ),
+  );
+});
+
+test("runSearchFusion never title-merges conflicting meaningful query values", async () => {
+  const payload = await runSearchFusion({
+    runtime: createStaticResultsRuntime({
+      alpha: [
+        {
+          title: "Product details",
+          url: "https://example.com/product?id=1&utm_source=alpha",
+          description: "Product one",
+        },
+      ],
+      beta: [
+        {
+          title: "PRODUCT DETAILS",
+          url: "https://www.example.com/product?id=2&utm_source=beta",
+          description: "Product two",
+        },
+      ],
+    }) as never,
+    config: {},
+    pluginConfig: {},
+    request: {
+      query: "product",
+      providers: ["alpha", "beta"],
+    },
+  });
+
+  assert.equal(payload.results.length, 2);
+  assert.deepEqual(
+    payload.results.map((result) => result.canonicalUrl).sort(),
+    ["https://example.com/product?id=1", "https://example.com/product?id=2"],
+  );
+  assert.ok(payload.results.every((result) => result.providerCount === 1));
+});
+
+test("runSearchFusion never title-merges different non-default ports", async () => {
+  const payload = await runSearchFusion({
+    runtime: createStaticResultsRuntime({
+      alpha: [
+        {
+          title: "Service status",
+          url: "https://example.com:8443/status/current",
+          description: "First service",
+        },
+      ],
+      beta: [
+        {
+          title: "SERVICE STATUS",
+          url: "https://example.com:9443/health",
+          description: "Second service",
+        },
+      ],
+    }) as never,
+    config: {},
+    pluginConfig: {},
+    request: {
+      query: "service status",
+      providers: ["alpha", "beta"],
+    },
+  });
+
+  assert.equal(payload.results.length, 2);
+  assert.ok(payload.results.every((result) => result.providerCount === 1));
+});
+
+test("runSearchFusion can disable fuzzy dedupe without disabling legacy exact merging", async () => {
+  const payload = await runSearchFusion({
+    runtime: createStaticResultsRuntime({
+      alpha: [
+        {
+          title: "Story",
+          url: "http://www.example.com/story/amp",
+          description: "Mobile variant",
+        },
+        {
+          title: "Exact duplicate",
+          url: "http://www.example.com/story/amp#fragment",
+          description: "Exact canonical duplicate",
+        },
+      ],
+      beta: [
+        {
+          title: "Story",
+          url: "https://example.com/story",
+          description: "Canonical variant",
+        },
+      ],
+    }) as never,
+    config: {},
+    pluginConfig: {
+      fuzzyDedupe: false,
+    },
+    request: {
+      query: "story",
+      providers: ["alpha", "beta"],
+    },
+  });
+
+  assert.equal(payload.results.length, 2);
+  assert.deepEqual(
+    payload.results.map((result) => result.providerCount).sort(),
+    [1, 1],
+  );
+  const legacyExact = payload.results.find(
+    (result) => result.canonicalUrl === "http://www.example.com/story/amp",
+  );
+  assert.equal(legacyExact?.variants.length, 2);
+});
+
+test("runSearchFusion fuzzy-dedupe disable preserves non-legacy tracking distinctions", async () => {
+  const payload = await runSearchFusion({
+    runtime: createStaticResultsRuntime({
+      alpha: [
+        {
+          title: "Story",
+          url: "https://example.com/story?utm_custom=alpha",
+          description: "Alpha campaign",
+        },
+      ],
+      beta: [
+        {
+          title: "Story",
+          url: "https://example.com/story?utm_custom=beta",
+          description: "Beta campaign",
+        },
+      ],
+    }) as never,
+    config: {},
+    pluginConfig: {
+      fuzzyDedupe: false,
+    },
+    request: {
+      query: "story",
+      providers: ["alpha", "beta"],
+    },
+  });
+
+  assert.equal(payload.results.length, 2);
+  assert.deepEqual(
+    payload.results.map((result) => result.canonicalUrl).sort(),
+    [
+      "https://example.com/story?utm_custom=alpha",
+      "https://example.com/story?utm_custom=beta",
+    ],
+  );
+});
+
+test("runSearchFusion keeps single-provider results raw by default (fuzzy dedupe is fusion-only)", async () => {
+  const runtime = createStaticResultsRuntime({
+    alpha: [
+      {
+        title: "Story",
+        url: "https://example.com/story?utm_custom=alpha",
+        description: "Tracked variant",
+      },
+      {
+        title: "Story",
+        url: "https://example.com/story?utm_custom=beta",
+        description: "Second tracked variant",
+      },
+    ],
+  }) as never;
+
+  const defaulted = await runSearchFusion({
+    runtime,
+    config: {},
+    pluginConfig: {},
+    request: {
+      query: "story",
+      providers: ["alpha"],
+    },
+  });
+  assert.equal(defaulted.results.length, 2);
+
+  const optedIn = await runSearchFusion({
+    runtime,
+    config: {},
+    pluginConfig: {
+      fuzzyDedupe: true,
+    },
+    request: {
+      query: "story",
+      providers: ["alpha"],
+    },
+  });
+  assert.equal(optedIn.results.length, 1);
+  assert.equal(optedIn.results[0]?.canonicalUrl, "https://example.com/story");
+});
+
+test("runSearchFusion extends and overrides tracking-parameter dedupe safely", async () => {
+  const runtime = createStaticResultsRuntime({
+    alpha: [
+      {
+        title: "Campaign story",
+        url: "https://example.com/story?campaign_id=alpha&ref=one",
+        description: "Alpha campaign",
+      },
+    ],
+    beta: [
+      {
+        title: "Campaign story",
+        url: "https://example.com/story?campaign_id=beta&ref=two",
+        description: "Beta campaign",
+      },
+    ],
+  }) as never;
+  const request = {
+    query: "campaign story",
+    providers: ["alpha", "beta"],
+  };
+
+  const extended = await runSearchFusion({
+    runtime,
+    config: {},
+    pluginConfig: {
+      trackingParams: ["campaign_id"],
+    },
+    request,
+  });
+  const overridden = await runSearchFusion({
+    runtime,
+    config: {},
+    pluginConfig: {
+      trackingParams: ["campaign_id"],
+      trackingParamMode: "override",
+    },
+    request,
+  });
+
+  assert.equal(extended.results.length, 1);
+  assert.equal(extended.results[0]?.canonicalUrl, "https://example.com/story");
+  assert.deepEqual(extended.results[0]?.providers, ["alpha", "beta"]);
+  assert.equal(overridden.results.length, 2);
+  assert.deepEqual(
+    overridden.results.map((result) => result.canonicalUrl).sort(),
+    [
+      "https://example.com/story?ref=one",
+      "https://example.com/story?ref=two",
+    ],
+  );
+  assert.deepEqual(
+    overridden.results.map((result) => result.url).sort(),
+    [
+      "https://example.com/story?campaign_id=alpha&ref=one",
+      "https://example.com/story?campaign_id=beta&ref=two",
+    ],
+  );
+});
+
+test("runSearchFusion preserves override-mode display and navigation URLs", async () => {
+  const payload = await runSearchFusion({
+    runtime: createStaticResultsRuntime({
+      alpha: [
+        {
+          title: "Referenced story",
+          url: "https://example.com/story?ref=one",
+        },
+      ],
+    }) as never,
+    config: {},
+    pluginConfig: {
+      trackingParams: [],
+      trackingParamMode: "override",
+    },
+    request: {
+      query: "referenced story",
+      providers: ["alpha"],
+    },
+  });
+
+  assert.equal(payload.results[0]?.url, "https://example.com/story?ref=one");
+  assert.equal(
+    payload.results[0]?.canonicalUrl,
+    "https://example.com/story?ref=one",
+  );
+  assert.equal(
+    payload.results[0]?.variants[0]?.originalUrl,
+    "https://example.com/story?ref=one",
+  );
+});
+
+test("runSearchFusion attributes override-mode citations to the matching evidence row", async () => {
+  const payload = await runSearchFusion({
+    runtime: createRuntime({
+      providers: [
+        { id: "alpha", label: "alpha", configured: true },
+        { id: "beta", label: "beta", configured: true },
+        { id: "gamma", label: "gamma", configured: true },
+      ],
+      search: async ({ providerId }) => {
+        if (providerId === "alpha") {
+          return {
+            provider: "alpha",
+            result: {
+              results: [
+                {
+                  title: "Referenced story",
+                  url: "https://example.com/story?ref=one",
+                },
+              ],
+            },
+          };
+        }
+        if (providerId === "beta") {
+          return {
+            provider: "beta",
+            result: {
+              results: [
+                {
+                  title: "Base story",
+                  url: "https://example.com/story",
+                },
+              ],
+            },
+          };
+        }
+        return {
+          provider: "gamma",
+          result: {
+            content: "An answer supported by the referenced story.",
+            citations: ["https://example.com/story?ref=one"],
+          },
+        };
+      },
+    }) as never,
+    config: {},
+    pluginConfig: {
+      trackingParams: [],
+      trackingParamMode: "override",
+    },
+    request: {
+      query: "story",
+      providers: ["alpha", "beta", "gamma"],
+    },
+  });
+
+  assert.deepEqual(payload.answers[0]?.citations, [
+    "https://example.com/story?ref=one",
+  ]);
+  const referencedEvidence = payload.evidenceTable.rows.find(
+    (row) => row.canonicalUrl === "https://example.com/story?ref=one",
+  );
+  const baseEvidence = payload.evidenceTable.rows.find(
+    (row) => row.canonicalUrl === "https://example.com/story",
+  );
+  assert.equal(referencedEvidence?.answerCitationSupport.count, 1);
+  assert.deepEqual(referencedEvidence?.answerCitationSupport.providers, ["gamma"]);
+  assert.equal(baseEvidence?.answerCitationSupport.count, 0);
+  assert.deepEqual(baseEvidence?.answerCitationSupport.providers, []);
+});
+
 
 test("runSearchFusion keeps missing-url junk as non-merged provenance", async () => {
   const payload = await runSearchFusion({
@@ -1034,7 +1574,11 @@ test("runSearchFusion includes empty ranking metadata when no providers are avai
 
   assert.equal(payload.results.length, 0);
   assert.equal(payload.ranking.strategy, "merged-score-v1");
-  assert.deepEqual(payload.ranking.sortOrder, ["score:desc", "bestSourceTier:desc", "bestRank:asc", "providerCount:desc", "title:asc"]);
+  assert.deepEqual(payload.ranking.sortOrder, [
+    "score:desc",
+    "providerPriority:asc",
+    "bestRank:asc",
+  ]);
   assert.equal(payload.ranking.consideredCount, 0);
   assert.equal(payload.ranking.returnedCount, 0);
   assert.equal(payload.ranking.droppedCount, 0);
@@ -1206,6 +1750,226 @@ test("runSearchFusion ranks clean result-style hits ahead of sponsored noise", a
   assert.equal(payload.results[0]?.bestSourceTier, "high");
   assert.deepEqual(payload.results[1]?.flags, ["sponsored"]);
   assert.equal(payload.results[1]?.bestSourceTier, "suppressed");
+});
+
+test("runSearchFusion default calibration removes cross-provider score-scale bias", async () => {
+  const cases = [
+    {
+      name: "probability scores versus percentages",
+      preferredScores: [0.9, 0.2],
+      inflatedScores: [95, 20],
+    },
+    {
+      name: "small confidence values versus large retrieval scores",
+      preferredScores: [0.08, 0.01],
+      inflatedScores: [800, 100],
+    },
+  ];
+
+  for (const row of cases) {
+    const payload = await runSearchFusion({
+      runtime: createRuntime({
+        search: async ({ providerId }) => {
+          const scores =
+            providerId === "brave" ? row.preferredScores : row.inflatedScores;
+          return {
+            provider: providerId ?? "brave",
+            result: {
+              results: scores.map((score, index) => ({
+                title: `${providerId} result ${index + 1}`,
+                url: `https://example.com/${providerId}/${index + 1}`,
+                score,
+              })),
+            },
+          };
+        },
+      }) as never,
+      config: {},
+      pluginConfig: {},
+      request: {
+        query: row.name,
+        providers: ["brave", "gemini"],
+      },
+    });
+
+    const naiveTopProvider =
+      Math.max(...row.inflatedScores) > Math.max(...row.preferredScores)
+        ? "gemini"
+        : "brave";
+    const braveRun = payload.providerRuns.find((run) => run.provider === "brave");
+    const geminiRun = payload.providerRuns.find((run) => run.provider === "gemini");
+
+    assert.equal(naiveTopProvider, "gemini", row.name);
+    assert.deepEqual(braveRun?.results.map((result) => result.score), [1, 0], row.name);
+    assert.deepEqual(geminiRun?.results.map((result) => result.score), [1, 0], row.name);
+    assert.equal(payload.results[0]?.providers[0], "brave", row.name);
+    assert.equal(payload.results[0]?.ranking.tieBreakers.providerPriority, 0, row.name);
+    assert.equal(payload.results[0]?.ranking.tieBreakers.priorityProvider, "brave", row.name);
+  }
+});
+
+test("runSearchFusion keeps fully tied calibrated results in stable provider order", async () => {
+  const payload = await runSearchFusion({
+    runtime: createRuntime({
+      search: async ({ providerId }) => ({
+        provider: providerId ?? "brave",
+        result: {
+          results: [
+            {
+              title: "Zulu inserted first",
+              url: "https://example.com/first",
+              score: 0,
+            },
+          ],
+          web: {
+            results: [
+              {
+                title: "Alpha inserted second",
+                url: "https://example.com/second",
+                score: 1,
+              },
+            ],
+          },
+        },
+      }),
+    }) as never,
+    config: {},
+    pluginConfig: {
+      sourceTierMode: "off",
+      providerConfig: {
+        brave: {
+          scoreCalibration: {
+            strategy: "fixed",
+            curve: [
+              { input: 0, output: 0.5 },
+              { input: 1, output: 0.5 },
+            ],
+          },
+        },
+      },
+    },
+    request: {
+      query: "stable calibrated tie",
+      providers: ["brave"],
+    },
+  });
+
+  assert.deepEqual(
+    payload.providerRuns[0]?.results.map((result) => result.score),
+    [0.5, 0.5],
+  );
+  assert.deepEqual(
+    payload.results.map((result) => result.title),
+    ["Zulu inserted first", "Alpha inserted second"],
+  );
+  assert.deepEqual(payload.ranking.sortOrder, [
+    "score:desc",
+    "providerPriority:asc",
+    "bestRank:asc",
+  ]);
+});
+
+test("runSearchFusion applies provider priority before original rank for calibrated ties", async () => {
+  const fixedTie = {
+    strategy: "fixed" as const,
+    curve: [
+      { input: 0, output: 0.5 },
+      { input: 1, output: 0.5 },
+    ],
+  };
+  const payload = await runSearchFusion({
+    runtime: createRuntime({
+      search: async ({ providerId }) => ({
+        provider: providerId ?? "brave",
+        result: {
+          results: [
+            {
+              title: `${providerId}-1`,
+              url: `https://example.com/${providerId}-1`,
+              score: 0,
+            },
+            {
+              title: `${providerId}-2`,
+              url: `https://example.com/${providerId}-2`,
+              score: 1,
+            },
+          ],
+        },
+      }),
+    }) as never,
+    config: {},
+    pluginConfig: {
+      sourceTierMode: "off",
+      providerConfig: {
+        brave: { scoreCalibration: fixedTie },
+        gemini: { scoreCalibration: fixedTie },
+      },
+    },
+    request: {
+      query: "provider priority before original rank",
+      providers: ["brave", "gemini"],
+    },
+  });
+
+  assert.deepEqual(
+    payload.results.map((result) => [
+      result.title,
+      result.ranking.tieBreakers.providerPriority,
+      result.bestRank,
+      result.score,
+    ]),
+    [
+      ["brave-1", 0, 1, 0.5],
+      ["brave-2", 0, 2, 0.5],
+      ["gemini-1", 1, 1, 0.5],
+      ["gemini-2", 1, 2, 0.5],
+    ],
+  );
+  assert.ok(
+    payload.results.every(
+      (result) => result.ranking.scoreBreakdown.bestRankBonus === 0,
+    ),
+  );
+});
+
+test("runSearchFusion rejects invalid fixed calibration before calling a provider", async () => {
+  let searchCalls = 0;
+  const payload = await runSearchFusion({
+    runtime: createRuntime({
+      search: async ({ providerId }) => {
+        searchCalls += 1;
+        return {
+          provider: providerId ?? "brave",
+          result: {
+            results: [{ title: "Unexpected", url: "https://example.com/unexpected" }],
+          },
+        };
+      },
+    }) as never,
+    config: {},
+    pluginConfig: {
+      retry: { maxAttempts: 5, backoffMs: 0 },
+      providerConfig: {
+        brave: {
+          scoreCalibration: {
+            strategy: "fixed",
+            curve: [
+              { input: 0, output: 1 },
+              { input: 1, output: 0 },
+            ],
+          },
+        },
+      },
+    },
+    request: {
+      query: "invalid fixed curve",
+      providers: ["brave"],
+    },
+  });
+
+  assert.equal(searchCalls, 0);
+  assert.equal(payload.providerRuns[0]?.attempts, 1);
+  assert.match(payload.providersFailed[0]?.error ?? "", /non-decreasing/);
 });
 
 test("runSearchFusion treats keyless providers like DuckDuckGo as configured", async () => {
@@ -1689,8 +2453,8 @@ test("runSearchFusion applies provider weight multipliers to ranking scores", as
   const braveRun = payload.providerRuns.find((run) => run.provider === "brave");
   const geminiRun = payload.providerRuns.find((run) => run.provider === "gemini");
 
-  assert.equal(braveRun?.results[0]?.score, 0.54);
-  assert.equal(geminiRun?.results[0]?.score, 1.62);
+  assert.equal(braveRun?.results[0]?.score, 0.5);
+  assert.equal(geminiRun?.results[0]?.score, 1.5);
   assert.equal(payload.results[0]?.canonicalUrl, "https://example.com/zulu");
 });
 
@@ -1736,8 +2500,8 @@ test("runSearchFusion clamps provider weight overrides to a safe range", async (
     },
   });
 
-  assert.equal(highWeightPayload.providerRuns[0]?.results[0]?.score, 5.4);
-  assert.equal(lowWeightPayload.providerRuns[0]?.results[0]?.score, 0.108);
+  assert.equal(highWeightPayload.providerRuns[0]?.results[0]?.score, 5);
+  assert.equal(lowWeightPayload.providerRuns[0]?.results[0]?.score, 0.1);
 });
 
 test("runSearchFusion still honors legacy providerRetries overrides", async () => {
@@ -1943,7 +2707,11 @@ test("runSearchFusion honors request maxMergedResults without losing provider pa
   );
 
   assert.equal(payload.ranking.strategy, "merged-score-v1");
-  assert.deepEqual(payload.ranking.sortOrder, ["score:desc", "bestSourceTier:desc", "bestRank:asc", "providerCount:desc", "title:asc"]);
+  assert.deepEqual(payload.ranking.sortOrder, [
+    "score:desc",
+    "providerPriority:asc",
+    "bestRank:asc",
+  ]);
   assert.equal(payload.ranking.consideredCount, 3);
   assert.equal(payload.ranking.returnedCount, 2);
   assert.equal(payload.ranking.droppedCount, 1);
@@ -1954,7 +2722,7 @@ test("runSearchFusion honors request maxMergedResults without losing provider pa
   assert.equal(payload.ranking.dropped[0]?.canonicalUrl, "https://github.com/openclaw/openclaw");
   assert.equal(payload.ranking.dropped[0]?.bestRank, 2);
   assert.equal(payload.ranking.dropped[0]?.providerCount, 1);
-  assert.ok(Math.abs((payload.ranking.dropped[0]?.score ?? 0) - 0.46808) < 0.0001);
+  assert.ok(Math.abs((payload.ranking.dropped[0]?.score ?? 0) - 0.01) < 0.0001);
   assert.deepEqual(
     payload.results.map((result) => result.ranking.rank),
     [1, 2],
@@ -2271,6 +3039,359 @@ test("runSearchFusion waits at least two seconds before retrying rate limits", a
   assert.equal(attemptTimes.length, 2);
   assert.ok((attemptTimes[1] ?? 0) - (attemptTimes[0] ?? 0) >= 1900);
   assert.equal(payload.providerRuns[0]?.retryHistory[0]?.delayMs, 2000);
+});
+
+test("runSearchFusion distinguishes malformed Retry-After dates from overflowing numeric deltas", async () => {
+  const attemptTimes: number[] = [];
+  const hugeNegativeDelta = `-${"9".repeat(400)}`;
+  const headers = [{ "retry-after": "1/2" }, { "retry-after": hugeNegativeDelta }];
+  const payload = await runSearchFusion({
+    runtime: createRuntime({
+      search: async ({ providerId }) => {
+        attemptTimes.push(Date.now());
+        const header = headers[attemptTimes.length - 1];
+        if (header) {
+          throw createHttpError({ status: 429, headers: header });
+        }
+        return {
+          provider: providerId ?? "brave",
+          result: {
+            results: [{ title: "Recovered", url: "https://example.com/numeric-boundaries" }],
+          },
+        };
+      },
+    }) as never,
+    config: {},
+    pluginConfig: {
+      retry: { maxAttempts: 3, backoffMs: 0, maxBackoffMs: 0 },
+    },
+    request: { query: "numeric retry after boundaries", providers: ["brave"] },
+  });
+
+  assert.deepEqual(payload.providersSucceeded, ["brave"]);
+  assert.deepEqual(
+    payload.providerRuns[0]?.retryHistory.map((entry) => entry.delayMs),
+    [2000, 0],
+  );
+  assert.ok((attemptTimes[1] ?? 0) - (attemptTimes[0] ?? 0) >= 1900);
+});
+
+test("runSearchFusion honors Retry-After delta-seconds on 429 responses", async () => {
+  const attemptTimes: number[] = [];
+  const payload = await runSearchFusion({
+    runtime: createRuntime({
+      search: async ({ providerId }) => {
+        attemptTimes.push(Date.now());
+        if (attemptTimes.length === 1) {
+          throw createHttpError({
+            status: 429,
+            headers: new Headers({ "Retry-After": "1" }),
+          });
+        }
+        return {
+          provider: providerId ?? "brave",
+          result: { results: [{ title: "Recovered", url: "https://example.com/delta" }] },
+        };
+      },
+    }) as never,
+    config: {},
+    pluginConfig: {
+      retry: { maxAttempts: 2, backoffMs: 0, maxBackoffMs: 0 },
+    },
+    request: { query: "delta retry after", providers: ["brave"] },
+  });
+
+  assert.deepEqual(payload.providersSucceeded, ["brave"]);
+  assert.equal(payload.providerRuns[0]?.retryHistory[0]?.delayMs, 1000);
+  assert.ok((attemptTimes[1] ?? 0) - (attemptTimes[0] ?? 0) >= 900);
+});
+
+test("runSearchFusion honors Retry-After HTTP dates on 503 responses", async () => {
+  const retryAt = new Date(Date.now() + 1500).toUTCString();
+  const attemptTimes: number[] = [];
+  const payload = await runSearchFusion({
+    runtime: createRuntime({
+      search: async ({ providerId }) => {
+        attemptTimes.push(Date.now());
+        if (attemptTimes.length === 1) {
+          throw createHttpError({
+            status: 503,
+            headers: { "retry-after": retryAt },
+            shape: "direct",
+          });
+        }
+        return {
+          provider: providerId ?? "brave",
+          result: { results: [{ title: "Recovered", url: "https://example.com/http-date" }] },
+        };
+      },
+    }) as never,
+    config: {},
+    pluginConfig: {
+      retry: { maxAttempts: 2, backoffMs: 0, maxBackoffMs: 0 },
+    },
+    request: { query: "date retry after", providers: ["brave"] },
+  });
+
+  const delayMs = payload.providerRuns[0]?.retryHistory[0]?.delayMs ?? 0;
+  assert.deepEqual(payload.providersSucceeded, ["brave"]);
+  assert.ok(delayMs > 0 && delayMs <= 1500, `unexpected parsed date delay ${delayMs}ms`);
+  assert.ok((attemptTimes[1] ?? 0) - (attemptTimes[0] ?? 0) >= delayMs - 50);
+});
+
+test("runSearchFusion honors millisecond and x-ratelimit-reset header variants", async () => {
+  const cases: Array<{
+    name: string;
+    headers: Record<string, string>;
+    shape: "direct" | "response" | "cause";
+    minimumDelayMs: number;
+    maximumDelayMs: number;
+  }> = [
+    {
+      name: "retry-after-ms",
+      headers: { "retry-after-ms": "40" },
+      shape: "response",
+      minimumDelayMs: 40,
+      maximumDelayMs: 40,
+    },
+    {
+      name: "x-ms-retry-after-ms",
+      headers: { "x-ms-retry-after-ms": "35" },
+      shape: "direct",
+      minimumDelayMs: 35,
+      maximumDelayMs: 35,
+    },
+    {
+      name: "x-ratelimit-reset",
+      headers: { "x-ratelimit-reset": String(Math.ceil((Date.now() + 1500) / 1000)) },
+      shape: "cause",
+      minimumDelayMs: 400,
+      maximumDelayMs: 2000,
+    },
+  ];
+
+  for (const current of cases) {
+    let attempts = 0;
+    const payload = await runSearchFusion({
+      runtime: createRuntime({
+        search: async ({ providerId }) => {
+          attempts += 1;
+          if (attempts === 1) {
+            throw createHttpError({
+              status: 429,
+              headers: current.headers,
+              shape: current.shape,
+            });
+          }
+          return {
+            provider: providerId ?? "brave",
+            result: {
+              results: [{ title: "Recovered", url: `https://example.com/${current.name}` }],
+            },
+          };
+        },
+      }) as never,
+      config: {},
+      pluginConfig: {
+        retry: { maxAttempts: 2, backoffMs: 0, maxBackoffMs: 0 },
+      },
+      request: { query: current.name, providers: ["brave"] },
+    });
+
+    const delayMs = payload.providerRuns[0]?.retryHistory[0]?.delayMs ?? -1;
+    assert.deepEqual(payload.providersSucceeded, ["brave"], current.name);
+    assert.ok(delayMs >= current.minimumDelayMs, `${current.name}: ${delayMs}ms`);
+    assert.ok(delayMs <= current.maximumDelayMs, `${current.name}: ${delayMs}ms`);
+  }
+});
+
+test("runSearchFusion handles negative, malformed, and past rate-limit headers safely", async () => {
+  const headers = [
+    { "retry-after": "-10" },
+    { "retry-after": "not-a-number-or-date" },
+    { "retry-after": new Date(Date.now() - 60_000).toUTCString() },
+  ];
+  let attempts = 0;
+  const payload = await runSearchFusion({
+    runtime: createRuntime({
+      search: async ({ providerId }) => {
+        const header = headers[attempts];
+        attempts += 1;
+        if (header) {
+          throw createHttpError({ status: 503, headers: header });
+        }
+        return {
+          provider: providerId ?? "brave",
+          result: { results: [{ title: "Recovered", url: "https://example.com/malformed" }] },
+        };
+      },
+    }) as never,
+    config: {},
+    pluginConfig: {
+      retry: { maxAttempts: 4, backoffMs: 0, maxBackoffMs: 0 },
+    },
+    request: { query: "malformed retry after", providers: ["brave"] },
+  });
+
+  assert.equal(attempts, 4);
+  assert.deepEqual(payload.providersSucceeded, ["brave"]);
+  assert.deepEqual(
+    payload.providerRuns[0]?.retryHistory.map((entry) => entry.delayMs),
+    [0, 0, 0],
+  );
+});
+
+test("runSearchFusion clamps absurd rate-limit waits to one hour", async () => {
+  for (const value of ["999999", "9".repeat(400)]) {
+    const startedAt = Date.now();
+    const payload = await runSearchFusion({
+      runtime: createRuntime({
+        search: async () => {
+          throw createHttpError({
+            status: 429,
+            headers: { "retry-after": value },
+          });
+        },
+      }) as never,
+      config: {},
+      pluginConfig: {
+        totalTimeoutMs: 5000,
+        retry: { maxAttempts: 2, backoffMs: 0, maxBackoffMs: 0 },
+      },
+      request: { query: "absurd retry after", providers: ["brave"] },
+    });
+
+    assert.equal(payload.providerRuns[0]?.attempts, 1, value);
+    assert.equal(payload.providerRuns[0]?.retryHistory.length, 0, value);
+    assert.match(payload.providersFailed[0]?.error ?? "", /3600000ms/, value);
+    assert.ok(Date.now() - startedAt < 1000, "absurd wait should fail without sleeping");
+  }
+});
+
+test("runSearchFusion fails a rate-limited provider fast when its wait exceeds the deadline", async () => {
+  const startedAt = Date.now();
+  const payload = await runSearchFusion({
+    runtime: createRuntime({
+      search: async () => {
+        throw createHttpError({
+          status: 503,
+          headers: { "retry-after-ms": "10000" },
+        });
+      },
+    }) as never,
+    config: {},
+    pluginConfig: {
+      totalTimeoutMs: 5000,
+      retry: { maxAttempts: 2, backoffMs: 0, maxBackoffMs: 0 },
+    },
+    request: { query: "deadline retry after", providers: ["brave"] },
+  });
+
+  assert.equal(payload.providerRuns[0]?.attempts, 1);
+  assert.match(
+    payload.providersFailed[0]?.error ?? "",
+    /Rate-limit wait of 10000ms from retry-after-ms exceeds the remaining total timeout budget/,
+  );
+  assert.ok(Date.now() - startedAt < 1000, "deadline-incompatible wait should fail fast");
+});
+
+test("runSearchFusion prioritizes structured 503 retry metadata over message heuristics", async () => {
+  const attemptTimes: number[] = [];
+  const payload = await runSearchFusion({
+    runtime: createRuntime({
+      search: async ({ providerId }) => {
+        attemptTimes.push(Date.now());
+        if (attemptTimes.length === 1) {
+          throw createHttpError({
+            status: 503,
+            headers: { "retry-after-ms": "25" },
+            message: "upstream route not found",
+          });
+        }
+        return {
+          provider: providerId ?? "brave",
+          result: { results: [{ title: "Recovered", url: "https://example.com/structured-503" }] },
+        };
+      },
+    }) as never,
+    config: {},
+    pluginConfig: {
+      retry: { maxAttempts: 2, backoffMs: 0, maxBackoffMs: 0 },
+    },
+    request: { query: "structured 503", providers: ["brave"] },
+  });
+
+  assert.deepEqual(payload.providersSucceeded, ["brave"]);
+  assert.equal(attemptTimes.length, 2);
+  assert.equal(payload.providerRuns[0]?.retryHistory[0]?.delayMs, 25);
+  assert.ok((attemptTimes[1] ?? 0) - (attemptTimes[0] ?? 0) >= 20);
+
+  let malformedAttempts = 0;
+  const malformedPayload = await runSearchFusion({
+    runtime: createRuntime({
+      search: async () => {
+        malformedAttempts += 1;
+        throw createHttpError({
+          status: 503,
+          headers: { "retry-after-ms": "not-a-duration" },
+          message: "upstream route not found",
+        });
+      },
+    }) as never,
+    config: {},
+    pluginConfig: {
+      retry: { maxAttempts: 2, backoffMs: 0, maxBackoffMs: 0 },
+    },
+    request: { query: "malformed structured 503", providers: ["brave"] },
+  });
+
+  assert.equal(malformedAttempts, 1);
+  assert.equal(malformedPayload.providerRuns[0]?.retryHistory.length, 0);
+  assert.match(malformedPayload.providersFailed[0]?.error ?? "", /not found/);
+});
+
+test("runSearchFusion does not issue a retry sub-query while its provider is cooling", async () => {
+  const attemptTimes: number[] = [];
+  let markFirstAttempt: (() => void) | undefined;
+  const firstAttempt = new Promise<void>((resolve) => {
+    markFirstAttempt = resolve;
+  });
+  const search = runSearchFusion({
+    runtime: createRuntime({
+      search: async ({ providerId }) => {
+        attemptTimes.push(Date.now());
+        if (attemptTimes.length === 1) {
+          markFirstAttempt?.();
+          return {
+            provider: providerId ?? "brave",
+            result: {
+              error: "HTTP 429 rate limit exceeded",
+              status: 429,
+              headers: { "retry-after-ms": "150" },
+            },
+          };
+        }
+        return {
+          provider: providerId ?? "brave",
+          result: { results: [{ title: "Recovered", url: "https://example.com/cooldown" }] },
+        };
+      },
+    }) as never,
+    config: {},
+    pluginConfig: {
+      retry: { maxAttempts: 2, backoffMs: 0, maxBackoffMs: 0 },
+    },
+    request: { query: "cooldown", providers: ["brave"] },
+  });
+
+  await firstAttempt;
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  assert.equal(attemptTimes.length, 1);
+
+  const payload = await search;
+  assert.deepEqual(payload.providersSucceeded, ["brave"]);
+  assert.equal(payload.providerRuns[0]?.retryHistory[0]?.delayMs, 150);
+  assert.ok((attemptTimes[1] ?? 0) - (attemptTimes[0] ?? 0) >= 130);
 });
 
 test("runSearchFusion bounds visible text and keeps full fidelity behind opt-ins", async () => {
