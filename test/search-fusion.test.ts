@@ -167,6 +167,24 @@ function createRuntime(overrides?: {
   };
 }
 
+function createHttpError(params: {
+  status: 429 | 503;
+  headers: Headers | Record<string, string>;
+  message?: string;
+  shape?: "direct" | "response" | "cause";
+}): Error {
+  const error = new Error(params.message ?? `HTTP ${params.status}`);
+  const response = { status: params.status, headers: params.headers };
+  if (params.shape === "direct") {
+    Object.assign(error, { statusCode: params.status, headers: params.headers });
+  } else if (params.shape === "cause") {
+    Object.assign(error, { cause: { response } });
+  } else {
+    Object.assign(error, { response });
+  }
+  return error;
+}
+
 test("runSearchFusion passes catalog-stub plain-string credentials through unchanged", async () => {
   clearRuntimeConfigSnapshot();
   const config = {
@@ -2005,6 +2023,267 @@ test("runSearchFusion waits at least two seconds before retrying rate limits", a
   assert.equal(attemptTimes.length, 2);
   assert.ok((attemptTimes[1] ?? 0) - (attemptTimes[0] ?? 0) >= 1900);
   assert.equal(payload.providerRuns[0]?.retryHistory[0]?.delayMs, 2000);
+});
+
+test("runSearchFusion honors Retry-After delta-seconds on 429 responses", async () => {
+  const attemptTimes: number[] = [];
+  const payload = await runSearchFusion({
+    runtime: createRuntime({
+      search: async ({ providerId }) => {
+        attemptTimes.push(Date.now());
+        if (attemptTimes.length === 1) {
+          throw createHttpError({
+            status: 429,
+            headers: new Headers({ "Retry-After": "1" }),
+          });
+        }
+        return {
+          provider: providerId ?? "brave",
+          result: { results: [{ title: "Recovered", url: "https://example.com/delta" }] },
+        };
+      },
+    }) as never,
+    config: {},
+    pluginConfig: {
+      retry: { maxAttempts: 2, backoffMs: 0, maxBackoffMs: 0 },
+    },
+    request: { query: "delta retry after", providers: ["brave"] },
+  });
+
+  assert.deepEqual(payload.providersSucceeded, ["brave"]);
+  assert.equal(payload.providerRuns[0]?.retryHistory[0]?.delayMs, 1000);
+  assert.ok((attemptTimes[1] ?? 0) - (attemptTimes[0] ?? 0) >= 900);
+});
+
+test("runSearchFusion honors Retry-After HTTP dates on 503 responses", async () => {
+  const retryAt = new Date(Date.now() + 1500).toUTCString();
+  const attemptTimes: number[] = [];
+  const payload = await runSearchFusion({
+    runtime: createRuntime({
+      search: async ({ providerId }) => {
+        attemptTimes.push(Date.now());
+        if (attemptTimes.length === 1) {
+          throw createHttpError({
+            status: 503,
+            headers: { "retry-after": retryAt },
+            shape: "direct",
+          });
+        }
+        return {
+          provider: providerId ?? "brave",
+          result: { results: [{ title: "Recovered", url: "https://example.com/http-date" }] },
+        };
+      },
+    }) as never,
+    config: {},
+    pluginConfig: {
+      retry: { maxAttempts: 2, backoffMs: 0, maxBackoffMs: 0 },
+    },
+    request: { query: "date retry after", providers: ["brave"] },
+  });
+
+  const delayMs = payload.providerRuns[0]?.retryHistory[0]?.delayMs ?? 0;
+  assert.deepEqual(payload.providersSucceeded, ["brave"]);
+  assert.ok(delayMs > 0 && delayMs <= 1500, `unexpected parsed date delay ${delayMs}ms`);
+  assert.ok((attemptTimes[1] ?? 0) - (attemptTimes[0] ?? 0) >= delayMs - 50);
+});
+
+test("runSearchFusion honors millisecond and x-ratelimit-reset header variants", async () => {
+  const cases: Array<{
+    name: string;
+    headers: Record<string, string>;
+    shape: "direct" | "response" | "cause";
+    minimumDelayMs: number;
+    maximumDelayMs: number;
+  }> = [
+    {
+      name: "retry-after-ms",
+      headers: { "retry-after-ms": "40" },
+      shape: "response",
+      minimumDelayMs: 40,
+      maximumDelayMs: 40,
+    },
+    {
+      name: "x-ms-retry-after-ms",
+      headers: { "x-ms-retry-after-ms": "35" },
+      shape: "direct",
+      minimumDelayMs: 35,
+      maximumDelayMs: 35,
+    },
+    {
+      name: "x-ratelimit-reset",
+      headers: { "x-ratelimit-reset": String(Math.ceil((Date.now() + 1500) / 1000)) },
+      shape: "cause",
+      minimumDelayMs: 400,
+      maximumDelayMs: 2000,
+    },
+  ];
+
+  for (const current of cases) {
+    let attempts = 0;
+    const payload = await runSearchFusion({
+      runtime: createRuntime({
+        search: async ({ providerId }) => {
+          attempts += 1;
+          if (attempts === 1) {
+            throw createHttpError({
+              status: 429,
+              headers: current.headers,
+              shape: current.shape,
+            });
+          }
+          return {
+            provider: providerId ?? "brave",
+            result: {
+              results: [{ title: "Recovered", url: `https://example.com/${current.name}` }],
+            },
+          };
+        },
+      }) as never,
+      config: {},
+      pluginConfig: {
+        retry: { maxAttempts: 2, backoffMs: 0, maxBackoffMs: 0 },
+      },
+      request: { query: current.name, providers: ["brave"] },
+    });
+
+    const delayMs = payload.providerRuns[0]?.retryHistory[0]?.delayMs ?? -1;
+    assert.deepEqual(payload.providersSucceeded, ["brave"], current.name);
+    assert.ok(delayMs >= current.minimumDelayMs, `${current.name}: ${delayMs}ms`);
+    assert.ok(delayMs <= current.maximumDelayMs, `${current.name}: ${delayMs}ms`);
+  }
+});
+
+test("runSearchFusion handles negative, malformed, and past rate-limit headers safely", async () => {
+  const headers = [
+    { "retry-after": "-10" },
+    { "retry-after": "not-a-number-or-date" },
+    { "retry-after": new Date(Date.now() - 60_000).toUTCString() },
+  ];
+  let attempts = 0;
+  const payload = await runSearchFusion({
+    runtime: createRuntime({
+      search: async ({ providerId }) => {
+        const header = headers[attempts];
+        attempts += 1;
+        if (header) {
+          throw createHttpError({ status: 503, headers: header });
+        }
+        return {
+          provider: providerId ?? "brave",
+          result: { results: [{ title: "Recovered", url: "https://example.com/malformed" }] },
+        };
+      },
+    }) as never,
+    config: {},
+    pluginConfig: {
+      retry: { maxAttempts: 4, backoffMs: 0, maxBackoffMs: 0 },
+    },
+    request: { query: "malformed retry after", providers: ["brave"] },
+  });
+
+  assert.equal(attempts, 4);
+  assert.deepEqual(payload.providersSucceeded, ["brave"]);
+  assert.deepEqual(
+    payload.providerRuns[0]?.retryHistory.map((entry) => entry.delayMs),
+    [0, 0, 0],
+  );
+});
+
+test("runSearchFusion clamps absurd rate-limit waits to one hour", async () => {
+  const startedAt = Date.now();
+  const payload = await runSearchFusion({
+    runtime: createRuntime({
+      search: async () => {
+        throw createHttpError({
+          status: 429,
+          headers: { "retry-after": "999999" },
+        });
+      },
+    }) as never,
+    config: {},
+    pluginConfig: {
+      totalTimeoutMs: 5000,
+      retry: { maxAttempts: 2, backoffMs: 0, maxBackoffMs: 0 },
+    },
+    request: { query: "absurd retry after", providers: ["brave"] },
+  });
+
+  assert.equal(payload.providerRuns[0]?.attempts, 1);
+  assert.equal(payload.providerRuns[0]?.retryHistory.length, 0);
+  assert.match(payload.providersFailed[0]?.error ?? "", /3600000ms/);
+  assert.ok(Date.now() - startedAt < 1000, "absurd wait should fail without sleeping");
+});
+
+test("runSearchFusion fails a rate-limited provider fast when its wait exceeds the deadline", async () => {
+  const startedAt = Date.now();
+  const payload = await runSearchFusion({
+    runtime: createRuntime({
+      search: async () => {
+        throw createHttpError({
+          status: 503,
+          headers: { "retry-after-ms": "10000" },
+        });
+      },
+    }) as never,
+    config: {},
+    pluginConfig: {
+      totalTimeoutMs: 5000,
+      retry: { maxAttempts: 2, backoffMs: 0, maxBackoffMs: 0 },
+    },
+    request: { query: "deadline retry after", providers: ["brave"] },
+  });
+
+  assert.equal(payload.providerRuns[0]?.attempts, 1);
+  assert.match(
+    payload.providersFailed[0]?.error ?? "",
+    /Rate-limit wait of 10000ms from retry-after-ms exceeds the remaining total timeout budget/,
+  );
+  assert.ok(Date.now() - startedAt < 1000, "deadline-incompatible wait should fail fast");
+});
+
+test("runSearchFusion does not issue a retry sub-query while its provider is cooling", async () => {
+  const attemptTimes: number[] = [];
+  let markFirstAttempt: (() => void) | undefined;
+  const firstAttempt = new Promise<void>((resolve) => {
+    markFirstAttempt = resolve;
+  });
+  const search = runSearchFusion({
+    runtime: createRuntime({
+      search: async ({ providerId }) => {
+        attemptTimes.push(Date.now());
+        if (attemptTimes.length === 1) {
+          markFirstAttempt?.();
+          return {
+            provider: providerId ?? "brave",
+            result: {
+              error: "HTTP 429 rate limit exceeded",
+              status: 429,
+              headers: { "retry-after-ms": "150" },
+            },
+          };
+        }
+        return {
+          provider: providerId ?? "brave",
+          result: { results: [{ title: "Recovered", url: "https://example.com/cooldown" }] },
+        };
+      },
+    }) as never,
+    config: {},
+    pluginConfig: {
+      retry: { maxAttempts: 2, backoffMs: 0, maxBackoffMs: 0 },
+    },
+    request: { query: "cooldown", providers: ["brave"] },
+  });
+
+  await firstAttempt;
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  assert.equal(attemptTimes.length, 1);
+
+  const payload = await search;
+  assert.deepEqual(payload.providersSucceeded, ["brave"]);
+  assert.equal(payload.providerRuns[0]?.retryHistory[0]?.delayMs, 150);
+  assert.ok((attemptTimes[1] ?? 0) - (attemptTimes[0] ?? 0) >= 130);
 });
 
 test("runSearchFusion bounds visible text and keeps full fidelity behind opt-ins", async () => {

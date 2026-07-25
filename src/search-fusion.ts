@@ -38,6 +38,8 @@ const DEFAULT_RETRY_MAX_ATTEMPTS = 3;
 const DEFAULT_RETRY_BACKOFF_MS = 750;
 const DEFAULT_RETRY_BACKOFF_MULTIPLIER = 2;
 const DEFAULT_RETRY_MAX_BACKOFF_MS = 5000;
+const DEFAULT_RATE_LIMIT_BACKOFF_MS = 2000;
+const MAX_RATE_LIMIT_WAIT_MS = 60 * 60 * 1000;
 const DEFAULT_PROVIDER_WEIGHT = 1;
 const MIN_PROVIDER_WEIGHT = 0.1;
 const MAX_PROVIDER_WEIGHT = 5;
@@ -358,6 +360,11 @@ type ResolvedProviderConfig = {
   weight: number;
 };
 
+type ProviderCooldown = {
+  untilMs: number;
+  source: string;
+};
+
 class DeadlineExceededError extends Error {
   override name = "DeadlineExceededError";
 
@@ -577,6 +584,241 @@ function asErrorMessage(error: unknown): string {
   return "Unknown error";
 }
 
+function asHttpStatus(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isInteger(value)) {
+    return value;
+  }
+  if (typeof value === "string" && /^\d{3}$/.test(value.trim())) {
+    return Number(value);
+  }
+  return undefined;
+}
+
+function extractHttpFailureDetails(error: unknown): {
+  status?: number;
+  headers: unknown[];
+} {
+  const queue: unknown[] = [error];
+  const visited = new Set<object>();
+  const headers: unknown[] = [];
+  let status: number | undefined;
+
+  while (queue.length > 0 && visited.size < 12) {
+    const candidate = queue.shift();
+    if (!candidate || typeof candidate !== "object" || visited.has(candidate)) {
+      continue;
+    }
+    visited.add(candidate);
+
+    const record = candidate as Record<string, unknown>;
+    status ??=
+      asHttpStatus(record.status) ??
+      asHttpStatus(record.statusCode) ??
+      asHttpStatus(record.httpStatus);
+    if (record.headers !== undefined) {
+      headers.push(record.headers);
+    }
+    for (const key of ["response", "cause", "error"]) {
+      if (record[key] && typeof record[key] === "object") {
+        queue.push(record[key]);
+      }
+    }
+  }
+
+  if (status === undefined) {
+    const match = asErrorMessage(error).match(/(?:^|\D)(429|503)(?:\D|$)/);
+    status = match ? Number(match[1]) : undefined;
+  }
+
+  return { status, headers };
+}
+
+function asHeaderStrings(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.flatMap((entry) => asHeaderStrings(entry));
+  }
+  if (typeof value === "string" || typeof value === "number") {
+    return [String(value).trim()].filter(Boolean);
+  }
+  return [];
+}
+
+function readHeaderValues(headers: unknown, name: string): string[] {
+  if (!headers || typeof headers !== "object") {
+    return [];
+  }
+
+  const values: string[] = [];
+  const getter = (headers as { get?: unknown }).get;
+  if (typeof getter === "function") {
+    try {
+      values.push(...asHeaderStrings(getter.call(headers, name)));
+    } catch {
+      // Fall through to plain-object lookup.
+    }
+  }
+
+  const plainHeaders = headers as Record<string, unknown>;
+  for (const [key, value] of Object.entries(plainHeaders)) {
+    if (key.toLowerCase() === name) {
+      values.push(...asHeaderStrings(value));
+    }
+  }
+
+  return [...new Set(values)];
+}
+
+function parseNumericHeader(value: string): number | undefined {
+  const normalized = value.trim();
+  if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(normalized)) {
+    return undefined;
+  }
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function clampRateLimitDelay(delayMs: number): number | undefined {
+  if (!Number.isFinite(delayMs)) {
+    return undefined;
+  }
+  return clamp(Math.ceil(delayMs), 0, MAX_RATE_LIMIT_WAIT_MS);
+}
+
+function parseRetryAfter(value: string, nowMs: number): number | undefined {
+  const deltaSeconds = parseNumericHeader(value);
+  if (deltaSeconds !== undefined) {
+    return clampRateLimitDelay(deltaSeconds * 1000);
+  }
+
+  const dateMs = Date.parse(value);
+  return Number.isFinite(dateMs) ? clampRateLimitDelay(dateMs - nowMs) : undefined;
+}
+
+function parseResetSeconds(value: string, nowMs: number): number | undefined {
+  const numeric = parseNumericHeader(value);
+  if (numeric === undefined) {
+    const dateMs = Date.parse(value);
+    return Number.isFinite(dateMs) ? clampRateLimitDelay(dateMs - nowMs) : undefined;
+  }
+  if (numeric >= 1_000_000_000_000) {
+    return clampRateLimitDelay(numeric - nowMs);
+  }
+  if (numeric >= 1_000_000_000) {
+    return clampRateLimitDelay(numeric * 1000 - nowMs);
+  }
+  return clampRateLimitDelay(numeric * 1000);
+}
+
+function parseResetMilliseconds(value: string, nowMs: number): number | undefined {
+  const numeric = parseNumericHeader(value);
+  if (numeric === undefined) {
+    return undefined;
+  }
+  return clampRateLimitDelay(
+    numeric >= 1_000_000_000_000 ? numeric - nowMs : numeric,
+  );
+}
+
+function parseDurationHeader(value: string): number | undefined {
+  const normalized = value.trim().toLowerCase();
+  const matcher = /(\d+(?:\.\d+)?)(ms|s|m|h)/g;
+  const multipliers = { ms: 1, s: 1000, m: 60_000, h: 3_600_000 } as const;
+  let totalMs = 0;
+  let consumed = "";
+  for (const match of normalized.matchAll(matcher)) {
+    totalMs += Number(match[1]) * multipliers[match[2] as keyof typeof multipliers];
+    consumed += match[0];
+  }
+  if (!consumed || consumed !== normalized.replace(/\s+/g, "")) {
+    return undefined;
+  }
+  return clampRateLimitDelay(totalMs);
+}
+
+type RateLimitHeader = {
+  delayMs?: number;
+  hadHeader: boolean;
+  source?: string;
+};
+
+function extractRateLimitHeader(error: unknown, nowMs: number): {
+  status?: number;
+  header: RateLimitHeader;
+} {
+  const details = extractHttpFailureDetails(error);
+  if (details.status !== 429 && details.status !== 503) {
+    return { status: details.status, header: { hadHeader: false } };
+  }
+
+  const specifications: Array<{
+    names: string[];
+    parse: (value: string) => number | undefined;
+  }> = [
+    {
+      names: ["retry-after"],
+      parse: (value) => parseRetryAfter(value, nowMs),
+    },
+    {
+      names: [
+        "retry-after-ms",
+        "x-retry-after-ms",
+        "x-ms-retry-after-ms",
+        "x-ratelimit-reset-ms",
+        "x-rate-limit-reset-ms",
+        "ratelimit-reset-ms",
+      ],
+      parse: (value) => parseResetMilliseconds(value, nowMs),
+    },
+    {
+      names: [
+        "x-ratelimit-reset",
+        "x-rate-limit-reset",
+        "ratelimit-reset",
+        "x-ratelimit-reset-after",
+        "x-rate-limit-reset-after",
+        "ratelimit-reset-after",
+      ],
+      parse: (value) => parseResetSeconds(value, nowMs),
+    },
+    {
+      names: [
+        "x-ratelimit-reset-requests",
+        "x-rate-limit-reset-requests",
+        "x-ratelimit-reset-tokens",
+        "x-rate-limit-reset-tokens",
+      ],
+      parse: parseDurationHeader,
+    },
+  ];
+  const parsed: Array<{ delayMs: number; source: string }> = [];
+  let hadHeader = false;
+
+  for (const specification of specifications) {
+    for (const name of specification.names) {
+      for (const headers of details.headers) {
+        const values = readHeaderValues(headers, name);
+        hadHeader ||= values.length > 0;
+        for (const value of values) {
+          const delayMs = specification.parse(value);
+          if (delayMs !== undefined) {
+            parsed.push({ delayMs, source: name });
+          }
+        }
+      }
+    }
+  }
+
+  const longest = parsed.sort((a, b) => b.delayMs - a.delayMs)[0];
+  return {
+    status: details.status,
+    header: {
+      delayMs: longest?.delayMs,
+      hadHeader,
+      source: longest?.source,
+    },
+  };
+}
+
 function isProviderRunTaskRejection(value: unknown): value is ProviderRunTaskRejection {
   return (
     value !== null &&
@@ -646,13 +888,36 @@ function computeBackoffDelay(policy: ResolvedRetryConfig, attempt: number): numb
   );
 }
 
-function computeRetryDelay(
+function resolveRetryTiming(
   policy: ResolvedRetryConfig,
   attempt: number,
+  error: unknown,
   errorMessage: string,
-): number {
+  nowMs: number,
+): {
+  delayMs: number;
+  rateLimited: boolean;
+  source?: string;
+} {
   const configured = computeBackoffDelay(policy, attempt);
-  return /429|rate limit/i.test(errorMessage) ? Math.max(2000, configured) : configured;
+  const { status, header } = extractRateLimitHeader(error, nowMs);
+  const explicitRateLimit = status === 429 || /429|rate limit/i.test(errorMessage);
+  const rateLimited = explicitRateLimit || (status === 503 && header.hadHeader);
+
+  if (header.delayMs !== undefined) {
+    return {
+      delayMs: Math.max(configured, header.delayMs),
+      rateLimited,
+      source: header.source,
+    };
+  }
+
+  return {
+    delayMs: explicitRateLimit
+      ? Math.max(DEFAULT_RATE_LIMIT_BACKOFF_MS, configured)
+      : configured,
+    rateLimited,
+  };
 }
 
 function mergeFlags(...flagLists: Array<readonly SearchResultFlag[]>): SearchResultFlag[] {
@@ -984,6 +1249,7 @@ async function runProvider(params: {
   maxSnippetLength: number;
   signal: AbortSignal;
   deadlineAt: number;
+  cooldowns: Map<string, ProviderCooldown>;
   agentDir?: string;
   runtimeMetadata?: unknown;
 }): Promise<ProviderRunResult> {
@@ -1015,8 +1281,7 @@ async function runProvider(params: {
     error,
   });
 
-  for (let attempt = 1; attempt <= retryPolicy.maxAttempts; attempt += 1) {
-    attempts = attempt;
+  while (attempts < retryPolicy.maxAttempts) {
     if (Date.now() >= params.deadlineAt) {
       return failure("deadline exceeded");
     }
@@ -1028,6 +1293,31 @@ async function runProvider(params: {
       );
     }
 
+    const cooldown = params.cooldowns.get(params.provider.id);
+    const cooldownRemainingMs = cooldown ? cooldown.untilMs - Date.now() : 0;
+    if (cooldown && cooldownRemainingMs <= 0) {
+      params.cooldowns.delete(params.provider.id);
+    } else if (cooldown && cooldownRemainingMs > 0) {
+      const remainingBudgetMs = Math.max(0, params.deadlineAt - Date.now());
+      if (cooldownRemainingMs >= remainingBudgetMs) {
+        return failure(
+          `Rate-limit wait of ${cooldownRemainingMs}ms from ${cooldown.source} exceeds the remaining total timeout budget of ${remainingBudgetMs}ms.`,
+        );
+      }
+      try {
+        await sleep(cooldownRemainingMs, params.signal);
+      } catch (sleepError) {
+        return failure(
+          params.signal.reason instanceof DeadlineExceededError
+            ? "deadline exceeded"
+            : asErrorMessage(sleepError),
+        );
+      }
+      continue;
+    }
+
+    attempts += 1;
+    const attempt = attempts;
     try {
       const remainingMs = Math.max(1, params.deadlineAt - Date.now());
       const attemptTimeoutMs = Math.min(providerConfig.timeoutMs, remainingMs);
@@ -1056,7 +1346,9 @@ async function runProvider(params: {
       });
 
       if (normalized.error) {
-        throw new Error(normalized.error);
+        const providerError = new Error(normalized.error) as Error & { response?: unknown };
+        providerError.response = response.result;
+        throw providerError;
       }
 
       const weightedResults = normalized.results.map((result) => ({
@@ -1071,7 +1363,7 @@ async function runProvider(params: {
         ok: true,
         tookMs: Date.now() - start,
         rawCount: normalized.results.length,
-        attempts: attempt,
+        attempts,
         rawPayload: response.result,
         results: weightedResults,
         discardedResults: normalized.discardedResults,
@@ -1089,15 +1381,43 @@ async function runProvider(params: {
         !deadlineExceeded &&
         attempt < retryPolicy.maxAttempts &&
         shouldRetry(error, lastError);
+
+      const retryStartedAt = Date.now();
+      const retryTiming = resolveRetryTiming(
+        retryPolicy,
+        attempt,
+        error,
+        lastError,
+        retryStartedAt,
+      );
+      if (retryTiming.rateLimited && retryTiming.delayMs > 0) {
+        const nextCooldown: ProviderCooldown = {
+          untilMs: retryStartedAt + retryTiming.delayMs,
+          source: retryTiming.source ?? "rate-limit response",
+        };
+        const currentCooldown = params.cooldowns.get(params.provider.id);
+        if (!currentCooldown || nextCooldown.untilMs > currentCooldown.untilMs) {
+          params.cooldowns.set(params.provider.id, nextCooldown);
+        }
+      }
+
       if (!canRetry) {
         return failure(lastError);
       }
 
-      const delayMs = computeRetryDelay(retryPolicy, attempt, lastError);
-      if (Date.now() + delayMs >= params.deadlineAt) {
-        return failure("deadline exceeded");
+      const delayMs = retryTiming.delayMs;
+      const remainingBudgetMs = Math.max(0, params.deadlineAt - Date.now());
+      if (delayMs >= remainingBudgetMs) {
+        return failure(
+          retryTiming.rateLimited
+            ? `Rate-limit wait of ${delayMs}ms${retryTiming.source ? ` from ${retryTiming.source}` : ""} exceeds the remaining total timeout budget of ${remainingBudgetMs}ms.`
+            : "deadline exceeded",
+        );
       }
       retryHistory.push({ attempt, error: lastError, delayMs });
+      if (retryTiming.rateLimited) {
+        continue;
+      }
       try {
         await sleep(delayMs, params.signal);
       } catch (sleepError) {
@@ -1236,6 +1556,7 @@ export async function runSearchFusion(params: {
     () => runController.abort(new DeadlineExceededError()),
     Math.max(0, deadlineAt - Date.now()),
   );
+  const providerCooldowns = new Map<string, ProviderCooldown>();
 
   const providerRunTasks = selectedProviders.map((provider) => {
     const startedAt = Date.now();
@@ -1259,6 +1580,7 @@ export async function runSearchFusion(params: {
             maxSnippetLength,
             signal: runController.signal,
             deadlineAt,
+            cooldowns: providerCooldowns,
             agentDir: params.agentDir,
             runtimeMetadata: params.runtimeMetadata,
           }),

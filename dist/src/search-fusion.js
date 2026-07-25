@@ -13,6 +13,8 @@ const DEFAULT_RETRY_MAX_ATTEMPTS = 3;
 const DEFAULT_RETRY_BACKOFF_MS = 750;
 const DEFAULT_RETRY_BACKOFF_MULTIPLIER = 2;
 const DEFAULT_RETRY_MAX_BACKOFF_MS = 5000;
+const DEFAULT_RATE_LIMIT_BACKOFF_MS = 2000;
+const MAX_RATE_LIMIT_WAIT_MS = 60 * 60 * 1000;
 const DEFAULT_PROVIDER_WEIGHT = 1;
 const MIN_PROVIDER_WEIGHT = 0.1;
 const MAX_PROVIDER_WEIGHT = 5;
@@ -436,6 +438,203 @@ function asErrorMessage(error) {
     }
     return "Unknown error";
 }
+function asHttpStatus(value) {
+    if (typeof value === "number" && Number.isInteger(value)) {
+        return value;
+    }
+    if (typeof value === "string" && /^\d{3}$/.test(value.trim())) {
+        return Number(value);
+    }
+    return undefined;
+}
+function extractHttpFailureDetails(error) {
+    const queue = [error];
+    const visited = new Set();
+    const headers = [];
+    let status;
+    while (queue.length > 0 && visited.size < 12) {
+        const candidate = queue.shift();
+        if (!candidate || typeof candidate !== "object" || visited.has(candidate)) {
+            continue;
+        }
+        visited.add(candidate);
+        const record = candidate;
+        status ??=
+            asHttpStatus(record.status) ??
+                asHttpStatus(record.statusCode) ??
+                asHttpStatus(record.httpStatus);
+        if (record.headers !== undefined) {
+            headers.push(record.headers);
+        }
+        for (const key of ["response", "cause", "error"]) {
+            if (record[key] && typeof record[key] === "object") {
+                queue.push(record[key]);
+            }
+        }
+    }
+    if (status === undefined) {
+        const match = asErrorMessage(error).match(/(?:^|\D)(429|503)(?:\D|$)/);
+        status = match ? Number(match[1]) : undefined;
+    }
+    return { status, headers };
+}
+function asHeaderStrings(value) {
+    if (Array.isArray(value)) {
+        return value.flatMap((entry) => asHeaderStrings(entry));
+    }
+    if (typeof value === "string" || typeof value === "number") {
+        return [String(value).trim()].filter(Boolean);
+    }
+    return [];
+}
+function readHeaderValues(headers, name) {
+    if (!headers || typeof headers !== "object") {
+        return [];
+    }
+    const values = [];
+    const getter = headers.get;
+    if (typeof getter === "function") {
+        try {
+            values.push(...asHeaderStrings(getter.call(headers, name)));
+        }
+        catch {
+            // Fall through to plain-object lookup.
+        }
+    }
+    const plainHeaders = headers;
+    for (const [key, value] of Object.entries(plainHeaders)) {
+        if (key.toLowerCase() === name) {
+            values.push(...asHeaderStrings(value));
+        }
+    }
+    return [...new Set(values)];
+}
+function parseNumericHeader(value) {
+    const normalized = value.trim();
+    if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(normalized)) {
+        return undefined;
+    }
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parsed : undefined;
+}
+function clampRateLimitDelay(delayMs) {
+    if (!Number.isFinite(delayMs)) {
+        return undefined;
+    }
+    return clamp(Math.ceil(delayMs), 0, MAX_RATE_LIMIT_WAIT_MS);
+}
+function parseRetryAfter(value, nowMs) {
+    const deltaSeconds = parseNumericHeader(value);
+    if (deltaSeconds !== undefined) {
+        return clampRateLimitDelay(deltaSeconds * 1000);
+    }
+    const dateMs = Date.parse(value);
+    return Number.isFinite(dateMs) ? clampRateLimitDelay(dateMs - nowMs) : undefined;
+}
+function parseResetSeconds(value, nowMs) {
+    const numeric = parseNumericHeader(value);
+    if (numeric === undefined) {
+        const dateMs = Date.parse(value);
+        return Number.isFinite(dateMs) ? clampRateLimitDelay(dateMs - nowMs) : undefined;
+    }
+    if (numeric >= 1_000_000_000_000) {
+        return clampRateLimitDelay(numeric - nowMs);
+    }
+    if (numeric >= 1_000_000_000) {
+        return clampRateLimitDelay(numeric * 1000 - nowMs);
+    }
+    return clampRateLimitDelay(numeric * 1000);
+}
+function parseResetMilliseconds(value, nowMs) {
+    const numeric = parseNumericHeader(value);
+    if (numeric === undefined) {
+        return undefined;
+    }
+    return clampRateLimitDelay(numeric >= 1_000_000_000_000 ? numeric - nowMs : numeric);
+}
+function parseDurationHeader(value) {
+    const normalized = value.trim().toLowerCase();
+    const matcher = /(\d+(?:\.\d+)?)(ms|s|m|h)/g;
+    const multipliers = { ms: 1, s: 1000, m: 60_000, h: 3_600_000 };
+    let totalMs = 0;
+    let consumed = "";
+    for (const match of normalized.matchAll(matcher)) {
+        totalMs += Number(match[1]) * multipliers[match[2]];
+        consumed += match[0];
+    }
+    if (!consumed || consumed !== normalized.replace(/\s+/g, "")) {
+        return undefined;
+    }
+    return clampRateLimitDelay(totalMs);
+}
+function extractRateLimitHeader(error, nowMs) {
+    const details = extractHttpFailureDetails(error);
+    if (details.status !== 429 && details.status !== 503) {
+        return { status: details.status, header: { hadHeader: false } };
+    }
+    const specifications = [
+        {
+            names: ["retry-after"],
+            parse: (value) => parseRetryAfter(value, nowMs),
+        },
+        {
+            names: [
+                "retry-after-ms",
+                "x-retry-after-ms",
+                "x-ms-retry-after-ms",
+                "x-ratelimit-reset-ms",
+                "x-rate-limit-reset-ms",
+                "ratelimit-reset-ms",
+            ],
+            parse: (value) => parseResetMilliseconds(value, nowMs),
+        },
+        {
+            names: [
+                "x-ratelimit-reset",
+                "x-rate-limit-reset",
+                "ratelimit-reset",
+                "x-ratelimit-reset-after",
+                "x-rate-limit-reset-after",
+                "ratelimit-reset-after",
+            ],
+            parse: (value) => parseResetSeconds(value, nowMs),
+        },
+        {
+            names: [
+                "x-ratelimit-reset-requests",
+                "x-rate-limit-reset-requests",
+                "x-ratelimit-reset-tokens",
+                "x-rate-limit-reset-tokens",
+            ],
+            parse: parseDurationHeader,
+        },
+    ];
+    const parsed = [];
+    let hadHeader = false;
+    for (const specification of specifications) {
+        for (const name of specification.names) {
+            for (const headers of details.headers) {
+                const values = readHeaderValues(headers, name);
+                hadHeader ||= values.length > 0;
+                for (const value of values) {
+                    const delayMs = specification.parse(value);
+                    if (delayMs !== undefined) {
+                        parsed.push({ delayMs, source: name });
+                    }
+                }
+            }
+        }
+    }
+    const longest = parsed.sort((a, b) => b.delayMs - a.delayMs)[0];
+    return {
+        status: details.status,
+        header: {
+            delayMs: longest?.delayMs,
+            hadHeader,
+            source: longest?.source,
+        },
+    };
+}
 function isProviderRunTaskRejection(value) {
     return (value !== null &&
         typeof value === "object" &&
@@ -490,9 +689,24 @@ function computeBackoffDelay(policy, attempt) {
         return 0;
     return Math.min(policy.maxBackoffMs, Math.round(policy.backoffMs * Math.pow(policy.backoffMultiplier, Math.max(0, attempt - 1))));
 }
-function computeRetryDelay(policy, attempt, errorMessage) {
+function resolveRetryTiming(policy, attempt, error, errorMessage, nowMs) {
     const configured = computeBackoffDelay(policy, attempt);
-    return /429|rate limit/i.test(errorMessage) ? Math.max(2000, configured) : configured;
+    const { status, header } = extractRateLimitHeader(error, nowMs);
+    const explicitRateLimit = status === 429 || /429|rate limit/i.test(errorMessage);
+    const rateLimited = explicitRateLimit || (status === 503 && header.hadHeader);
+    if (header.delayMs !== undefined) {
+        return {
+            delayMs: Math.max(configured, header.delayMs),
+            rateLimited,
+            source: header.source,
+        };
+    }
+    return {
+        delayMs: explicitRateLimit
+            ? Math.max(DEFAULT_RATE_LIMIT_BACKOFF_MS, configured)
+            : configured,
+        rateLimited,
+    };
 }
 function mergeFlags(...flagLists) {
     return [...new Set(flagLists.flatMap((flags) => [...flags]))].sort();
@@ -793,8 +1007,7 @@ async function runProvider(params) {
         retryHistory,
         error,
     });
-    for (let attempt = 1; attempt <= retryPolicy.maxAttempts; attempt += 1) {
-        attempts = attempt;
+    while (attempts < retryPolicy.maxAttempts) {
         if (Date.now() >= params.deadlineAt) {
             return failure("deadline exceeded");
         }
@@ -803,6 +1016,28 @@ async function runProvider(params) {
                 ? "deadline exceeded"
                 : asErrorMessage(createAbortError(params.signal.reason)));
         }
+        const cooldown = params.cooldowns.get(params.provider.id);
+        const cooldownRemainingMs = cooldown ? cooldown.untilMs - Date.now() : 0;
+        if (cooldown && cooldownRemainingMs <= 0) {
+            params.cooldowns.delete(params.provider.id);
+        }
+        else if (cooldown && cooldownRemainingMs > 0) {
+            const remainingBudgetMs = Math.max(0, params.deadlineAt - Date.now());
+            if (cooldownRemainingMs >= remainingBudgetMs) {
+                return failure(`Rate-limit wait of ${cooldownRemainingMs}ms from ${cooldown.source} exceeds the remaining total timeout budget of ${remainingBudgetMs}ms.`);
+            }
+            try {
+                await sleep(cooldownRemainingMs, params.signal);
+            }
+            catch (sleepError) {
+                return failure(params.signal.reason instanceof DeadlineExceededError
+                    ? "deadline exceeded"
+                    : asErrorMessage(sleepError));
+            }
+            continue;
+        }
+        attempts += 1;
+        const attempt = attempts;
         try {
             const remainingMs = Math.max(1, params.deadlineAt - Date.now());
             const attemptTimeoutMs = Math.min(providerConfig.timeoutMs, remainingMs);
@@ -827,7 +1062,9 @@ async function runProvider(params) {
                 maxSnippetLength: params.maxSnippetLength,
             });
             if (normalized.error) {
-                throw new Error(normalized.error);
+                const providerError = new Error(normalized.error);
+                providerError.response = response.result;
+                throw providerError;
             }
             const weightedResults = normalized.results.map((result) => ({
                 ...result,
@@ -840,7 +1077,7 @@ async function runProvider(params) {
                 ok: true,
                 tookMs: Date.now() - start,
                 rawCount: normalized.results.length,
-                attempts: attempt,
+                attempts,
                 rawPayload: response.result,
                 results: weightedResults,
                 discardedResults: normalized.discardedResults,
@@ -857,14 +1094,32 @@ async function runProvider(params) {
                 !deadlineExceeded &&
                 attempt < retryPolicy.maxAttempts &&
                 shouldRetry(error, lastError);
+            const retryStartedAt = Date.now();
+            const retryTiming = resolveRetryTiming(retryPolicy, attempt, error, lastError, retryStartedAt);
+            if (retryTiming.rateLimited && retryTiming.delayMs > 0) {
+                const nextCooldown = {
+                    untilMs: retryStartedAt + retryTiming.delayMs,
+                    source: retryTiming.source ?? "rate-limit response",
+                };
+                const currentCooldown = params.cooldowns.get(params.provider.id);
+                if (!currentCooldown || nextCooldown.untilMs > currentCooldown.untilMs) {
+                    params.cooldowns.set(params.provider.id, nextCooldown);
+                }
+            }
             if (!canRetry) {
                 return failure(lastError);
             }
-            const delayMs = computeRetryDelay(retryPolicy, attempt, lastError);
-            if (Date.now() + delayMs >= params.deadlineAt) {
-                return failure("deadline exceeded");
+            const delayMs = retryTiming.delayMs;
+            const remainingBudgetMs = Math.max(0, params.deadlineAt - Date.now());
+            if (delayMs >= remainingBudgetMs) {
+                return failure(retryTiming.rateLimited
+                    ? `Rate-limit wait of ${delayMs}ms${retryTiming.source ? ` from ${retryTiming.source}` : ""} exceeds the remaining total timeout budget of ${remainingBudgetMs}ms.`
+                    : "deadline exceeded");
             }
             retryHistory.push({ attempt, error: lastError, delayMs });
+            if (retryTiming.rateLimited) {
+                continue;
+            }
             try {
                 await sleep(delayMs, params.signal);
             }
@@ -961,6 +1216,7 @@ export async function runSearchFusion(params) {
     const runController = new AbortController();
     const removeOuterRelay = relayAbort(params.signal, runController);
     const deadlineTimer = setTimeout(() => runController.abort(new DeadlineExceededError()), Math.max(0, deadlineAt - Date.now()));
+    const providerCooldowns = new Map();
     const providerRunTasks = selectedProviders.map((provider) => {
         const startedAt = Date.now();
         return {
@@ -981,6 +1237,7 @@ export async function runSearchFusion(params) {
                 maxSnippetLength,
                 signal: runController.signal,
                 deadlineAt,
+                cooldowns: providerCooldowns,
                 agentDir: params.agentDir,
                 runtimeMetadata: params.runtimeMetadata,
             })), runController.signal).catch((error) => {
