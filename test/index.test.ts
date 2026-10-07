@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "openclaw/plugin-sdk/config-runtime";
+import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "openclaw/plugin-sdk/runtime-config-snapshot";
 import plugin from "../index.js";
 
 function parseWrappedJson(text: string): any {

@@ -179,21 +179,33 @@ function applySearchConfigContext(config, searchConfig) {
         },
     };
 }
-async function resolveRuntimeSourceConfig(fallback) {
-    try {
-        const runtimeConfig = await import("openclaw/plugin-sdk/config-runtime");
-        const getSourceSnapshot = runtimeConfig.getRuntimeConfigSourceSnapshot;
-        if (typeof getSourceSnapshot === "function") {
-            return getSourceSnapshot() ?? fallback;
+// OpenClaw 2026.10 retired the plugin-sdk/config-runtime facade. Prefer the
+// focused subpath and fall back to the facade so older supported gateways keep working.
+const LEGACY_CONFIG_RUNTIME = "openclaw/plugin-sdk/config-runtime";
+async function importSdkExport(focusedPath, name) {
+    for (const path of [focusedPath, LEGACY_CONFIG_RUNTIME]) {
+        try {
+            const mod = (await import(path));
+            if (typeof mod[name] === "function") {
+                return mod[name];
+            }
+        }
+        catch {
+            // Subpath not exported by this OpenClaw version; try the next one.
         }
     }
-    catch {
-        // Older OpenClaw SDKs do not expose source snapshots to plugins.
-    }
-    return fallback;
+    return undefined;
+}
+async function resolveRuntimeSourceConfig(fallback) {
+    const getSourceSnapshot = await importSdkExport("openclaw/plugin-sdk/runtime-config-snapshot", "getRuntimeConfigSourceSnapshot");
+    // Older OpenClaw SDKs do not expose source snapshots to plugins.
+    return getSourceSnapshot ? (getSourceSnapshot() ?? fallback) : fallback;
 }
 async function resolveSecretRefValue(params) {
-    const { resolveConfiguredSecretInputString } = await import("openclaw/plugin-sdk/config-runtime");
+    const resolveConfiguredSecretInputString = await importSdkExport("openclaw/plugin-sdk/secret-input-runtime", "resolveConfiguredSecretInputString");
+    if (!resolveConfiguredSecretInputString) {
+        throw new Error(`${params.path} SecretRef cannot be resolved: this OpenClaw version exposes no SecretRef resolver to plugins.`);
+    }
     const resolved = await resolveConfiguredSecretInputString({
         config: params.config,
         env: process.env,

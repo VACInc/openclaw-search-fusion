@@ -234,19 +234,31 @@ function applySearchConfigContext(
   };
 }
 
-async function resolveRuntimeSourceConfig(fallback: unknown): Promise<unknown> {
-  try {
-    const runtimeConfig = await import("openclaw/plugin-sdk/config-runtime");
-    const getSourceSnapshot = (runtimeConfig as {
-      getRuntimeConfigSourceSnapshot?: () => unknown;
-    }).getRuntimeConfigSourceSnapshot;
-    if (typeof getSourceSnapshot === "function") {
-      return getSourceSnapshot() ?? fallback;
+// OpenClaw 2026.10 retired the plugin-sdk/config-runtime facade. Prefer the
+// focused subpath and fall back to the facade so older supported gateways keep working.
+const LEGACY_CONFIG_RUNTIME = "openclaw/plugin-sdk/config-runtime";
+
+async function importSdkExport<T>(focusedPath: string, name: string): Promise<T | undefined> {
+  for (const path of [focusedPath, LEGACY_CONFIG_RUNTIME]) {
+    try {
+      const mod = (await import(path)) as Record<string, unknown>;
+      if (typeof mod[name] === "function") {
+        return mod[name] as T;
+      }
+    } catch {
+      // Subpath not exported by this OpenClaw version; try the next one.
     }
-  } catch {
-    // Older OpenClaw SDKs do not expose source snapshots to plugins.
   }
-  return fallback;
+  return undefined;
+}
+
+async function resolveRuntimeSourceConfig(fallback: unknown): Promise<unknown> {
+  const getSourceSnapshot = await importSdkExport<() => unknown>(
+    "openclaw/plugin-sdk/runtime-config-snapshot",
+    "getRuntimeConfigSourceSnapshot",
+  );
+  // Older OpenClaw SDKs do not expose source snapshots to plugins.
+  return getSourceSnapshot ? (getSourceSnapshot() ?? fallback) : fallback;
 }
 
 async function resolveSecretRefValue(params: {
@@ -254,7 +266,18 @@ async function resolveSecretRefValue(params: {
   value: unknown;
   path: string;
 }): Promise<string> {
-  const { resolveConfiguredSecretInputString } = await import("openclaw/plugin-sdk/config-runtime");
+  const resolveConfiguredSecretInputString = await importSdkExport<
+    (params: {
+      config: never;
+      env: NodeJS.ProcessEnv;
+      value: unknown;
+      path: string;
+      unresolvedReasonStyle: "detailed";
+    }) => Promise<{ value?: string; unresolvedRefReason?: string }>
+  >("openclaw/plugin-sdk/secret-input-runtime", "resolveConfiguredSecretInputString");
+  if (!resolveConfiguredSecretInputString) {
+    throw new Error(`${params.path} SecretRef cannot be resolved: this OpenClaw version exposes no SecretRef resolver to plugins.`);
+  }
   const resolved = await resolveConfiguredSecretInputString({
     config: params.config as never,
     env: process.env,

@@ -33,10 +33,9 @@ const resolveConfiguredSecretInputString = mock.fn(async (params: SecretResolver
   return { unresolvedRefReason: `${params.path} mocked SecretRef resolution failed.` };
 });
 
-mock.module("openclaw/plugin-sdk/config-runtime", {
+mock.module("openclaw/plugin-sdk/secret-input-runtime", {
   cache: true,
   namedExports: {
-    getRuntimeConfigSourceSnapshot,
     resolveConfiguredSecretInputString,
   },
 });
