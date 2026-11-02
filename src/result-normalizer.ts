@@ -399,7 +399,9 @@ function mapResultArray(params: {
     const itemFlags = detectItemFlags(obj, analyzedUrl.url);
     const flags = mergeFlags(analyzedUrl.flags as SearchResultFlag[], itemFlags);
     const sourceTier = classifySourceTier({ sourceType: params.sourceType, flags });
-    const title = firstString(obj, ["title", "name", "headline", "label"]) ?? titleFromUrl(analyzedUrl.url);
+    // Delegated providers wrap titles in OpenClaw's untrusted-content markers too.
+    const title =
+      cleanProviderText(firstString(obj, ["title", "name", "headline", "label"])) || titleFromUrl(analyzedUrl.url);
     const nativeScore = firstNumber(obj, ["score", "confidence", "relevance"]);
     const baseScore = normalizeNativeScore(nativeScore, index);
     const score = applySearchResultQuality({

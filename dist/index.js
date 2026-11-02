@@ -5,6 +5,7 @@ import { findMissingProviders, KNOWN_PROVIDERS } from "./src/provider-catalog.js
 import { ALL_PROVIDER_CAPABILITIES, filterByAnyCapability, filterByCapabilities, hasCapability, resolveProviderCapabilities, } from "./src/provider-capabilities.js";
 import { renderFusionSummary, runSearchFusion } from "./src/search-fusion.js";
 import { wrapModelVisibleSearchPayload } from "./src/external-content.js";
+import { buildModelVisibleSearchPayload } from "./src/model-output.js";
 // Re-export the capability taxonomy so consumers can import directly from the
 // plugin entry point without knowing internal file structure.
 export { ALL_PROVIDER_CAPABILITIES, filterByAnyCapability, filterByCapabilities, hasCapability, resolveProviderCapabilities, KNOWN_PROVIDERS, };
@@ -104,8 +105,9 @@ function createSearchFusionProvider(api) {
                     runtimeMetadata: ctx.runtimeMetadata,
                     agentDir: ctx.agentDir,
                 });
+                // web_search output is size-capped by OpenClaw: send the compact view.
                 return {
-                    content: await wrapModelVisibleSearchPayload(payload),
+                    content: await wrapModelVisibleSearchPayload(buildModelVisibleSearchPayload(payload), 0),
                     externalContent: payload.externalContent,
                 };
             },

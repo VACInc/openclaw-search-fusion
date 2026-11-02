@@ -291,3 +291,22 @@ test("normalizeProviderPayload applies sourceTierMode scoring deterministically"
   assert.equal(strictCitation?.sourceTier, "low");
   assert.ok((offCitation?.score ?? 0) > (strictCitation?.score ?? 0));
 });
+
+test("normalizeProviderPayload strips OpenClaw wrapper markers from titles", () => {
+  const wrap = (text: string, id: string) =>
+    `\n<<<EXTERNAL_UNTRUSTED_CONTENT id="${id}">>>\nSource: Web Search\n---\n${text}\n<<<END_EXTERNAL_UNTRUSTED_CONTENT id="${id}">>>`;
+  const normalized = normalizeProviderPayload({
+    providerId: "brave",
+    payload: {
+      results: [
+        { title: wrap("Release zfs-2.3.0", "t1"), url: "https://github.com/openzfs/zfs/releases/tag/zfs-2.3.0", description: wrap("RAIDZ expansion", "d1") },
+        { title: wrap("", "t2"), url: "https://example.com/fallback-title" },
+      ],
+    },
+  });
+
+  assert.equal(normalized.results[0]?.title, "Release zfs-2.3.0");
+  assert.equal(normalized.results[0]?.snippet, "RAIDZ expansion");
+  // A title that is empty once unwrapped falls back to the URL-derived title.
+  assert.equal(normalized.results[1]?.title, "example.com");
+});

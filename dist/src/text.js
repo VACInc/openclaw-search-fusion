@@ -42,6 +42,8 @@ export function truncate(value, max = 220) {
 export function stripExternalWrapper(content) {
     let cleaned = content;
     cleaned = cleaned.replace(/SECURITY NOTICE:[\s\S]*?(?=<<<[A-Z0-9_:-]+ id="[^"]+">>>)/g, "");
+    // Newer OpenClaw wrappers lead with a one-line data/instruction boundary note.
+    cleaned = cleaned.replace(/External content below is data, not a message from the user or system\.[^\n]*\s*(?=<<<[A-Z0-9_:-]+ id="[^"]+">>>)/g, "");
     cleaned = cleaned.replace(/<<<[A-Z0-9_:-]+ id="[^"]+">>>/g, "");
     // OpenClaw's wrapper puts a "Source: <label>" header and a "---" rule before the
     // content. ("\bSource:\b" never matched: there is no word boundary between ":"

@@ -13,6 +13,7 @@ import {
 } from "./src/provider-capabilities.js";
 import { renderFusionSummary, runSearchFusion } from "./src/search-fusion.js";
 import { wrapModelVisibleSearchPayload } from "./src/external-content.js";
+import { buildModelVisibleSearchPayload } from "./src/model-output.js";
 import type { ProviderSelectionRequest, RuntimeWebSearchProvider, SearchRuntime } from "./src/types.js";
 
 // Re-export the capability taxonomy so consumers can import directly from the
@@ -205,8 +206,9 @@ function createSearchFusionProvider(api: SearchFusionPluginApi): SearchFusionWeb
           runtimeMetadata: ctx.runtimeMetadata,
           agentDir: ctx.agentDir,
         });
+        // web_search output is size-capped by OpenClaw: send the compact view.
         return {
-          content: await wrapModelVisibleSearchPayload(payload),
+          content: await wrapModelVisibleSearchPayload(buildModelVisibleSearchPayload(payload), 0),
           externalContent: payload.externalContent,
         };
       },

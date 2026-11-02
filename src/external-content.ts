@@ -34,8 +34,11 @@ async function resolveWrapWebContent(): Promise<WrapWebContent> {
   return await wrapWebContentPromise;
 }
 
-/** Wrap one complete serialized search payload at its model-visible exit. */
-export async function wrapModelVisibleSearchPayload(payload: unknown): Promise<string> {
+/**
+ * Wrap one complete serialized search payload at its model-visible exit.
+ * `indent` 0 serializes compactly for size-capped surfaces.
+ */
+export async function wrapModelVisibleSearchPayload(payload: unknown, indent = 2): Promise<string> {
   const wrapWebContent = await resolveWrapWebContent();
-  return wrapWebContent(JSON.stringify(payload, null, 2), "web_search");
+  return wrapWebContent(JSON.stringify(payload, null, indent > 0 ? indent : undefined), "web_search");
 }

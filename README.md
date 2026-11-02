@@ -277,7 +277,9 @@ Example config snippet:
 
 When a custom `intentProviders` map has no entry for the given intent, or the mapped providers are unavailable, routing falls through to `defaultMode`, `defaultProviders`, and finally all configured providers. Providing the map opts out of built-in capability routing so custom intent policy remains authoritative.
 
-If you want the built-in `web_search` tool to route through the broker by default:
+If you want the built-in `web_search` tool to route through the broker by default (the example follows).
+
+Through `web_search` the model gets a compact view: ranked `results` (title, url, siteName, snippet, `passages`, providers), provider status, short failure messages, and provider answer summaries. OpenClaw caps `web_search` output (20,000 characters in 2026.10) and cuts the tail, so the full audit payload would hide most results and passages. Pass `includeRawPayloads: true` (request or config) to get the full payload there; the `search_fusion` tool always returns it.
 
 ```json
 {

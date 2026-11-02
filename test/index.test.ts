@@ -190,6 +190,10 @@ test("plugin registers provider and both tools", async () => {
   const wrappedProvider = parseWrappedJson(providerResult.content ?? "");
   assert.equal(wrappedProvider.provider, "search-fusion");
   assert.deepEqual(wrappedProvider.providersQueried, ["brave", "gemini", "tavily"]);
+  // web_search gets the compact model view: results, not the audit detail.
+  assert.equal(wrappedProvider.results.length, 3);
+  assert.equal(wrappedProvider.providerRuns, undefined);
+  assert.equal(wrappedProvider.evidenceTable, undefined);
   assert.equal(providerResult.externalContent?.untrusted, true);
   assert.equal(((providerResult.content ?? "").match(/<<<EXTERNAL_UNTRUSTED_CONTENT id=/g) ?? []).length, 1);
   assert.doesNotMatch(providerResult.content ?? "", /id="spoofed"/);
