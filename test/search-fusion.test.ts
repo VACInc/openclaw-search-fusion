@@ -1,4 +1,4 @@
-import test, { mock } from "node:test";
+import test, { beforeEach, mock } from "node:test";
 import assert from "node:assert/strict";
 import {
   clearRuntimeConfigSnapshot,
@@ -40,7 +40,13 @@ mock.module("openclaw/plugin-sdk/secret-input-runtime", {
   },
 });
 
-const { runSearchFusion } = await import("../src/search-fusion.js");
+const { getProviderHealthSnapshot, isHardProviderFailure, resetProviderHealthForTests, runSearchFusion } =
+  await import("../src/search-fusion.js");
+
+// Provider health is process-wide by design; isolate every test from earlier failures.
+beforeEach(() => {
+  resetProviderHealthForTests();
+});
 
 function createRuntime(overrides?: {
   providers?: Array<{
@@ -3526,4 +3532,277 @@ test("runSearchFusion bounds visible text and keeps full fidelity behind opt-ins
   assert.equal((audit.providerRuns[0]?.results[0]?.rawItem as { description?: string })?.description, longText);
   assert.equal(audit.discardedResults.length, 1);
   assert.equal((audit.discardedResults[0]?.rawItem as { description?: string })?.description, longText);
+});
+
+// ---- Provider circuit breaker (cross-call health) ----
+
+function countingRuntime(failures: Record<string, () => string | undefined>) {
+  const calls: Record<string, number> = {};
+  const runtime = createRuntime({
+    search: async ({ providerId }) => {
+      const id = providerId ?? "unknown";
+      calls[id] = (calls[id] ?? 0) + 1;
+      const failure = failures[id]?.();
+      if (failure) {
+        throw new Error(failure);
+      }
+      return {
+        provider: id,
+        result: { results: [{ title: `${id} result`, url: `https://example.com/${id}` }] },
+      };
+    },
+  });
+  return { runtime, calls };
+}
+
+async function fuse(runtime: unknown, pluginConfig: Record<string, unknown> = {}, signal?: AbortSignal) {
+  return await runSearchFusion({
+    runtime: runtime as never,
+    config: {},
+    pluginConfig,
+    request: { query: "circuit", providers: ["brave", "tavily"] },
+    signal,
+  });
+}
+
+test("isHardProviderFailure classifies auth, billing, plan and refused-connection errors only", () => {
+  for (const message of [
+    "MiniMax Search API error (1008): insufficient balance",
+    "model_not_found: OpenAI sign-in has no Codex plan",
+    "fetch failed | connect ECONNREFUSED 127.0.0.1:11434 | ECONNREFUSED",
+    "getaddrinfo ENOTFOUND search.example",
+    "HTTP 401 Unauthorized",
+    "Request failed with status 402 Payment Required",
+    "Invalid API key",
+    "403 Forbidden",
+  ]) {
+    assert.equal(isHardProviderFailure(message), true, message);
+  }
+  for (const message of [
+    "Provider tavily timed out after 15000ms",
+    "deadline exceeded",
+    "HTTP 503 upstream unavailable",
+    "429 rate limit",
+    "Gemini exploded",
+    "error 14010 while parsing",
+    undefined,
+  ]) {
+    assert.equal(isHardProviderFailure(message), false, String(message));
+  }
+});
+
+test("hard provider failure skips retries and opens the circuit for later searches", async () => {
+  const { runtime, calls } = countingRuntime({ tavily: () => "Search API error (1008): insufficient balance" });
+
+  const first = await fuse(runtime);
+  assert.equal(calls.tavily, 1, "hard failure must not be retried in-call");
+  assert.deepEqual(first.providersSucceeded, ["brave"]);
+
+  const second = await fuse(runtime);
+  assert.equal(calls.tavily, 1, "open circuit must skip the provider");
+  assert.equal(calls.brave, 2);
+  assert.deepEqual(second.providersSucceeded, ["brave"]);
+  const skipped = second.providersFailed.find((failure) => failure.provider === "tavily");
+  assert.ok(skipped);
+  assert.match(skipped.error, /^circuit open: skipped for \d+s more after 1 consecutive failure\(s\); last error: .*insufficient balance/);
+  const detail = second.providerDetails.find((entry) => entry.provider === "tavily");
+  assert.equal(detail?.attempts, 0);
+  assert.equal(detail?.tookMs, 0);
+  assert.equal(second.results.length, 1);
+  assert.equal(getProviderHealthSnapshot().tavily.open, true);
+});
+
+test("soft failures open the circuit only after the consecutive threshold", async () => {
+  const { runtime, calls } = countingRuntime({ tavily: () => "HTTP 503 upstream unavailable" });
+  const config = { retry: { maxAttempts: 1 } };
+
+  await fuse(runtime, config);
+  await fuse(runtime, config);
+  assert.equal(calls.tavily, 2);
+  assert.equal(getProviderHealthSnapshot().tavily.open, false);
+  await fuse(runtime, config);
+  assert.equal(calls.tavily, 3);
+  assert.equal(getProviderHealthSnapshot().tavily.open, true);
+  await fuse(runtime, config);
+  assert.equal(calls.tavily, 3);
+});
+
+test("a success resets the consecutive failure count", async () => {
+  let failNext = true;
+  const { runtime, calls } = countingRuntime({
+    tavily: () => (failNext ? "HTTP 503 upstream unavailable" : undefined),
+  });
+  const config = { retry: { maxAttempts: 1 }, circuitBreaker: { failureThreshold: 2 } };
+
+  await fuse(runtime, config);
+  failNext = false;
+  await fuse(runtime, config);
+  assert.equal(getProviderHealthSnapshot().tavily, undefined);
+  failNext = true;
+  await fuse(runtime, config);
+  assert.equal(getProviderHealthSnapshot().tavily.open, false);
+  await fuse(runtime, config);
+  assert.equal(getProviderHealthSnapshot().tavily.open, true);
+  assert.equal(calls.tavily, 4);
+});
+
+test("an expired circuit probes once and doubles the window when the probe fails", async (t) => {
+  const realNow = Date.now.bind(Date);
+  let offsetMs = 0;
+  t.mock.method(Date, "now", () => realNow() + offsetMs);
+  const { runtime, calls } = countingRuntime({ tavily: () => "401 Unauthorized" });
+  const config = { circuitBreaker: { cooldownMs: 10_000, maxCooldownMs: 15_000 } };
+
+  await fuse(runtime, config);
+  const firstWindow = getProviderHealthSnapshot().tavily.openForMs;
+  assert.ok(firstWindow > 9_000 && firstWindow <= 10_000, String(firstWindow));
+
+  offsetMs += 10_001;
+  await fuse(runtime, config);
+  assert.equal(calls.tavily, 2, "expired circuit must allow one probe");
+  const secondWindow = getProviderHealthSnapshot().tavily.openForMs;
+  assert.ok(secondWindow > 14_000 && secondWindow <= 15_000, `doubled window capped at max: ${secondWindow}`);
+  assert.equal(getProviderHealthSnapshot().tavily.openCount, 2);
+
+  offsetMs += 15_001;
+  await fuse(createRuntime() as never, config);
+  assert.equal(getProviderHealthSnapshot().tavily, undefined, "successful probe closes the circuit");
+});
+
+test("when every selected provider is cooling off, all of them are probed", async () => {
+  const { runtime, calls } = countingRuntime({
+    brave: () => "401 Unauthorized",
+    tavily: () => "401 Unauthorized",
+  });
+  await fuse(runtime);
+  await fuse(runtime);
+  assert.equal(calls.brave, 2);
+  assert.equal(calls.tavily, 2);
+});
+
+test("circuitBreaker.enabled=false never skips a failing provider", async () => {
+  const { runtime, calls } = countingRuntime({ tavily: () => "401 Unauthorized" });
+  const config = { circuitBreaker: { enabled: false } };
+  await fuse(runtime, config);
+  await fuse(runtime, config);
+  assert.equal(calls.tavily, 2);
+  assert.deepEqual(getProviderHealthSnapshot(), {});
+});
+
+test("a caller abort does not count against provider health", async () => {
+  const controller = new AbortController();
+  const search = runSearchFusion({
+    runtime: createRuntime({
+      search: async () => {
+        throw new Error("401 Unauthorized while cancelling");
+      },
+    }) as never,
+    config: {},
+    pluginConfig: { circuitBreaker: { failureThreshold: 1 }, retry: { maxAttempts: 5, backoffMs: 5000 } },
+    request: { query: "cancel health", providers: ["brave"] },
+    signal: controller.signal,
+  });
+  controller.abort(new Error("caller cancelled"));
+  await search;
+  assert.deepEqual(getProviderHealthSnapshot(), {});
+});
+
+// ---- Reciprocal-rank fusion ----
+
+function rankedRuntime(lists: Record<string, string[]>) {
+  return createRuntime({
+    search: async ({ providerId }) => ({
+      provider: providerId ?? "unknown",
+      result: {
+        results: (lists[providerId ?? ""] ?? []).map((path) => ({
+          title: `page ${path}`,
+          url: `https://example.com/${path}`,
+          description: `snippet ${path}`,
+        })),
+      },
+    }),
+  });
+}
+
+test("rrf ranking lifts results that several providers agree on", async () => {
+  const runtime = rankedRuntime({ brave: ["solo", "x1", "shared"], tavily: ["t1", "t2", "shared"] });
+  const payload = await runSearchFusion({
+    runtime: runtime as never,
+    config: {},
+    pluginConfig: { rankingStrategy: "rrf", sourceTierMode: "off" },
+    request: { query: "rrf", providers: ["brave", "tavily"] },
+  });
+  assert.equal(payload.results[0].url, "https://example.com/shared");
+  assert.equal(payload.ranking.strategy, "rrf-v1");
+  const top = payload.results[0].ranking;
+  assert.equal(top.strategy, "rrf-v1");
+  assert.equal(top.scoreBreakdown.corroborationBonus, 0);
+  // 2 * 61/63 for two rank-3 hits at k=60
+  assert.equal(top.scoreBreakdown.rrfScore, Math.round(((2 * 61) / 63) * 1e6) / 1e6);
+  assert.equal(top.scoreBreakdown.finalScore, top.scoreBreakdown.rrfScore);
+  const solo = payload.results.find((result) => result.url === "https://example.com/solo");
+  assert.equal(solo?.ranking.scoreBreakdown.rrfScore, 1);
+});
+
+test("rrf honors provider weights and rrfK", async () => {
+  const runtime = rankedRuntime({ brave: ["b1"], tavily: ["t1"] });
+  const payload = await runSearchFusion({
+    runtime: runtime as never,
+    config: {},
+    pluginConfig: {
+      rankingStrategy: "rrf",
+      rrfK: 10,
+      sourceTierMode: "off",
+      providerConfig: { tavily: { weight: 2 } },
+    },
+    request: { query: "rrf weights", providers: ["brave", "tavily"] },
+  });
+  assert.deepEqual(
+    payload.results.map((result) => [result.url, result.ranking.scoreBreakdown.rrfScore]),
+    [
+      ["https://example.com/t1", 2],
+      ["https://example.com/b1", 1],
+    ],
+  );
+});
+
+test("default ranking stays merged-score-v1 without an rrf score", async () => {
+  const runtime = rankedRuntime({ brave: ["b1"], tavily: ["t1"] });
+  const payload = await runSearchFusion({
+    runtime: runtime as never,
+    config: {},
+    pluginConfig: {},
+    request: { query: "default ranking", providers: ["brave", "tavily"] },
+  });
+  assert.equal(payload.ranking.strategy, "merged-score-v1");
+  assert.equal(payload.results[0].ranking.strategy, "merged-score-v1");
+  assert.equal(payload.results[0].ranking.scoreBreakdown.rrfScore, undefined);
+});
+
+test("rrf still applies the sponsored penalty", async () => {
+  const runtime = createRuntime({
+    search: async ({ providerId }) => ({
+      provider: providerId ?? "brave",
+      result: {
+        results: [
+          { title: "Ad", url: "https://example.com/ad", description: "ad", sponsored: true },
+          { title: "Organic", url: "https://example.com/organic", description: "organic" },
+        ],
+      },
+    }),
+  });
+  const payload = await runSearchFusion({
+    runtime: runtime as never,
+    config: {},
+    pluginConfig: { rankingStrategy: "rrf", sourceTierMode: "off" },
+    request: { query: "rrf ads", providers: ["brave"] },
+  });
+  assert.equal(payload.results[0].url, "https://example.com/organic");
+  const ad = payload.results.find((result) => result.url === "https://example.com/ad");
+  assert.ok(ad);
+  assert.equal(ad.ranking.scoreBreakdown.flagPenalty > 0, true);
+  assert.equal(
+    ad.ranking.scoreBreakdown.finalScore,
+    Math.max(0.01, (ad.ranking.scoreBreakdown.rrfScore ?? 0) - ad.ranking.scoreBreakdown.flagPenalty),
+  );
 });

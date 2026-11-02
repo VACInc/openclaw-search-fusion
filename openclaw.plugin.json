@@ -349,6 +349,55 @@
             }
           }
         }
+      },
+      "rankingStrategy": {
+        "type": "string",
+        "enum": [
+          "score",
+          "rrf"
+        ],
+        "description": "Merged ranking. score (default) keeps the calibrated merged-score-v1 ranking; rrf uses weighted reciprocal-rank fusion (rrf-v1), so agreement between providers lifts a result without trusting any provider's native score scale."
+      },
+      "rrfK": {
+        "type": "number",
+        "minimum": 1,
+        "maximum": 1000,
+        "description": "RRF damping constant used when rankingStrategy is rrf. Lower values reward top ranks more. Defaults to 60."
+      },
+      "circuitBreaker": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Cross-call provider health. A provider that keeps failing is skipped for a cooling-off window so a dead source cannot add its timeout and retries to every search. Enabled by default.",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "description": "Defaults to true."
+          },
+          "hardFailureThreshold": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "description": "Consecutive hard failures (auth, billing, plan entitlement, connection refused) that open the circuit. Defaults to 1."
+          },
+          "failureThreshold": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "description": "Consecutive other failures (timeouts, 5xx, empty errors) that open the circuit. Defaults to 3."
+          },
+          "cooldownMs": {
+            "type": "integer",
+            "minimum": 1000,
+            "maximum": 86400000,
+            "description": "First open window in ms; doubles on each re-open up to maxCooldownMs. Defaults to 300000."
+          },
+          "maxCooldownMs": {
+            "type": "integer",
+            "minimum": 1000,
+            "maximum": 604800000,
+            "description": "Upper bound for the open window in ms. Defaults to 3600000."
+          }
+        }
       }
     }
   }

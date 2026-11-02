@@ -26,6 +26,131 @@ const MERGED_SORT_ORDER = [
     "providerPriority:asc",
     "bestRank:asc",
 ];
+const RRF_RANKING_STRATEGY = "rrf-v1";
+const DEFAULT_RRF_K = 60;
+const DEFAULT_CIRCUIT_HARD_FAILURE_THRESHOLD = 1;
+const DEFAULT_CIRCUIT_FAILURE_THRESHOLD = 3;
+const DEFAULT_CIRCUIT_COOLDOWN_MS = 5 * 60 * 1000;
+const DEFAULT_CIRCUIT_MAX_COOLDOWN_MS = 60 * 60 * 1000;
+const DEFAULT_RANKING_OPTIONS = {
+    strategy: MERGED_RANKING_STRATEGY,
+    rrfK: DEFAULT_RRF_K,
+    weights: new Map(),
+};
+// Failures that will not heal by retrying the same call: credentials, billing,
+// plan entitlement, or an endpoint that is not listening. They skip in-call
+// retries and open the provider circuit on the first occurrence by default.
+const HARD_FAILURE_PATTERNS = [
+    /\b401\b/,
+    /\b402\b/,
+    /\b403\b/,
+    /unauthori[sz]ed/i,
+    /forbidden/i,
+    /invalid api key/i,
+    /missing api key/i,
+    /api key (?:is )?(?:missing|invalid|required)/i,
+    /credential/i,
+    /insufficient (?:balance|credit|credits|funds|quota)/i,
+    /payment required/i,
+    /billing/i,
+    /model_not_found/i,
+    /\bno [\w-]+ plan\b/i,
+    /not (?:included|available) (?:in|on|with) (?:your|the|this) (?:plan|subscription)/i,
+    /ECONNREFUSED/,
+    /ENOTFOUND/,
+    /EHOSTUNREACH/,
+    /EAI_AGAIN/,
+];
+export function isHardProviderFailure(message) {
+    if (!message)
+        return false;
+    return HARD_FAILURE_PATTERNS.some((pattern) => pattern.test(message));
+}
+// Process-wide on purpose: health must survive across tool calls so a dead
+// source is skipped instead of costing its timeout and retries on every search.
+const providerHealth = new Map();
+export function resetProviderHealthForTests() {
+    providerHealth.clear();
+}
+export function getProviderHealthSnapshot(nowMs = Date.now()) {
+    return Object.fromEntries([...providerHealth.entries()].map(([providerId, health]) => [
+        providerId,
+        {
+            consecutiveFailures: health.consecutiveFailures,
+            open: health.openUntilMs > nowMs,
+            openForMs: Math.max(0, health.openUntilMs - nowMs),
+            openCount: health.openCount,
+            ...(health.lastError ? { lastError: health.lastError } : {}),
+        },
+    ]));
+}
+function resolveCircuitBreaker(config) {
+    const raw = config.circuitBreaker ?? {};
+    const cooldownMs = clamp(raw.cooldownMs ?? DEFAULT_CIRCUIT_COOLDOWN_MS, 1000, 24 * 60 * 60 * 1000);
+    return {
+        enabled: raw.enabled !== false,
+        hardFailureThreshold: clamp(Math.round(raw.hardFailureThreshold ?? DEFAULT_CIRCUIT_HARD_FAILURE_THRESHOLD), 1, 100),
+        failureThreshold: clamp(Math.round(raw.failureThreshold ?? DEFAULT_CIRCUIT_FAILURE_THRESHOLD), 1, 100),
+        cooldownMs,
+        maxCooldownMs: Math.max(cooldownMs, clamp(raw.maxCooldownMs ?? DEFAULT_CIRCUIT_MAX_COOLDOWN_MS, 1000, 7 * 24 * 60 * 60 * 1000)),
+    };
+}
+function openCircuitFor(providerId, nowMs) {
+    const health = providerHealth.get(providerId);
+    return health && health.openUntilMs > nowMs ? health : undefined;
+}
+function recordProviderOutcome(policy, run, nowMs) {
+    if (run.ok) {
+        providerHealth.delete(run.providerId);
+        return;
+    }
+    const prior = providerHealth.get(run.providerId);
+    const hard = isHardProviderFailure(run.error);
+    const consecutiveFailures = (prior?.consecutiveFailures ?? 0) + 1;
+    const next = {
+        consecutiveFailures,
+        lastHard: hard,
+        openUntilMs: prior?.openUntilMs ?? 0,
+        openCount: prior?.openCount ?? 0,
+        lastError: run.error,
+    };
+    const threshold = hard ? policy.hardFailureThreshold : policy.failureThreshold;
+    if (consecutiveFailures >= threshold) {
+        const windowMs = Math.min(policy.maxCooldownMs, policy.cooldownMs * Math.pow(2, next.openCount));
+        next.openUntilMs = nowMs + windowMs;
+        next.openCount += 1;
+    }
+    providerHealth.set(run.providerId, next);
+}
+function circuitOpenResult(provider, health, nowMs) {
+    const remainingSeconds = Math.max(1, Math.ceil((health.openUntilMs - nowMs) / 1000));
+    return {
+        providerId: provider.id,
+        label: provider.label,
+        configured: provider.configured,
+        ok: false,
+        tookMs: 0,
+        rawCount: 0,
+        attempts: 0,
+        results: [],
+        discardedResults: [],
+        retryHistory: [],
+        error: `circuit open: skipped for ${remainingSeconds}s more after ${health.consecutiveFailures} consecutive failure(s); last error: ${health.lastError ?? "unknown"}`,
+    };
+}
+function resolveRankingOptions(config, providerIds) {
+    if (config.rankingStrategy !== "rrf") {
+        return DEFAULT_RANKING_OPTIONS;
+    }
+    return {
+        strategy: RRF_RANKING_STRATEGY,
+        rrfK: clamp(config.rrfK ?? DEFAULT_RRF_K, 1, 1000),
+        weights: new Map(providerIds.map((providerId) => [
+            providerId,
+            clamp(resolveProviderConfig(config, providerId).weight ?? DEFAULT_PROVIDER_WEIGHT, MIN_PROVIDER_WEIGHT, MAX_PROVIDER_WEIGHT),
+        ])),
+    };
+}
 /**
  * Result-count contracts verified against the OpenClaw generic web-search
  * adapters. Search Fusion always sends the adapter-facing `count` argument;
@@ -893,6 +1018,8 @@ function isAbortError(error) {
 function shouldRetry(error, errorMessage) {
     if (isAbortError(error))
         return false;
+    if (isHardProviderFailure(errorMessage))
+        return false;
     const nonRetriablePatterns = [
         /401\b/,
         /403\b/,
@@ -959,8 +1086,36 @@ function mergedFlagPenalty(flags) {
 function mergedSortOrder() {
     return [...MERGED_SORT_ORDER];
 }
-function computeMergedScoreBreakdown(entry, sourceTierMode) {
+function computeRrfScore(entry, ranking) {
+    const bestRankByProvider = new Map();
+    for (const variant of entry.variants) {
+        const current = bestRankByProvider.get(variant.providerId);
+        if (current === undefined || variant.rawRank < current) {
+            bestRankByProvider.set(variant.providerId, variant.rawRank);
+        }
+    }
+    let sum = 0;
+    for (const [providerId, rank] of bestRankByProvider) {
+        sum += (ranking.weights.get(providerId) ?? DEFAULT_PROVIDER_WEIGHT) / (ranking.rrfK + Math.max(1, rank));
+    }
+    return roundScore(sum * (ranking.rrfK + 1));
+}
+function computeMergedScoreBreakdown(entry, sourceTierMode, ranking = DEFAULT_RANKING_OPTIONS) {
     const bestVariantScore = entry.variants.reduce((max, variant) => Math.max(max, variant.score), 0);
+    if (ranking.strategy === RRF_RANKING_STRATEGY) {
+        const rrfScore = computeRrfScore(entry, ranking);
+        const tierAdjustment = sourceTierMergedAdjustment(entry.bestSourceTier, sourceTierMode);
+        const flagPenalty = mergedFlagPenalty(entry.flags);
+        return {
+            bestVariantScore,
+            corroborationBonus: 0,
+            bestRankBonus: 0,
+            tierAdjustment,
+            flagPenalty,
+            rrfScore,
+            finalScore: Math.max(0.01, rrfScore + tierAdjustment - flagPenalty),
+        };
+    }
     const corroborationBonus = Math.max(0, entry.providerCount - 1) * 0.12;
     // Rank is an explicit tie-breaker after provider priority. Folding it into
     // the score would silently make rank take precedence over provider priority.
@@ -988,7 +1143,7 @@ function compareMergedCandidates(a, b) {
 }
 function buildRankingExplanation(params) {
     return {
-        strategy: MERGED_RANKING_STRATEGY,
+        strategy: params.strategy,
         rank: params.rank,
         scoreBreakdown: params.scoreBreakdown,
         tieBreakers: {
@@ -1001,9 +1156,9 @@ function buildRankingExplanation(params) {
         },
     };
 }
-function emptyRankingMeta() {
+function emptyRankingMeta(strategy = MERGED_RANKING_STRATEGY) {
     return {
-        strategy: MERGED_RANKING_STRATEGY,
+        strategy,
         sortOrder: mergedSortOrder(),
         consideredCount: 0,
         returnedCount: 0,
@@ -1115,7 +1270,7 @@ function buildMergeGroups(results, dedupe) {
     });
     return [...groups.values()];
 }
-function mergeResults(results, maxMergedResults, sourceTierMode, dedupe, providerOrder = results.map((provider) => provider.providerId)) {
+function mergeResults(results, maxMergedResults, sourceTierMode, dedupe, providerOrder = results.map((provider) => provider.providerId), ranking = DEFAULT_RANKING_OPTIONS) {
     const providerPriorities = new Map(providerOrder.map((providerId, index) => [providerId, index]));
     const mergeCandidates = buildMergeGroups(results, dedupe).map((group, groupIndex) => {
         const representative = [...group].sort((a, b) => compareRepresentativeResults(a.item, b.item, sourceTierMode))[0];
@@ -1188,7 +1343,7 @@ function mergeResults(results, maxMergedResults, sourceTierMode, dedupe, provide
                 return a.providerId.localeCompare(b.providerId);
             }),
         };
-        const scoreBreakdown = computeMergedScoreBreakdown(normalized, sourceTierMode);
+        const scoreBreakdown = computeMergedScoreBreakdown(normalized, sourceTierMode, ranking);
         return {
             ...normalized,
             score: scoreBreakdown.finalScore,
@@ -1204,6 +1359,7 @@ function mergeResults(results, maxMergedResults, sourceTierMode, dedupe, provide
         return {
             ...base,
             ranking: buildRankingExplanation({
+                strategy: ranking.strategy,
                 rank: index + 1,
                 title: base.title,
                 bestRank: base.bestRank,
@@ -1228,9 +1384,9 @@ function mergeResults(results, maxMergedResults, sourceTierMode, dedupe, provide
     return {
         results: mergedResults,
         ranking: rankedCandidates.length === 0
-            ? emptyRankingMeta()
+            ? emptyRankingMeta(ranking.strategy)
             : {
-                strategy: MERGED_RANKING_STRATEGY,
+                strategy: ranking.strategy,
                 sortOrder: mergedSortOrder(),
                 consideredCount: rankedCandidates.length,
                 returnedCount: mergedResults.length,
@@ -1562,7 +1718,7 @@ export async function runSearchFusion(params) {
             discardedResults: [],
             answers: [],
             results: [],
-            ranking: emptyRankingMeta(),
+            ranking: emptyRankingMeta(resolveRankingOptions(brokerConfig, []).strategy),
             evidenceTable: buildEvidenceTable([], [], dedupe),
             output,
             externalContent: {
@@ -1580,9 +1736,32 @@ export async function runSearchFusion(params) {
     const removeOuterRelay = relayAbort(params.signal, runController);
     const deadlineTimer = setTimeout(() => runController.abort(new DeadlineExceededError()), Math.max(0, deadlineAt - Date.now()));
     const providerCooldowns = new Map();
+    const circuitBreaker = resolveCircuitBreaker(brokerConfig);
+    const healthCheckedAt = Date.now();
+    const openCircuits = new Map();
+    if (circuitBreaker.enabled) {
+        for (const provider of selectedProviders) {
+            const health = openCircuitFor(provider.id, healthCheckedAt);
+            if (health)
+                openCircuits.set(provider.id, health);
+        }
+        // Never skip the whole selection: when every provider is cooling off, probe them all.
+        if (openCircuits.size === selectedProviders.length)
+            openCircuits.clear();
+    }
     const providerRunTasks = selectedProviders.map((provider) => {
         const startedAt = Date.now();
+        const openHealth = openCircuits.get(provider.id);
+        if (openHealth) {
+            return {
+                provider,
+                startedAt,
+                skipped: true,
+                promise: Promise.resolve(circuitOpenResult(provider, openHealth, startedAt)),
+            };
+        }
         return {
+            skipped: false,
             provider,
             startedAt,
             promise: raceWithSignal(resolveDelegatedRuntimeConfig({
@@ -1632,6 +1811,13 @@ export async function runSearchFusion(params) {
             error: rejection?.error ?? settled.reason,
         });
     });
+    if (circuitBreaker.enabled && !params.signal?.aborted) {
+        const recordedAt = Date.now();
+        providerRuns.forEach((run, index) => {
+            if (!providerRunTasks[index].skipped)
+                recordProviderOutcome(circuitBreaker, run, recordedAt);
+        });
+    }
     const okRuns = providerRuns.filter((run) => run.ok);
     const contributingProviders = new Set(okRuns.filter((run) => run.results.length > 0).map((run) => run.providerId)).size;
     // Fuzzy dedupe is a fusion feature: a single contributing provider keeps its
@@ -1639,7 +1825,7 @@ export async function runSearchFusion(params) {
     const mergeDedupe = brokerConfig.fuzzyDedupe !== true && contributingProviders <= 1
         ? { ...dedupe, enabled: false }
         : dedupe;
-    const merged = mergeResults(okRuns, maxMergedResults, sourceTierMode, mergeDedupe, selectedProviders.map((provider) => provider.id));
+    const merged = mergeResults(okRuns, maxMergedResults, sourceTierMode, mergeDedupe, selectedProviders.map((provider) => provider.id), resolveRankingOptions(brokerConfig, selectedProviders.map((provider) => provider.id)));
     const mergedResults = merged.results;
     const internalDiscardedResults = providerRuns.flatMap((run) => run.discardedResults);
     const internalAnswers = providerRuns

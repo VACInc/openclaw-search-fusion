@@ -1,4 +1,13 @@
 import type { FusionSearchPayload, ProviderSelectionRequest, SearchRuntime } from "./types.js";
+export declare function isHardProviderFailure(message: string | undefined): boolean;
+export declare function resetProviderHealthForTests(): void;
+export declare function getProviderHealthSnapshot(nowMs?: number): Record<string, {
+    consecutiveFailures: number;
+    open: boolean;
+    openForMs: number;
+    openCount: number;
+    lastError?: string;
+}>;
 export declare function runSearchFusion(params: {
     runtime: SearchRuntime;
     config: unknown;

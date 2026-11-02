@@ -145,6 +145,18 @@ Resolution order:
 
 `providerConfig.<id>` is the canonical place for per-provider overrides like `maxResults`, `retry`, `timeoutMs`, `weight`, and `scoreCalibration`. The older `count` field remains supported as a default count when a request does not pass one.
 
+### Provider health (circuit breaker)
+
+Search Fusion remembers provider failures across calls (process-wide). A hard failure (auth, billing such as `insufficient balance`, plan entitlement such as `model_not_found` / `no ... plan`, or a refused/unresolvable endpoint) is never retried in-call and opens that provider's circuit immediately; other failures (timeouts, 5xx) open it after three in a row. While a circuit is open the provider is skipped and reported in `providersFailed` as `circuit open: ...` with `attempts: 0`. After the window expires one probe runs; a failed probe doubles the window up to `maxCooldownMs`, a success closes it. If every selected provider is open, all of them are probed rather than returning nothing. A caller abort never counts as a failure.
+
+```json
+"circuitBreaker": { "enabled": true, "hardFailureThreshold": 1, "failureThreshold": 3, "cooldownMs": 300000, "maxCooldownMs": 3600000 }
+```
+
+### Ranking strategy
+
+`rankingStrategy` defaults to `score` (`merged-score-v1`: calibrated per-provider scores plus a corroboration bonus). `rrf` switches to weighted reciprocal-rank fusion (`rrf-v1`): each provider contributes `weight / (rrfK + rank)` for its best rank of a merged URL, scaled so a lone rank-1 hit at weight 1 scores 1. Source-tier and flag penalties still apply. `rrfK` defaults to 60; lower values reward top ranks more. RRF helps most when a wide fan-out mixes strong and weak providers; for a small set of strong providers the default `score` ranking measured better.
+
 ### Provider result counts
 
 Search Fusion pulls each provider's verified native maximum by default so dedupe and ranking have a deeper candidate pool. Every delegated OpenClaw provider receives its generic `count` argument; the provider adapter translates that to its native request field.

@@ -55,6 +55,30 @@ export type SearchFusionProviderConfig = {
     scoreCalibration?: SearchFusionScoreCalibrationConfig;
 };
 export type SourceTierMode = "off" | "balanced" | "strict";
+/**
+ * `score` keeps the calibrated merged-score ranking (`merged-score-v1`).
+ * `rrf` ranks by weighted reciprocal-rank fusion (`rrf-v1`): each provider adds
+ * `weight / (rrfK + rank)` for its best rank of the merged URL, so agreement
+ * between providers lifts a result without trusting any provider's native scale.
+ */
+export type SearchFusionRankingStrategy = "score" | "rrf";
+export type FusionRankingStrategy = "merged-score-v1" | "rrf-v1";
+/**
+ * Cross-call provider health. A provider that keeps failing is skipped for a
+ * cooling-off window so one dead source cannot add latency to every search.
+ */
+export type SearchFusionCircuitBreakerConfig = {
+    /** Defaults to true. */
+    enabled?: boolean;
+    /** Consecutive hard failures (auth, billing, plan, connection refused) that open the circuit. Default 1. */
+    hardFailureThreshold?: number;
+    /** Consecutive failures of any other kind (timeouts, 5xx) that open the circuit. Default 3. */
+    failureThreshold?: number;
+    /** First open window. Doubles on every re-open up to `maxCooldownMs`. Default 300000. */
+    cooldownMs?: number;
+    /** Default 3600000. */
+    maxCooldownMs?: number;
+};
 export type SearchFusionConfig = {
     defaultMode?: string;
     modes?: SearchFusionModeMap;
@@ -103,6 +127,11 @@ export type SearchFusionConfig = {
     retry?: SearchFusionRetryConfig;
     providerConfig?: Record<string, SearchFusionProviderConfig>;
     providerRetries?: Record<string, SearchFusionRetryConfig>;
+    /** Defaults to `score`. */
+    rankingStrategy?: SearchFusionRankingStrategy;
+    /** RRF damping constant. Defaults to 60. */
+    rrfK?: number;
+    circuitBreaker?: SearchFusionCircuitBreakerConfig;
 };
 export type ProviderSelectionRequest = {
     query: string;
@@ -250,10 +279,12 @@ export type FusionScoreBreakdown = {
     bestRankBonus: number;
     tierAdjustment: number;
     flagPenalty: number;
+    /** Present only for `rrf-v1`: sum of weight / (rrfK + rank), scaled so a lone rank-1 hit at weight 1 is 1. */
+    rrfScore?: number;
     finalScore: number;
 };
 export type FusionRankingExplanation = {
-    strategy: "merged-score-v1";
+    strategy: FusionRankingStrategy;
     rank: number;
     scoreBreakdown: FusionScoreBreakdown;
     tieBreakers: {
@@ -276,7 +307,7 @@ export type FusionDroppedResult = {
     providerCount: number;
 };
 export type FusionRankingMeta = {
-    strategy: "merged-score-v1";
+    strategy: FusionRankingStrategy;
     sortOrder: string[];
     consideredCount: number;
     returnedCount: number;
