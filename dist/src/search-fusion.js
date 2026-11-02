@@ -1,5 +1,6 @@
 import { getRuntimeConfigSnapshot } from "openclaw/plugin-sdk/runtime-config-snapshot";
 import { discoverProviders, resolveSelectedProviders } from "./provider-discovery.js";
+import { readTopPages, resolveReadPagesConfig } from "./page-reader.js";
 import { KNOWN_PROVIDERS } from "./provider-catalog.js";
 import { applySearchResultQuality, calibrateProviderScores, normalizeProviderPayload, validateScoreCalibrationConfig, } from "./result-normalizer.js";
 import { compareSourceTierDesc, coerceSourceTierMode, pickHigherSourceTier, sourceTierMergedAdjustment, } from "./source-tier.js";
@@ -1548,6 +1549,7 @@ async function runProvider(params) {
                 sourceTierMode: params.sourceTierMode,
                 maxSnippetLength: params.maxSnippetLength,
                 urlOptions: params.urlOptions,
+                query: params.request.query,
             });
             if (normalized.error) {
                 const providerError = new Error(normalized.error);
@@ -1833,6 +1835,17 @@ export async function runSearchFusion(params) {
         .filter((answer) => Boolean(answer));
     const answers = internalAnswers.map((answer) => exposeAnswer(answer, includeRawPayloads));
     const visibleMergedResults = mergedResults.map((result) => exposeMergedResult(result, includeRawPayloads));
+    const readPagesConfig = resolveReadPagesConfig(brokerConfig.readPages);
+    const pageReads = readPagesConfig.enabled && visibleMergedResults.length > 0
+        ? await readTopPages({
+            query: params.request.query,
+            results: visibleMergedResults,
+            config: readPagesConfig,
+            signal: params.signal,
+            deadlineAt,
+            deps: params.pageReaderDeps,
+        })
+        : undefined;
     const defaultProviderEvidence = new Set(mergedResults.flatMap((result) => selectMergedVariants(result, false)));
     const discardedResults = includeDiscarded
         ? internalDiscardedResults.map((result) => exposeResult(result, includeRawPayloads))
@@ -1880,6 +1893,7 @@ export async function runSearchFusion(params) {
         discardedResults,
         answers,
         results: visibleMergedResults,
+        ...(pageReads ? { pageReads } : {}),
         ranking: exposeRankingMeta(merged.ranking, includeRawPayloads),
         evidenceTable: buildEvidenceTable(visibleMergedResults, answers, dedupe),
         output,
@@ -1906,6 +1920,9 @@ export function renderFusionSummary(payload, includeFailures = false) {
             }
             if (result.snippet) {
                 lines.push(`   ${result.snippet}`);
+            }
+            for (const passage of result.passages ?? []) {
+                lines.push(`   > ${passage}`);
             }
         });
     }

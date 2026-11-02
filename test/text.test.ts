@@ -3,8 +3,19 @@ import assert from "node:assert/strict";
 import {
   analyzeFuzzyUrl,
   canonicalizeUrlForDedupe,
+  cleanProviderText,
   normalizeTitle,
+  stripExternalWrapper,
 } from "../src/text.js";
+
+test("stripExternalWrapper removes OpenClaw's Source header from wrapped provider text", () => {
+  const wrapped =
+    '\n<<<EXTERNAL_UNTRUSTED_CONTENT id="abc123">>>\nSource: Web Search\n---\nRyzen 9 9955HX, 55W TDP\n<<<END_EXTERNAL_UNTRUSTED_CONTENT id="abc123">>>';
+  assert.equal(stripExternalWrapper(wrapped), "Ryzen 9 9955HX, 55W TDP");
+  assert.equal(cleanProviderText(wrapped), "Ryzen 9 9955HX, 55W TDP");
+  // A "---" rule inside ordinary content is not a wrapper header.
+  assert.equal(stripExternalWrapper("Intro\n---\nSource: body"), "Intro\n---\nSource: body");
+});
 
 const canonicalizationCases = [
   {

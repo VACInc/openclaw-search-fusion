@@ -43,9 +43,12 @@ export function stripExternalWrapper(content) {
     let cleaned = content;
     cleaned = cleaned.replace(/SECURITY NOTICE:[\s\S]*?(?=<<<[A-Z0-9_:-]+ id="[^"]+">>>)/g, "");
     cleaned = cleaned.replace(/<<<[A-Z0-9_:-]+ id="[^"]+">>>/g, "");
-    const markerIndex = cleaned.indexOf("\n---\n");
-    if (/\bSource:\b/.test(cleaned) && markerIndex >= 0) {
-        cleaned = cleaned.slice(markerIndex + 5);
+    // OpenClaw's wrapper puts a "Source: <label>" header and a "---" rule before the
+    // content. ("\bSource:\b" never matched: there is no word boundary between ":"
+    // and the space that follows, so every title and snippet kept the header.)
+    const header = /^\s*Source:[^\n]*\n---\n/.exec(cleaned);
+    if (header) {
+        cleaned = cleaned.slice(header[0].length);
     }
     return cleaned.trim();
 }
@@ -53,6 +56,12 @@ export function cleanProviderText(value) {
     if (typeof value !== "string")
         return "";
     return asSingleLine(stripExternalWrapper(value));
+}
+/** Multi-line variant of cleanProviderText, kept for passage splitting. */
+export function cleanProviderTextKeepLines(value) {
+    if (typeof value !== "string")
+        return "";
+    return stripExternalWrapper(value);
 }
 function unwrapKnownRedirectUrl(rawUrl) {
     try {

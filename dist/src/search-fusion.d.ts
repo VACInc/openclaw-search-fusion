@@ -1,4 +1,5 @@
 import type { FusionSearchPayload, ProviderSelectionRequest, SearchRuntime } from "./types.js";
+import { type PageReaderDeps } from "./page-reader.js";
 export declare function isHardProviderFailure(message: string | undefined): boolean;
 export declare function resetProviderHealthForTests(): void;
 export declare function getProviderHealthSnapshot(nowMs?: number): Record<string, {
@@ -18,5 +19,7 @@ export declare function runSearchFusion(params: {
     agentDir?: string;
     runtimeMetadata?: unknown;
     searchConfig?: Record<string, unknown>;
+    /** Test seam for the readPages step. */
+    pageReaderDeps?: PageReaderDeps;
 }): Promise<FusionSearchPayload>;
 export declare function renderFusionSummary(payload: FusionSearchPayload, includeFailures?: boolean): string;

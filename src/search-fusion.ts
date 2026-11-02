@@ -22,6 +22,7 @@ import type {
   SourceTierMode,
 } from "./types.js";
 import { discoverProviders, resolveSelectedProviders } from "./provider-discovery.js";
+import { readTopPages, resolveReadPagesConfig, type PageReaderDeps } from "./page-reader.js";
 import { KNOWN_PROVIDERS } from "./provider-catalog.js";
 import {
   applySearchResultQuality,
@@ -2035,6 +2036,7 @@ async function runProvider(params: {
         sourceTierMode: params.sourceTierMode,
         maxSnippetLength: params.maxSnippetLength,
         urlOptions: params.urlOptions,
+        query: params.request.query,
       });
 
       if (normalized.error) {
@@ -2214,6 +2216,8 @@ export async function runSearchFusion(params: {
   agentDir?: string;
   runtimeMetadata?: unknown;
   searchConfig?: Record<string, unknown>;
+  /** Test seam for the readPages step. */
+  pageReaderDeps?: PageReaderDeps;
 }): Promise<FusionSearchPayload> {
   const start = Date.now();
   const brokerConfig = asConfig(params.pluginConfig);
@@ -2420,6 +2424,18 @@ export async function runSearchFusion(params: {
   const visibleMergedResults = mergedResults.map((result) =>
     exposeMergedResult(result, includeRawPayloads),
   );
+  const readPagesConfig = resolveReadPagesConfig(brokerConfig.readPages);
+  const pageReads =
+    readPagesConfig.enabled && visibleMergedResults.length > 0
+      ? await readTopPages({
+          query: params.request.query,
+          results: visibleMergedResults,
+          config: readPagesConfig,
+          signal: params.signal,
+          deadlineAt,
+          deps: params.pageReaderDeps,
+        })
+      : undefined;
   const defaultProviderEvidence = new Set(
     mergedResults.flatMap((result) => selectMergedVariants(result, false)),
   );
@@ -2470,6 +2486,7 @@ export async function runSearchFusion(params: {
     discardedResults,
     answers,
     results: visibleMergedResults,
+    ...(pageReads ? { pageReads } : {}),
     ranking: exposeRankingMeta(merged.ranking, includeRawPayloads),
     evidenceTable: buildEvidenceTable(visibleMergedResults, answers, dedupe),
     output,
@@ -2502,6 +2519,9 @@ export function renderFusionSummary(payload: FusionSearchPayload, includeFailure
       }
       if (result.snippet) {
         lines.push(`   ${result.snippet}`);
+      }
+      for (const passage of result.passages ?? []) {
+        lines.push(`   > ${passage}`);
       }
     });
   } else {

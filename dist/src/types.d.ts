@@ -1,3 +1,4 @@
+import type { PageReadOutcome, SearchFusionReadPagesConfig } from "./page-reader.js";
 export type SearchFusionModeMap = Record<string, string[]>;
 /**
  * Hint describing the caller's intent for a search query.
@@ -132,6 +133,8 @@ export type SearchFusionConfig = {
     /** RRF damping constant. Defaults to 60. */
     rrfK?: number;
     circuitBreaker?: SearchFusionCircuitBreakerConfig;
+    /** Read the top merged pages and attach query-relevant passages. Off by default. */
+    readPages?: SearchFusionReadPagesConfig;
 };
 export type ProviderSelectionRequest = {
     query: string;
@@ -322,6 +325,8 @@ export type FusionMergedResult = {
     snippet?: string;
     truncated?: true;
     siteName?: string;
+    /** Query-relevant passages read from the page itself (readPages). Untrusted web content. */
+    passages?: string[];
     providers: string[];
     providerCount: number;
     score: number;
@@ -437,6 +442,8 @@ export type FusionSearchPayload = {
     discardedResults: DiscardedSearchResult[];
     answers: ProviderAnswerDigest[];
     results: FusionMergedResult[];
+    /** Present when readPages is enabled: one entry per page attempted. */
+    pageReads?: PageReadOutcome[];
     ranking: FusionRankingMeta;
     evidenceTable: FusionEvidenceTable;
     output: {

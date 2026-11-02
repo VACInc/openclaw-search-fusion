@@ -153,6 +153,16 @@ Search Fusion remembers provider failures across calls (process-wide). A hard fa
 "circuitBreaker": { "enabled": true, "hardFailureThreshold": 1, "failureThreshold": 3, "cooldownMs": 300000, "maxCooldownMs": 3600000 }
 ```
 
+### Read top pages (`readPages`)
+
+Off by default. When enabled, after merging Search Fusion fetches the best merged results through OpenClaw's SSRF-guarded fetch (private and internal addresses are blocked), extracts the page text, and attaches up to `maxPassages` query-relevant passages to each result as `results[].passages`. The agent then gets the facts in one call instead of guessing from snippets. Every failure is per page: a page that times out, is blocked, is not HTML, or has no matching text keeps its provider snippet. `pageReads` in the payload records each attempt.
+
+```json
+"readPages": { "enabled": true, "topK": 4, "timeoutMs": 4000, "maxPassages": 3, "passageChars": 600 }
+```
+
+`timeoutMs` is one wall-clock budget for the whole step and is also capped by `totalTimeoutMs`. `skipDomains` (default: video and social sites) are never fetched. Passages are BM25-ranked windows of the page, boosted by how many distinct query terms they cover; a passage repeated on a mirror page is kept only on the best-ranked result. Long provider snippets are also cut to their query-relevant windows instead of the page head.
+
 ### Ranking strategy
 
 `rankingStrategy` defaults to `score` (`merged-score-v1`: calibrated per-provider scores plus a corroboration bonus). `rrf` switches to weighted reciprocal-rank fusion (`rrf-v1`): each provider contributes `weight / (rrfK + rank)` for its best rank of a merged URL, scaled so a lone rank-1 hit at weight 1 scores 1. Source-tier and flag penalties still apply. `rrfK` defaults to 60; lower values reward top ranks more. RRF helps most when a wide fan-out mixes strong and weak providers; for a small set of strong providers the default `score` ranking measured better.

@@ -398,6 +398,54 @@
             "description": "Upper bound for the open window in ms. Defaults to 3600000."
           }
         }
+      },
+      "readPages": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Read the top merged result pages through OpenClaw's SSRF-guarded fetch and attach the passages that best match the query (results[].passages), so one search call carries the facts, not just snippets. Off by default; per-page failures keep the provider snippet.",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "description": "Defaults to false."
+          },
+          "topK": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10,
+            "description": "Merged results to read, best first. Defaults to 4."
+          },
+          "timeoutMs": {
+            "type": "integer",
+            "minimum": 500,
+            "maximum": 30000,
+            "description": "Wall-clock budget for the whole read step, also capped by totalTimeoutMs. Defaults to 4000."
+          },
+          "maxPassages": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 8,
+            "description": "Passages kept per page. Defaults to 3."
+          },
+          "passageChars": {
+            "type": "integer",
+            "minimum": 200,
+            "maximum": 2000,
+            "description": "Target passage length in characters. Defaults to 600."
+          },
+          "maxBytes": {
+            "type": "integer",
+            "minimum": 50000,
+            "maximum": 5000000,
+            "description": "Response body cap per page in bytes. Defaults to 1500000."
+          },
+          "skipDomains": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Hosts (and subdomains) never fetched. Defaults to video and social sites."
+          }
+        }
       }
     }
   }

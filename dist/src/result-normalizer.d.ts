@@ -30,6 +30,7 @@ export declare function normalizeProviderPayload(params: {
     sourceTierMode?: SourceTierMode;
     maxSnippetLength?: number;
     urlOptions?: FuzzyUrlOptions;
+    query?: string;
 }): {
     results: NormalizedSearchResult[];
     discardedResults: DiscardedSearchResult[];

@@ -18,6 +18,8 @@ export declare function asSingleLine(value: string): string;
 export declare function truncate(value: string, max?: number): string;
 export declare function stripExternalWrapper(content: string): string;
 export declare function cleanProviderText(value: unknown): string;
+/** Multi-line variant of cleanProviderText, kept for passage splitting. */
+export declare function cleanProviderTextKeepLines(value: unknown): string;
 export declare function analyzeUrl(rawUrl: string, trackingOptions?: FuzzyUrlOptions): UrlAnalysis;
 export declare function canonicalizeUrl(rawUrl: string): string;
 /**
