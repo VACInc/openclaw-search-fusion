@@ -263,22 +263,29 @@ export function analyzeUrl(rawUrl, trackingOptions) {
         if (parsed.pathname !== "/") {
             parsed.pathname = parsed.pathname.replace(/\/$/, "");
         }
+        const url = parsed.toString();
+        // The same page can arrive with its query parameters in a different order.
+        // Sorting is stable, so repeated keys keep their relative order.
+        parsed.searchParams.sort();
         return {
-            url: parsed.toString(),
+            url,
+            canonicalUrl: parsed.toString(),
             originalUrl,
             flags: [...flags].sort(),
         };
     }
     catch {
+        const url = unwrapped.url.trim();
         return {
-            url: unwrapped.url.trim(),
+            url,
+            canonicalUrl: url,
             originalUrl,
             flags: [...flags].sort(),
         };
     }
 }
 export function canonicalizeUrl(rawUrl) {
-    return analyzeUrl(rawUrl).url;
+    return analyzeUrl(rawUrl).canonicalUrl;
 }
 /**
  * Builds the conservative identity used for fuzzy result deduplication.

@@ -310,3 +310,66 @@ test("normalizeProviderPayload strips OpenClaw wrapper markers from titles", () 
   // A title that is empty once unwrapped falls back to the URL-derived title.
   assert.equal(normalized.results[1]?.title, "example.com");
 });
+
+test("normalizeProviderPayload falls back to answer when content has no usable text", () => {
+  const cases: Array<{ name: string; content: unknown }> = [
+    { name: "empty string", content: "" },
+    { name: "whitespace only", content: "   \n\t " },
+    { name: "null", content: null },
+    { name: "structured object", content: { parts: ["not", "a", "string"] } },
+    { name: "array", content: ["chunk"] },
+  ];
+
+  for (const { name, content } of cases) {
+    const normalized = normalizeProviderPayload({
+      providerId: "perplexity",
+      payload: {
+        content,
+        answer: "Real answer text from the provider.",
+        citations: ["https://docs.openclaw.ai/tools/web"],
+      },
+    });
+
+    assert.equal(
+      normalized.answer?.fullContent,
+      "Real answer text from the provider.",
+      `content=${name} should fall back to answer`,
+    );
+    assert.equal(normalized.results[0]?.snippet, "Real answer text from the provider.", name);
+  }
+});
+
+test("normalizeProviderPayload prefers content over answer when both have text", () => {
+  const normalized = normalizeProviderPayload({
+    providerId: "perplexity",
+    payload: { content: "Content text.", answer: "Answer text." },
+  });
+
+  assert.equal(normalized.answer?.fullContent, "Content text.");
+});
+
+test("normalizeProviderPayload reports no answer when neither field has text", () => {
+  const normalized = normalizeProviderPayload({
+    providerId: "perplexity",
+    payload: { content: "", answer: 42, error: "upstream returned nothing" },
+  });
+
+  assert.equal(normalized.answer, undefined);
+  assert.equal(normalized.error, "upstream returned nothing");
+});
+
+test("normalizeProviderPayload sorts query parameters only in the canonical URL", () => {
+  const normalized = normalizeProviderPayload({
+    providerId: "brave",
+    payload: {
+      results: [
+        { title: "Page", url: "https://example.com/page?z=1&a=2&utm_medium=x&a=1" },
+      ],
+    },
+  });
+
+  const result = normalized.results[0];
+  assert.equal(result?.url, "https://example.com/page?z=1&a=2&a=1");
+  // Stable sort: repeated keys keep their relative order.
+  assert.equal(result?.canonicalUrl, "https://example.com/page?a=2&a=1&z=1");
+});

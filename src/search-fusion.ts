@@ -1355,28 +1355,48 @@ function isAbortError(error: unknown): boolean {
   );
 }
 
+/**
+ * Matches any of the codes as a standalone number. Digits inside a longer or
+ * decimal number ("1400", "1.400") and durations ("400 ms") do not count.
+ */
+function standaloneStatusCodePattern(codes: readonly string[]): RegExp {
+  return new RegExp(
+    `(?<!\\w|\\d\\.)(?:${codes.join("|")})(?!\\w|\\.\\d)(?!\\s*(?:ms|s|sec|secs|seconds|milliseconds)\\b)`,
+    "i",
+  );
+}
+
+// Status codes that will not change on a retry of the same request.
+const NON_RETRIABLE_STATUS_PATTERN = standaloneStatusCodePattern(["400", "401", "403", "404", "409", "422"]);
+const RATE_LIMIT_STATUS_PATTERN = standaloneStatusCodePattern(["429"]);
+
+const NON_RETRIABLE_MESSAGE_PATTERNS: readonly RegExp[] = [
+  /unauthorized/i,
+  /forbidden/i,
+  /invalid api key/i,
+  /api key/i,
+  /credential/i,
+  /unknown provider/i,
+  /unsupported/i,
+  /bad request/i,
+  /not found/i,
+];
+
+function isRateLimitMessage(message: string): boolean {
+  return (
+    RATE_LIMIT_STATUS_PATTERN.test(message) ||
+    /rate[\s_-]?limit/i.test(message) ||
+    /too many requests/i.test(message)
+  );
+}
+
 function shouldRetry(error: unknown, errorMessage: string): boolean {
   if (isAbortError(error)) return false;
+  // Rate limits heal with time even when the message also names the API key.
+  if (isRateLimitMessage(errorMessage)) return true;
   if (isHardProviderFailure(errorMessage)) return false;
-  const nonRetriablePatterns = [
-    /401\b/,
-    /403\b/,
-    /400\b/,
-    /404\b/,
-    /409\b/,
-    /422\b/,
-    /unauthorized/i,
-    /forbidden/i,
-    /invalid api key/i,
-    /api key/i,
-    /credential/i,
-    /unknown provider/i,
-    /unsupported/i,
-    /bad request/i,
-    /not found/i,
-  ];
-
-  return !nonRetriablePatterns.some((pattern) => pattern.test(errorMessage));
+  if (NON_RETRIABLE_STATUS_PATTERN.test(errorMessage)) return false;
+  return !NON_RETRIABLE_MESSAGE_PATTERNS.some((pattern) => pattern.test(errorMessage));
 }
 
 function computeBackoffDelay(policy: ResolvedRetryConfig, attempt: number): number {
@@ -1401,7 +1421,7 @@ function resolveRetryTiming(
 } {
   const configured = computeBackoffDelay(policy, attempt);
   const { status, header } = extractRateLimitHeader(error, nowMs);
-  const explicitRateLimit = status === 429 || /429|rate limit/i.test(errorMessage);
+  const explicitRateLimit = status === 429 || isRateLimitMessage(errorMessage);
   const rateLimited = explicitRateLimit || (status === 503 && header.hadHeader);
   const overridesMessageHeuristics =
     explicitRateLimit || (status === 503 && header.delayMs !== undefined);

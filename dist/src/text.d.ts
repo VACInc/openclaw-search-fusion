@@ -10,7 +10,10 @@ export type FuzzyUrlAnalysis = {
     meaningfulQuery: string;
 };
 export type UrlAnalysis = {
+    /** Display URL: redirect-unwrapped, tracking-stripped, query order kept. */
     url: string;
+    /** Dedupe key: `url` with query parameters in a stable sorted order. */
+    canonicalUrl: string;
     originalUrl: string;
     flags: string[];
 };

@@ -3806,3 +3806,116 @@ test("rrf still applies the sponsored penalty", async () => {
     Math.max(0.01, (ad.ranking.scoreBreakdown.rrfScore ?? 0) - ad.ranking.scoreBreakdown.flagPenalty),
   );
 });
+
+test("runSearchFusion retries rate limits even when the message names the API key", async () => {
+  const attemptTimes: number[] = [];
+  const payload = await runSearchFusion({
+    runtime: createRuntime({
+      search: async ({ providerId }) => {
+        attemptTimes.push(Date.now());
+        if (attemptTimes.length === 1) throw new Error("HTTP 429: API key rate limit exceeded");
+        return {
+          provider: providerId ?? "brave",
+          result: { results: [{ title: "Recovered", url: "https://example.com/recovered" }] },
+        };
+      },
+    }) as never,
+    config: {},
+    pluginConfig: {
+      retry: { maxAttempts: 2, backoffMs: 0, maxBackoffMs: 0 },
+    },
+    request: { query: "api key rate limit", providers: ["brave"] },
+  });
+
+  assert.deepEqual(payload.providersSucceeded, ["brave"]);
+  assert.equal(attemptTimes.length, 2);
+  assert.equal(payload.providerRuns[0]?.retryHistory[0]?.delayMs, 2000);
+});
+
+test("runSearchFusion matches retry status codes only as standalone numbers", async () => {
+  for (const message of [
+    "503 after 1400 ms",
+    "502 bad gateway, upstream took 4040ms",
+    "500 internal error (request 14010)",
+    "service unavailable after 400 ms",
+    "503 unavailable after 1429 ms",
+  ]) {
+    let attempts = 0;
+    const payload = await runSearchFusion({
+      runtime: createRuntime({
+        search: async ({ providerId }) => {
+          attempts += 1;
+          if (attempts === 1) throw new Error(message);
+          return {
+            provider: providerId ?? "brave",
+            result: { results: [{ title: "Recovered", url: "https://example.com/recovered" }] },
+          };
+        },
+      }) as never,
+      config: {},
+      pluginConfig: { retry: { maxAttempts: 2, backoffMs: 0, maxBackoffMs: 0 } },
+      request: { query: message, providers: ["brave"] },
+    });
+    assert.equal(attempts, 2, message);
+    assert.deepEqual(payload.providersSucceeded, ["brave"], message);
+    // Longer numbers such as "1429" must not be read as a 429 either.
+    assert.equal(payload.providerRuns[0]?.retryHistory[0]?.delayMs, 0, message);
+  }
+
+  for (const message of ["HTTP 400: invalid query", "status 404.", "upstream said (409)", "code=422"]) {
+    let attempts = 0;
+    await runSearchFusion({
+      runtime: createRuntime({
+        search: async () => {
+          attempts += 1;
+          throw new Error(message);
+        },
+      }) as never,
+      config: {},
+      pluginConfig: { retry: { maxAttempts: 4, backoffMs: 0 } },
+      request: { query: message, providers: ["brave"] },
+    });
+    assert.equal(attempts, 1, message);
+  }
+});
+
+test("runSearchFusion merges the same page when query parameters arrive in a different order", async () => {
+  const resultsByProvider: Record<string, unknown> = {
+    brave: { results: [{ title: "Page", url: "https://example.com/page?b=2&a=1&utm_source=feed" }] },
+    tavily: {
+      results: [
+        { title: "Page", url: "https://example.com/page?a=1&b=2" },
+        { title: "Other page", url: "https://example.com/page?a=2&b=2" },
+      ],
+    },
+    gemini: {
+      content: "Answer that cites the page.",
+      citations: [{ url: "https://example.com/page?b=2&a=1", title: "Page" }],
+    },
+  };
+  const payload = await runSearchFusion({
+    runtime: createRuntime({
+      search: async ({ providerId }) => ({
+        provider: providerId ?? "brave",
+        result: resultsByProvider[providerId ?? "brave"] as Record<string, unknown>,
+      }),
+    }) as never,
+    config: {},
+    pluginConfig: {},
+    request: { query: "param order", providers: ["brave", "tavily", "gemini"] },
+  });
+
+  const merged = payload.results.filter((result) => result.canonicalUrl === "https://example.com/page?a=1&b=2");
+  assert.equal(merged.length, 1);
+  assert.deepEqual(merged[0]?.providers, ["brave", "gemini", "tavily"]);
+  // The display URL is one provider's own URL; this branch picks the
+  // representative variant by ranking, so either order is valid here.
+  assert.ok(
+    ["https://example.com/page?b=2&a=1", "https://example.com/page?a=1&b=2"].includes(merged[0]?.url ?? ""),
+  );
+  // Different parameter values are still different pages.
+  assert.equal(payload.results.length, 2);
+
+  const evidence = payload.evidenceTable.rows.find((row) => row.canonicalUrl === "https://example.com/page?a=1&b=2");
+  assert.equal(evidence?.answerCitationSupport.count, 1);
+});
