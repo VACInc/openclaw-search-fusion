@@ -134,6 +134,13 @@ Resolution order:
 
 `totalTimeoutMs` bounds the whole fan-out, including credential preparation, provider attempts, retries, and backoff (default `30000`, range `5000`–`180000`). When it expires, completed providers are returned as partial results and unfinished providers report `deadline exceeded`. `providerTimeoutMs` still bounds each individual attempt; timed-out and aborted attempts are not retried.
 
+Retry classification works on the provider error message:
+- rate limits (a standalone `429`, "rate limit", or "too many requests") are always retried, even when the message also mentions the API key, and wait at least 2 seconds before the next attempt
+- standalone `400`, `401`, `403`, `404`, `409`, and `422` status codes, plus auth, credential, unsupported, bad-request, and not-found messages, are not retried
+- everything else (for example `5xx` and network errors) is retried up to `retry.maxAttempts`
+
+Status codes count only as standalone numbers: digits inside a longer number or a duration (`503 after 1400 ms`) are not read as a `400`.
+
 Model-visible output is compact by default:
 
 - `includeRawPayloads` (default `false`) controls provider `rawPayload` data and raw normalized items.
