@@ -164,7 +164,7 @@ function mapResultArray(params) {
             title,
             url: analyzedUrl.url,
             originalUrl: analyzedUrl.originalUrl,
-            canonicalUrl: analyzedUrl.url,
+            canonicalUrl: analyzedUrl.canonicalUrl,
             snippet,
             ...(snippetTruncated ? { truncated: true } : {}),
             siteName: firstCleanText(obj, ["siteName", "site", "domain"]) ?? resolveSiteName(analyzedUrl.url),

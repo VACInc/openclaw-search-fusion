@@ -307,3 +307,19 @@ test("normalizeProviderPayload reports no answer when neither field has text", (
   assert.equal(normalized.answer, undefined);
   assert.equal(normalized.error, "upstream returned nothing");
 });
+
+test("normalizeProviderPayload sorts query parameters only in the canonical URL", () => {
+  const normalized = normalizeProviderPayload({
+    providerId: "brave",
+    payload: {
+      results: [
+        { title: "Page", url: "https://example.com/page?z=1&a=2&utm_medium=x&a=1" },
+      ],
+    },
+  });
+
+  const result = normalized.results[0];
+  assert.equal(result?.url, "https://example.com/page?z=1&a=2&a=1");
+  // Stable sort: repeated keys keep their relative order.
+  assert.equal(result?.canonicalUrl, "https://example.com/page?a=2&a=1&z=1");
+});

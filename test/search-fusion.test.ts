@@ -838,6 +838,44 @@ test("runSearchFusion passes raw configured credentials through to delegated pro
   assert.ok(seen.searchConfigs.every((config) => config === rawConfig));
 });
 
+test("runSearchFusion merges the same page when query parameters arrive in a different order", async () => {
+  const resultsByProvider: Record<string, unknown> = {
+    brave: { results: [{ title: "Page", url: "https://example.com/page?b=2&a=1&utm_source=feed" }] },
+    tavily: {
+      results: [
+        { title: "Page", url: "https://example.com/page?a=1&b=2" },
+        { title: "Other page", url: "https://example.com/page?a=2&b=2" },
+      ],
+    },
+    gemini: {
+      content: "Answer that cites the page.",
+      citations: [{ url: "https://example.com/page?b=2&a=1", title: "Page" }],
+    },
+  };
+  const payload = await runSearchFusion({
+    runtime: createRuntime({
+      search: async ({ providerId }) => ({
+        provider: providerId ?? "brave",
+        result: resultsByProvider[providerId ?? "brave"] as Record<string, unknown>,
+      }),
+    }) as never,
+    config: {},
+    pluginConfig: {},
+    request: { query: "param order", providers: ["brave", "tavily", "gemini"] },
+  });
+
+  const merged = payload.results.filter((result) => result.canonicalUrl === "https://example.com/page?a=1&b=2");
+  assert.equal(merged.length, 1);
+  assert.deepEqual(merged[0]?.providers, ["brave", "gemini", "tavily"]);
+  // The display URL keeps the provider's own parameter order.
+  assert.equal(merged[0]?.url, "https://example.com/page?b=2&a=1");
+  // Different parameter values are still different pages.
+  assert.equal(payload.results.length, 2);
+
+  const evidence = payload.evidenceTable.rows.find((row) => row.canonicalUrl === "https://example.com/page?a=1&b=2");
+  assert.equal(evidence?.answerCitationSupport.count, 1);
+});
+
 test("runSearchFusion merges duplicate URLs across providers and keeps provider variants", async () => {
   const payload = await runSearchFusion({
     runtime: createRuntime() as never,
