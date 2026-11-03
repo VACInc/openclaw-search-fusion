@@ -260,3 +260,19 @@ test("normalizeProviderPayload applies sourceTierMode scoring deterministically"
   assert.equal(strictCitation?.sourceTier, "low");
   assert.ok((offCitation?.score ?? 0) > (strictCitation?.score ?? 0));
 });
+
+test("normalizeProviderPayload sorts query parameters only in the canonical URL", () => {
+  const normalized = normalizeProviderPayload({
+    providerId: "brave",
+    payload: {
+      results: [
+        { title: "Page", url: "https://example.com/page?z=1&a=2&utm_medium=x&a=1" },
+      ],
+    },
+  });
+
+  const result = normalized.results[0];
+  assert.equal(result?.url, "https://example.com/page?z=1&a=2&a=1");
+  // Stable sort: repeated keys keep their relative order.
+  assert.equal(result?.canonicalUrl, "https://example.com/page?a=2&a=1&z=1");
+});
