@@ -4,7 +4,7 @@ import { readTopPages, resolveReadPagesConfig } from "./page-reader.js";
 import { KNOWN_PROVIDERS } from "./provider-catalog.js";
 import { applySearchResultQuality, calibrateProviderScores, normalizeProviderPayload, validateScoreCalibrationConfig, } from "./result-normalizer.js";
 import { compareSourceTierDesc, coerceSourceTierMode, pickHigherSourceTier, sourceTierMergedAdjustment, } from "./source-tier.js";
-import { analyzeFuzzyUrl, canonicalizeUrl, normalizeTitle, } from "./text.js";
+import { analyzeFuzzyUrl, canonicalizeUrl, sanitizeErrorText, normalizeTitle, } from "./text.js";
 const DEFAULT_UNKNOWN_PROVIDER_COUNT = 5;
 const DEFAULT_GENERIC_PROVIDER_MAX_RESULTS = 10;
 const DEFAULT_MAX_MERGED_RESULTS = 10;
@@ -670,7 +670,11 @@ async function runProviderAttempt(params) {
         removeParentRelay();
     }
 }
+/** Provider error text is untrusted: redact credentials and boundary lookalikes. */
 function asErrorMessage(error) {
+    return sanitizeErrorText(rawErrorMessage(error));
+}
+function rawErrorMessage(error) {
     if (error instanceof Error && error.message) {
         return error.message;
     }

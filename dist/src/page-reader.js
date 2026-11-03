@@ -6,6 +6,7 @@
  * Off by default. Every failure is per page and silent: a page that times out,
  * is blocked, or is not HTML simply keeps its provider snippet.
  */
+import { neutralizeUntrustedText, sanitizeErrorText } from "./text.js";
 export const DEFAULT_SKIP_DOMAINS = [
     "youtube.com",
     "youtu.be",
@@ -329,7 +330,8 @@ export async function readTopPages(params) {
                 const text = /html|xml/i.test(page.contentType) || /^\s*</.test(page.body)
                     ? await deps.htmlToText(page.body, page.finalUrl)
                     : page.body;
-                const passages = selectPassages(text, query, config.maxPassages, config.passageChars);
+                // Page text is untrusted: neutralize boundary and role lookalikes first.
+                const passages = selectPassages(neutralizeUntrustedText(text), query, config.maxPassages, config.passageChars);
                 if (controller.signal.aborted)
                     throw new Error("read budget exceeded");
                 if (passages.length > 0)
@@ -342,7 +344,7 @@ export async function readTopPages(params) {
                     ok: false,
                     tookMs: Date.now() - started,
                     passages: 0,
-                    error: (error instanceof Error ? error.message : String(error)).slice(0, 160),
+                    error: sanitizeErrorText(error instanceof Error ? error.message : String(error)).slice(0, 160),
                 };
             }
         }));

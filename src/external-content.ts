@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { neutralizeUntrustedText } from "./text.js";
 
 type WrapWebContent = (
   content: string,
@@ -40,5 +41,10 @@ async function resolveWrapWebContent(): Promise<WrapWebContent> {
  */
 export async function wrapModelVisibleSearchPayload(payload: unknown, indent = 2): Promise<string> {
   const wrapWebContent = await resolveWrapWebContent();
-  return wrapWebContent(JSON.stringify(payload, null, indent > 0 ? indent : undefined), "web_search");
+  // Sanitize after serialization too: JSON escaping changes how quotes and
+  // newlines look, and raw provider fields are not cleaned field by field.
+  return wrapWebContent(
+    neutralizeUntrustedText(JSON.stringify(payload, null, indent > 0 ? indent : undefined)),
+    "web_search",
+  );
 }

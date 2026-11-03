@@ -39,6 +39,7 @@ import {
 import {
   analyzeFuzzyUrl,
   canonicalizeUrl,
+  sanitizeErrorText,
   normalizeTitle,
   type FuzzyUrlAnalysis,
   type FuzzyUrlOptions,
@@ -920,7 +921,12 @@ async function runProviderAttempt<T>(params: {
   }
 }
 
+/** Provider error text is untrusted: redact credentials and boundary lookalikes. */
 function asErrorMessage(error: unknown): string {
+  return sanitizeErrorText(rawErrorMessage(error));
+}
+
+function rawErrorMessage(error: unknown): string {
   if (error instanceof Error && error.message) {
     return error.message;
   }

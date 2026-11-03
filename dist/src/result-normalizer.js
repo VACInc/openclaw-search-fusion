@@ -35,6 +35,10 @@ function firstNumber(obj, keys) {
     }
     return undefined;
 }
+/** First non-empty provider text field, cleaned for model-visible output. */
+function firstCleanText(obj, keys) {
+    return cleanProviderText(firstString(obj, keys)) || undefined;
+}
 function titleFromUrl(url) {
     try {
         return new URL(url).hostname.replace(/^www\./i, "");
@@ -272,7 +276,7 @@ function mapResultArray(params) {
                 sourceType: params.sourceType,
                 rawRank: index + 1,
                 reason: "missing-url",
-                title: firstString(obj, ["title", "name", "headline", "label"]),
+                title: firstCleanText(obj, ["title", "name", "headline", "label"]),
                 snippet,
                 ...(snippetTruncated ? { truncated: true } : {}),
                 rawItem: item,
@@ -284,7 +288,8 @@ function mapResultArray(params) {
         const flags = mergeFlags(analyzedUrl.flags, itemFlags);
         const sourceTier = classifySourceTier({ sourceType: params.sourceType, flags });
         // Delegated providers wrap titles in OpenClaw's untrusted-content markers too.
-        const title = cleanProviderText(firstString(obj, ["title", "name", "headline", "label"])) || titleFromUrl(analyzedUrl.url);
+        const title = firstCleanText(obj, ["title", "name", "headline", "label"]) ??
+            cleanProviderText(titleFromUrl(analyzedUrl.url));
         const nativeScore = firstNumber(obj, ["score", "confidence", "relevance"]);
         const baseScore = normalizeNativeScore(nativeScore, index);
         const score = applySearchResultQuality({
@@ -301,7 +306,7 @@ function mapResultArray(params) {
             canonicalUrl: analyzedUrl.url,
             snippet,
             ...(snippetTruncated ? { truncated: true } : {}),
-            siteName: firstString(obj, ["siteName", "site", "domain"]) ?? resolveSiteName(analyzedUrl.url),
+            siteName: firstCleanText(obj, ["siteName", "site", "domain"]) ?? resolveSiteName(analyzedUrl.url),
             providerId: params.providerId,
             score,
             nativeScore,
@@ -329,7 +334,7 @@ function buildCitationDetails(citationsRaw, urlOptions) {
         return [
             {
                 url: analyzed.url,
-                title: firstString(obj, ["title", "name", "headline", "label"]),
+                title: firstCleanText(obj, ["title", "name", "headline", "label"]),
                 raw: entry,
             },
         ];

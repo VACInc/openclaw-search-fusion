@@ -7,6 +7,8 @@
  * is blocked, or is not HTML simply keeps its provider snippet.
  */
 
+import { neutralizeUntrustedText, sanitizeErrorText } from "./text.js";
+
 export type SearchFusionReadPagesConfig = {
   enabled?: boolean;
   /** Merged results to read, best first. Default 4. */
@@ -402,7 +404,8 @@ export async function readTopPages(params: {
           const text = /html|xml/i.test(page.contentType) || /^\s*</.test(page.body)
             ? await deps.htmlToText(page.body, page.finalUrl)
             : page.body;
-          const passages = selectPassages(text, query, config.maxPassages, config.passageChars);
+          // Page text is untrusted: neutralize boundary and role lookalikes first.
+          const passages = selectPassages(neutralizeUntrustedText(text), query, config.maxPassages, config.passageChars);
           if (controller.signal.aborted) throw new Error("read budget exceeded");
           if (passages.length > 0) found.set(result, passages);
           return { url: result.url, ok: passages.length > 0, tookMs: Date.now() - started, passages: passages.length, ...(passages.length ? {} : { error: "no relevant passages" }) };
@@ -412,7 +415,7 @@ export async function readTopPages(params: {
             ok: false,
             tookMs: Date.now() - started,
             passages: 0,
-            error: (error instanceof Error ? error.message : String(error)).slice(0, 160),
+            error: sanitizeErrorText(error instanceof Error ? error.message : String(error)).slice(0, 160),
           };
         }
       }),
