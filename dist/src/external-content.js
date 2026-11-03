@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { neutralizeUntrustedText } from "./text.js";
 let wrapWebContentPromise;
 function fallbackWrapWebContent(content) {
     const sanitized = content.replace(/<<<\s*(END[\s_]+)?EXTERNAL[\s_]+UNTRUSTED[\s_]+CONTENT(?:\s+id="[^"]{1,128}")?\s*>>>/gi, (_marker, end) => end ? "[[END_MARKER_SANITIZED]]" : "[[MARKER_SANITIZED]]");
@@ -22,5 +23,7 @@ async function resolveWrapWebContent() {
 /** Wrap one complete serialized search payload at its model-visible exit. */
 export async function wrapModelVisibleSearchPayload(payload) {
     const wrapWebContent = await resolveWrapWebContent();
-    return wrapWebContent(JSON.stringify(payload, null, 2), "web_search");
+    // Sanitize after serialization too: JSON escaping changes how quotes and
+    // newlines look, and raw provider fields are not cleaned field by field.
+    return wrapWebContent(neutralizeUntrustedText(JSON.stringify(payload, null, 2)), "web_search");
 }
