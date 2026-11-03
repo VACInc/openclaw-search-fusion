@@ -53,9 +53,18 @@ function firstNumber(obj: Record<string, unknown> | null, keys: string[]): numbe
   return undefined;
 }
 
-/** First non-empty provider text field, cleaned for model-visible output. */
+/**
+ * First provider text field that still has usable text after cleaning for
+ * model-visible output. Empty, whitespace-only, non-string, or wrapper-only
+ * fields are skipped so a later field can supply the value.
+ */
 function firstCleanText(obj: Record<string, unknown> | null, keys: string[]): string | undefined {
-  return cleanProviderText(firstString(obj, keys)) || undefined;
+  if (!obj) return undefined;
+  for (const key of keys) {
+    const cleaned = cleanProviderText(obj[key]);
+    if (cleaned) return cleaned;
+  }
+  return undefined;
 }
 
 function titleFromUrl(url: string): string {
@@ -247,7 +256,7 @@ export function extractProviderAnswer(
   providerId: string,
   maxSnippetLength = DEFAULT_MAX_SNIPPET_LENGTH,
 ): ProviderAnswerDigest | undefined {
-  const rawFullContent = cleanProviderText(payload.content ?? payload.answer);
+  const rawFullContent = firstCleanText(payload, ["content", "answer"]);
   if (!rawFullContent) return undefined;
   const fullContent = truncate(rawFullContent, maxSnippetLength);
   const summaryMaxLength = Math.min(320, maxSnippetLength);
