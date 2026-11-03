@@ -27,7 +27,7 @@ import {
   pickHigherSourceTier,
   sourceTierMergedAdjustment,
 } from "./source-tier.js";
-import { canonicalizeUrl } from "./text.js";
+import { canonicalizeUrl, sanitizeErrorText } from "./text.js";
 
 const DEFAULT_COUNT_PER_PROVIDER = 5;
 const DEFAULT_MAX_MERGED_RESULTS = 10;
@@ -546,7 +546,12 @@ async function runProviderAttempt<T>(params: {
   }
 }
 
+/** Provider error text is untrusted: redact credentials and boundary lookalikes. */
 function asErrorMessage(error: unknown): string {
+  return sanitizeErrorText(rawErrorMessage(error));
+}
+
+function rawErrorMessage(error: unknown): string {
   if (error instanceof Error && error.message) {
     return error.message;
   }
