@@ -701,6 +701,18 @@ function mergedFlagPenalty(flags: readonly SearchResultFlag[]): number {
   return penalty;
 }
 
+/**
+ * Flags carried by every variant of a merged URL. Delivery flags such as
+ * sponsored, redirect-wrapper, and tracking-stripped describe how one
+ * provider returned the URL, and that variant's own score already pays for
+ * them; they should not penalize copies other providers returned cleanly.
+ */
+function flagsOnEveryVariant(variants: MergeCandidate["variants"]): SearchResultFlag[] {
+  const [first, ...rest] = variants;
+  if (!first) return [];
+  return first.flags.filter((flag) => rest.every((variant) => variant.flags.includes(flag)));
+}
+
 function mergedSortOrder(sourceTierMode: SourceTierMode): string[] {
   return sourceTierMode === "off"
     ? [...MERGED_SORT_ORDER]
@@ -715,7 +727,7 @@ function computeMergedScoreBreakdown(
   const corroborationBonus = Math.max(0, entry.providerCount - 1) * 0.12;
   const bestRankBonus = Math.max(0, 0.35 - (entry.bestRank - 1) * 0.04);
   const tierAdjustment = sourceTierMergedAdjustment(entry.bestSourceTier, sourceTierMode);
-  const flagPenalty = mergedFlagPenalty(entry.flags);
+  const flagPenalty = mergedFlagPenalty(flagsOnEveryVariant(entry.variants));
 
   return {
     bestVariantScore,

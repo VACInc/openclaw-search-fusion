@@ -253,7 +253,7 @@ The structured payload retains `externalContent.untrusted: true` metadata for no
 
 Merged payloads include:
 
-- `results[].ranking` with the final rank, score breakdown (`bestVariantScore`, `corroborationBonus`, `bestRankBonus`, `tierAdjustment`, `flagPenalty`, `finalScore`), and tie-breaker values.
+- `results[].ranking` with the final rank, score breakdown (`bestVariantScore`, `corroborationBonus`, `bestRankBonus`, `tierAdjustment`, `flagPenalty`, `finalScore`), and tie-breaker values. `flagPenalty` counts only flags carried by every provider's copy of the URL; `flags` still lists every flag any provider reported.
 - top-level `ranking` metadata with the strategy, sort order, considered/returned counts, and `dropped[]` entries (with `reason: "maxMergedResults"`) for results trimmed by the output cap.
 
 ### `search_fusion_providers`
