@@ -1,0 +1,50 @@
+{
+  "id": "openclaw-provider-sdk",
+  "query": "openclaw plugin sdk register web search provider",
+  "notes": "Long-tail developer query; few good pages; SearXNG and Exa mostly agree; one provider returns weak generic pages first.",
+  "providers": {
+    "searxng": {
+      "payload": {
+        "results": [
+          { "title": "Web search providers - OpenClaw Docs", "url": "https://docs.openclaw.ai/plugins/web-search-providers", "snippet": "Register a web search provider with api.registerWebSearchProvider({ id, label, execute }).", "siteName": "docs.openclaw.ai" },
+          { "title": "openclaw/openclaw: Personal AI assistant gateway", "url": "https://github.com/openclaw/openclaw", "snippet": "OpenClaw gateway and plugin SDK.", "siteName": "github.com" },
+          { "title": "Plugin SDK reference - OpenClaw Docs", "url": "https://docs.openclaw.ai/plugins/sdk", "snippet": "Reference for openclaw/plugin-sdk entry points.", "siteName": "docs.openclaw.ai" },
+          { "title": "openclaw - npm", "url": "https://www.npmjs.com/package/openclaw", "snippet": "OpenClaw npm package.", "siteName": "npmjs.com" }
+        ]
+      }
+    },
+    "exa": {
+      "payload": {
+        "results": [
+          { "title": "Web search providers", "url": "https://docs.openclaw.ai/plugins/web-search-providers/", "description": "How to implement and register a web search provider plugin, including credentials, capabilities, and result shapes.", "siteName": "docs.openclaw.ai" },
+          { "title": "extensions/tavily/web-search-provider.ts", "url": "https://github.com/openclaw/openclaw/blob/main/extensions/tavily/web-search-provider.ts", "description": "Reference implementation of a web search provider plugin.", "siteName": "github.com" },
+          { "title": "Plugin SDK reference", "url": "https://docs.openclaw.ai/plugins/sdk/", "description": "SDK entry points for plugins.", "siteName": "docs.openclaw.ai" },
+          { "title": "Writing an OpenClaw plugin in 10 minutes", "url": "https://dev.to/someone/writing-an-openclaw-plugin-in-10-minutes-4k2p", "description": "Tutorial that builds a small tool plugin.", "siteName": "dev.to" }
+        ]
+      }
+    },
+    "brave": {
+      "payload": {
+        "results": [
+          { "title": "What is an SDK? - AWS", "url": "https://aws.amazon.com/what-is/sdk/", "description": "A software development kit is a set of platform-specific building tools for developers.", "siteName": "aws.amazon.com" },
+          { "title": "OpenClaw", "url": "https://openclaw.ai/", "description": "Your personal AI assistant.", "siteName": "openclaw.ai" },
+          { "title": "Web search providers - OpenClaw Docs", "url": "https://docs.openclaw.ai/plugins/web-search-providers", "description": "Register a web search provider.", "siteName": "docs.openclaw.ai" },
+          { "title": "Plugin development - OpenClaw Docs", "url": "https://docs.openclaw.ai/plugins/development", "description": "Develop, test and publish OpenClaw plugins.", "siteName": "docs.openclaw.ai" },
+          { "title": "Search engine - Wikipedia", "url": "https://en.wikipedia.org/wiki/Search_engine", "description": "A search engine is a software system that provides hyperlinks to web pages.", "siteName": "en.wikipedia.org" }
+        ]
+      }
+    }
+  },
+  "pages": [
+    { "id": "docs-wsp", "grade": 3, "urls": ["https://docs.openclaw.ai/plugins/web-search-providers", "https://docs.openclaw.ai/plugins/web-search-providers/"] },
+    { "id": "tavily-impl", "grade": 3, "urls": ["https://github.com/openclaw/openclaw/blob/main/extensions/tavily/web-search-provider.ts"] },
+    { "id": "docs-sdk", "grade": 2, "urls": ["https://docs.openclaw.ai/plugins/sdk", "https://docs.openclaw.ai/plugins/sdk/"] },
+    { "id": "docs-dev", "grade": 2, "urls": ["https://docs.openclaw.ai/plugins/development"] },
+    { "id": "gh-repo", "grade": 1, "urls": ["https://github.com/openclaw/openclaw"] },
+    { "id": "devto", "grade": 1, "urls": ["https://dev.to/someone/writing-an-openclaw-plugin-in-10-minutes-4k2p"] },
+    { "id": "npm", "grade": 1, "urls": ["https://www.npmjs.com/package/openclaw"] },
+    { "id": "home", "grade": 1, "urls": ["https://openclaw.ai/"] },
+    { "id": "aws-sdk", "grade": 0, "urls": ["https://aws.amazon.com/what-is/sdk/"] },
+    { "id": "wiki-search", "grade": 0, "urls": ["https://en.wikipedia.org/wiki/Search_engine"] }
+  ]
+}

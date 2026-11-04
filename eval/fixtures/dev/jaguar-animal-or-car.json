@@ -1,0 +1,48 @@
+{
+  "id": "jaguar-animal-or-car",
+  "query": "jaguar top speed",
+  "notes": "Ambiguous query (animal vs car); Gemini answer only covers the animal; providers split.",
+  "providers": {
+    "brave": {
+      "payload": {
+        "results": [
+          { "title": "Jaguar - Wikipedia", "url": "https://en.wikipedia.org/wiki/Jaguar", "description": "The jaguar is a large cat species. It can reach speeds of up to 80 km/h (50 mph) in short bursts.", "siteName": "en.wikipedia.org" },
+          { "title": "Jaguar F-TYPE R specifications | Jaguar UK", "url": "https://www.jaguar.co.uk/jaguar-range/f-type/specifications.html", "description": "Top speed 186 mph (electronically limited), 0-60 mph in 3.5 seconds.", "siteName": "jaguar.co.uk" },
+          { "title": "How fast can a jaguar run? | Natural History Museum", "url": "https://www.nhm.ac.uk/discover/news/2024/how-fast-can-a-jaguar-run.html", "description": "Jaguars are ambush predators and rarely sprint far; estimates of top speed range from 64 to 80 km/h.", "siteName": "nhm.ac.uk" },
+          { "title": "Jaguar | National Geographic", "url": "https://www.nationalgeographic.com/animals/mammals/facts/jaguar", "description": "Jaguars are the largest of South America's big cats.", "siteName": "nationalgeographic.com" },
+          { "title": "Fastest Jaguar cars ever made - Top Gear", "url": "https://www.topgear.com/car-news/fastest-jaguars-ever", "description": "From the XJ220 to the F-TYPE SVR, the fastest Jaguars ranked by top speed.", "siteName": "topgear.com" }
+        ]
+      }
+    },
+    "duckduckgo": {
+      "payload": {
+        "results": [
+          { "title": "Jaguar - Wikipedia", "url": "https://en.m.wikipedia.org/wiki/Jaguar", "snippet": "The jaguar is a large cat species native to the Americas.", "siteName": "en.m.wikipedia.org" },
+          { "title": "Jaguar XJ220 - Wikipedia", "url": "https://en.wikipedia.org/wiki/Jaguar_XJ220", "snippet": "The XJ220 was the fastest production car from 1992 to 1993 with a top speed of 212.3 mph.", "siteName": "en.wikipedia.org" },
+          { "title": "How fast can a jaguar run?", "url": "https://www.nhm.ac.uk/discover/news/2024/how-fast-can-a-jaguar-run.html", "snippet": "Estimates of top speed range from 64 to 80 km/h.", "siteName": "nhm.ac.uk" },
+          { "title": "Jaguar animal facts - speed, weight, habitat", "url": "https://animalfactsforkids.org/jaguar", "snippet": "Fun jaguar facts for kids!", "siteName": "animalfactsforkids.org" }
+        ]
+      }
+    },
+    "gemini": {
+      "payload": {
+        "content": "Jaguars (Panthera onca) can sprint at roughly 64–80 km/h (40–50 mph), but only over short distances because they are ambush hunters rather than chasers.",
+        "citations": [
+          { "url": "https://en.wikipedia.org/wiki/Jaguar", "title": "wikipedia.org" },
+          { "url": "https://www.nhm.ac.uk/discover/news/2024/how-fast-can-a-jaguar-run.html", "title": "nhm.ac.uk" },
+          { "url": "https://www.nationalgeographic.com/animals/mammals/facts/jaguar", "title": "nationalgeographic.com" }
+        ]
+      }
+    }
+  },
+  "pages": [
+    { "id": "wiki-jaguar", "grade": 3, "urls": ["https://en.wikipedia.org/wiki/Jaguar", "https://en.m.wikipedia.org/wiki/Jaguar"] },
+    { "id": "nhm", "grade": 3, "urls": ["https://www.nhm.ac.uk/discover/news/2024/how-fast-can-a-jaguar-run.html"] },
+    { "id": "ftype-specs", "grade": 2, "urls": ["https://www.jaguar.co.uk/jaguar-range/f-type/specifications.html"] },
+    { "id": "natgeo", "grade": 2, "urls": ["https://www.nationalgeographic.com/animals/mammals/facts/jaguar"] },
+    { "id": "topgear", "grade": 2, "urls": ["https://www.topgear.com/car-news/fastest-jaguars-ever"] },
+    { "id": "xj220", "grade": 2, "urls": ["https://en.wikipedia.org/wiki/Jaguar_XJ220"] },
+    { "id": "kids-facts", "grade": 1, "urls": ["https://animalfactsforkids.org/jaguar"] }
+  ],
+  "answer": { "mustMention": ["80 km/h"] }
+}

@@ -40,7 +40,8 @@
     "test": "node --test --experimental-test-module-mocks --import tsx test/**/*.test.ts",
     "plugin:check": "plugin-inspector check --no-openclaw",
     "plugin:check:runtime": "node ./scripts/plugin-inspector-runtime.mjs check --no-openclaw --runtime --mock-sdk --allow-execute",
-    "plugin:ci": "node ./scripts/plugin-inspector-runtime.mjs ci --no-openclaw --runtime --mock-sdk --allow-execute"
+    "plugin:ci": "node ./scripts/plugin-inspector-runtime.mjs ci --no-openclaw --runtime --mock-sdk --allow-execute",
+    "eval": "tsx eval/run.ts"
   },
   "files": [
     "dist/",

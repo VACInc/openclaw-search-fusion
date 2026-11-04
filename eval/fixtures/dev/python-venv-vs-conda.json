@@ -1,0 +1,64 @@
+{
+  "id": "python-venv-vs-conda",
+  "query": "python venv vs conda which should I use",
+  "notes": "Comparison query; Reddit threads crowd one provider; www vs bare-domain variants of the same article across providers.",
+  "providers": {
+    "brave": {
+      "payload": {
+        "results": [
+          { "title": "venv vs conda : r/learnpython", "url": "https://www.reddit.com/r/learnpython/comments/x1b2c3/venv_vs_conda/", "description": "I use venv for everything unless I need non-Python binaries like CUDA, then conda.", "siteName": "reddit.com" },
+          { "title": "Python Virtual Environments: A Primer – Real Python", "url": "https://realpython.com/python-virtual-environments-a-primer/", "description": "In this tutorial, you'll learn how to work with Python's venv module to create and manage separate virtual environments for your Python projects.", "siteName": "realpython.com" },
+          { "title": "Conda vs pip vs venv: what's the difference? : r/Python", "url": "https://www.reddit.com/r/Python/comments/a9z8y7/conda_vs_pip_vs_venv/", "description": "Conda manages environments and packages including non-Python dependencies.", "siteName": "reddit.com" },
+          { "title": "venv — Creation of virtual environments — Python 3.13 documentation", "url": "https://docs.python.org/3/library/venv.html", "description": "The venv module supports creating lightweight virtual environments, each with their own independent set of Python packages installed in their site directories.", "siteName": "docs.python.org" },
+          { "title": "Which is better, conda or venv? : r/datascience", "url": "https://www.reddit.com/r/datascience/comments/q4w5e6/which_is_better_conda_or_venv/", "description": "For data science, conda makes managing MKL/CUDA builds easier.", "siteName": "reddit.com" },
+          { "title": "Managing environments — conda documentation", "url": "https://docs.conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html", "description": "With conda, you can create, export, list, remove, and update environments that have different versions of Python and/or packages installed in them.", "siteName": "docs.conda.io" }
+        ]
+      }
+    },
+    "duckduckgo": {
+      "payload": {
+        "results": [
+          { "title": "Python Virtual Environments: A Primer", "url": "https://www.realpython.com/python-virtual-environments-a-primer/", "snippet": "Learn how to work with Python's venv module to create and manage separate virtual environments.", "siteName": "realpython.com" },
+          { "title": "venv vs conda : r/learnpython", "url": "https://old.reddit.com/r/learnpython/comments/x1b2c3/venv_vs_conda/", "snippet": "I use venv for everything unless I need non-Python binaries.", "siteName": "old.reddit.com" },
+          { "title": "Conda vs. Pip vs. Virtualenv Commands", "url": "https://docs.conda.io/projects/conda/en/latest/commands.html", "snippet": "Conda vs. pip vs. virtualenv commands comparison table.", "siteName": "docs.conda.io" },
+          { "title": "Python venv vs conda: 2026 ultimate showdown", "url": "https://pythonguidesdaily.com/venv-vs-conda-ultimate-showdown/", "snippet": "Find out the ultimate winner in venv vs conda showdown! Click to read.", "siteName": "pythonguidesdaily.com" },
+          { "title": "Install packages in a virtual environment using pip and venv", "url": "https://packaging.python.org/en/latest/guides/installing-using-pip-and-virtual-environments/", "snippet": "This guide discusses how to create and activate a virtual environment using the standard library's virtual environment tool venv and install packages.", "siteName": "packaging.python.org" }
+        ]
+      }
+    },
+    "tavily": {
+      "payload": {
+        "results": [
+          { "title": "Conda vs. Pip vs. Virtualenv Commands — conda documentation", "url": "https://docs.conda.io/projects/conda/en/latest/commands.html", "snippet": "This table lists commonly used commands for conda, pip, and virtualenv. conda can manage environments and packages for any language, including non-Python dependencies such as C libraries; pip with venv only handles Python packages.", "score": 0.74 },
+          { "title": "Python Virtual Environments: A Primer – Real Python", "url": "https://realpython.com/python-virtual-environments-a-primer", "snippet": "A Python virtual environment is a folder structure that gives you everything you need to run a lightweight yet isolated Python environment. This tutorial also compares venv with conda and explains when conda is the better fit.", "score": 0.71 },
+          { "title": "Installing packages using pip and virtual environments", "url": "https://packaging.python.org/en/latest/guides/installing-using-pip-and-virtual-environments/", "snippet": "Create and use virtual environments with venv; install packages with pip.", "score": 0.58 },
+          { "title": "Which is better, conda or venv?", "url": "https://www.reddit.com/r/datascience/comments/q4w5e6/which_is_better_conda_or_venv/", "snippet": "For data science, conda makes managing MKL/CUDA builds easier.", "score": 0.52 },
+          { "title": "Python venv vs conda: ultimate showdown", "url": "https://pythonguidesdaily.com/venv-vs-conda-ultimate-showdown/", "snippet": "Find out the ultimate winner.", "score": 0.31 }
+        ],
+        "answer": "Use venv (built into Python) for pure-Python projects; use conda when you need non-Python dependencies such as CUDA or MKL, or need to manage multiple Python versions."
+      }
+    },
+    "perplexity": {
+      "payload": {
+        "results": [
+          { "title": "venv — Creation of virtual environments", "url": "https://docs.python.org/3/library/venv.html", "description": "The venv module supports creating lightweight virtual environments.", "siteName": "docs.python.org" },
+          { "title": "Managing environments", "url": "https://docs.conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html", "description": "Create, export, list, remove, and update conda environments.", "siteName": "docs.conda.io" },
+          { "title": "Python Virtual Environments: A Primer", "url": "http://realpython.com/python-virtual-environments-a-primer/", "description": "Real Python tutorial on venv.", "siteName": "realpython.com" },
+          { "title": "Conda vs pip vs venv : r/Python", "url": "https://www.reddit.com/r/Python/comments/a9z8y7/conda_vs_pip_vs_venv/", "description": "Thread comparing conda, pip and venv.", "siteName": "reddit.com" }
+        ]
+      }
+    }
+  },
+  "pages": [
+    { "id": "realpython-primer", "grade": 3, "urls": ["https://realpython.com/python-virtual-environments-a-primer/", "https://www.realpython.com/python-virtual-environments-a-primer/", "https://realpython.com/python-virtual-environments-a-primer", "http://realpython.com/python-virtual-environments-a-primer/"] },
+    { "id": "conda-commands", "grade": 3, "urls": ["https://docs.conda.io/projects/conda/en/latest/commands.html"] },
+    { "id": "python-venv-docs", "grade": 2, "urls": ["https://docs.python.org/3/library/venv.html"] },
+    { "id": "conda-manage-envs", "grade": 2, "urls": ["https://docs.conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html"] },
+    { "id": "pypa-guide", "grade": 2, "urls": ["https://packaging.python.org/en/latest/guides/installing-using-pip-and-virtual-environments/"] },
+    { "id": "reddit-learnpython", "grade": 1, "urls": ["https://www.reddit.com/r/learnpython/comments/x1b2c3/venv_vs_conda/", "https://old.reddit.com/r/learnpython/comments/x1b2c3/venv_vs_conda/"] },
+    { "id": "reddit-python", "grade": 1, "urls": ["https://www.reddit.com/r/Python/comments/a9z8y7/conda_vs_pip_vs_venv/"] },
+    { "id": "reddit-datascience", "grade": 1, "urls": ["https://www.reddit.com/r/datascience/comments/q4w5e6/which_is_better_conda_or_venv/"] },
+    { "id": "seo-farm", "grade": 0, "urls": ["https://pythonguidesdaily.com/venv-vs-conda-ultimate-showdown/"] }
+  ],
+  "answer": { "mustMention": ["non-Python dependencies"] }
+}

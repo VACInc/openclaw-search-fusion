@@ -1,0 +1,200 @@
+{
+  "id": "react-cannot-read-map",
+  "query": "TypeError: Cannot read properties of undefined (reading 'map') react",
+  "notes": "Very common JS error with four distinct StackOverflow threads crowding results, Tavily scoring everything in the 0.9s, a Medium mirror with ?source= param, and react.dev docs that are relevant but not specific to the error.",
+  "providers": {
+    "brave": {
+      "payload": {
+        "results": [
+          {
+            "title": "reactjs - TypeError: Cannot read properties of undefined (reading 'map') - Stack Overflow",
+            "url": "https://stackoverflow.com/questions/69080597/typeerror-cannot-read-properties-of-undefined-reading-map",
+            "description": "Your data is undefined on the first render because the fetch hasn't completed yet. Initialize state with an empty array: const [items, setItems] = useState([]); or use optional chaining items?.map(...).",
+            "siteName": "Stack Overflow"
+          },
+          {
+            "title": "Cannot read property 'map' of undefined with React - Stack Overflow",
+            "url": "https://stackoverflow.com/questions/24706267/cannot-read-property-map-of-undefined",
+            "description": "this.props.data is undefined at the time the component renders. Set a default prop or check before mapping.",
+            "siteName": "Stack Overflow"
+          },
+          {
+            "title": "How to Fix 'Cannot read properties of undefined (reading map)' in React | bobbyhadz",
+            "url": "https://bobbyhadz.com/blog/react-cannot-read-property-map-of-undefined",
+            "description": "The error occurs when we call the map() method on an undefined value, most commonly when the initial state is undefined or the API response has a different shape. Initialize to an empty array or use optional chaining.",
+            "siteName": "bobbyhadz"
+          },
+          {
+            "title": "Rendering Lists – React",
+            "url": "https://react.dev/learn/rendering-lists",
+            "description": "You will often want to display multiple similar components from a collection of data. You can use the JavaScript array methods to manipulate an array of data.",
+            "siteName": "React"
+          },
+          {
+            "title": "React: Cannot read properties of undefined (reading 'map') after fetch - Stack Overflow",
+            "url": "https://stackoverflow.com/questions/71213052/react-cannot-read-properties-of-undefined-reading-map-after-fetch",
+            "description": "Your API returns { results: [...] }, not an array, so data.map is undefined. Use data.results.map.",
+            "siteName": "Stack Overflow"
+          },
+          {
+            "title": "How to fix Cannot read properties of undefined reading map in React - DEV Community",
+            "url": "https://dev.to/codewithsam/how-to-fix-cannot-read-properties-of-undefined-reading-map-in-react-3k1o",
+            "description": "Short post: just add a ? before .map and you're done!",
+            "siteName": "DEV Community"
+          }
+        ]
+      }
+    },
+    "duckduckgo": {
+      "payload": {
+        "results": [
+          {
+            "title": "TypeError: Cannot read properties of undefined (reading 'map')",
+            "url": "https://stackoverflow.com/questions/69080597/typeerror-cannot-read-properties-of-undefined-reading-map/69080694",
+            "snippet": "Initialize state with an empty array.",
+            "siteName": "stackoverflow.com"
+          },
+          {
+            "title": "Uncaught TypeError: Cannot read properties of undefined (reading 'map') in Redux selector - Stack Overflow",
+            "url": "https://stackoverflow.com/questions/70368760/uncaught-typeerror-cannot-read-properties-of-undefined-reading-map-in-redux",
+            "snippet": "The slice's initial state doesn't define the key you're selecting.",
+            "siteName": "stackoverflow.com"
+          },
+          {
+            "title": "How to Fix 'Cannot read properties of undefined (reading map)' in React",
+            "url": "https://bobbyhadz.com/blog/react-cannot-read-property-map-of-undefined",
+            "snippet": "The error occurs when we call the map() method on an undefined value.",
+            "siteName": "bobbyhadz.com"
+          },
+          {
+            "title": "Cannot read property 'map' of undefined with React",
+            "url": "https://stackoverflow.com/questions/24706267/cannot-read-property-map-of-undefined",
+            "snippet": "this.props.data is undefined at the time the component renders.",
+            "siteName": "stackoverflow.com"
+          },
+          {
+            "title": "How to Prevent the Error: Cannot Read Property Map of Undefined",
+            "url": "https://www.freecodecamp.org/news/how-to-prevent-cannot-read-property-map-of-undefined/",
+            "snippet": "Learn why this error happens with asynchronously loaded data and three ways to guard against it.",
+            "siteName": "freecodecamp.org"
+          }
+        ]
+      }
+    },
+    "tavily": {
+      "payload": {
+        "results": [
+          {
+            "title": "TypeError: Cannot read properties of undefined (reading 'map') - Stack Overflow",
+            "url": "https://stackoverflow.com/questions/69080597/typeerror-cannot-read-properties-of-undefined-reading-map",
+            "snippet": "Your data is undefined on the first render because the fetch hasn't completed yet. Initialize state with an empty array or use optional chaining.",
+            "score": 0.98
+          },
+          {
+            "title": "Fixing 'Cannot read properties of undefined (reading map)' in React",
+            "url": "https://medium.com/@devjourney/fixing-cannot-read-properties-of-undefined-reading-map-in-react-9f1c2b7d4e10?source=search",
+            "snippet": "We've all been there. You fetch data, map over it, and boom. Here's what's going on.",
+            "score": 0.96
+          },
+          {
+            "title": "React: Cannot read properties of undefined (reading 'map') after fetch",
+            "url": "https://stackoverflow.com/questions/71213052/react-cannot-read-properties-of-undefined-reading-map-after-fetch",
+            "snippet": "Your API returns { results: [...] }, not an array.",
+            "score": 0.95
+          },
+          {
+            "title": "How to Prevent the Error: Cannot Read Property Map of Undefined",
+            "url": "https://www.freecodecamp.org/news/how-to-prevent-cannot-read-property-map-of-undefined",
+            "snippet": "Three ways to guard against undefined data when rendering lists.",
+            "score": 0.93
+          },
+          {
+            "title": "Cannot read properties of undefined (reading 'map') [Solved] 2026",
+            "url": "https://jserrorfix.com/cannot-read-properties-of-undefined-reading-map/",
+            "snippet": "Cannot read properties of undefined reading map error solved. Cannot read properties of undefined reading map in react, angular, vue, node.",
+            "score": 0.91
+          }
+        ]
+      }
+    },
+    "exa": {
+      "payload": {
+        "results": [
+          {
+            "title": "Rendering Lists",
+            "url": "https://react.dev/learn/rendering-lists#rendering-data-from-arrays",
+            "description": "Rendering data from arrays with map() and filter().",
+            "siteName": "react.dev",
+            "highlightScores": [0.44]
+          },
+          {
+            "title": "Fixing 'Cannot read properties of undefined (reading map)' in React",
+            "url": "https://medium.com/@devjourney/fixing-cannot-read-properties-of-undefined-reading-map-in-react-9f1c2b7d4e10",
+            "description": "You fetch data, map over it, and boom.",
+            "siteName": "medium.com",
+            "highlightScores": [0.42]
+          },
+          {
+            "title": "Optional chaining (?.) - JavaScript | MDN",
+            "url": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Optional_chaining",
+            "description": "The optional chaining (?.) operator accesses an object's property or calls a function. If the object accessed or function called using this operator is undefined or null, the expression short circuits and evaluates to undefined instead of throwing an error.",
+            "siteName": "developer.mozilla.org",
+            "highlightScores": [0.38]
+          },
+          {
+            "title": "reactjs - TypeError: Cannot read properties of undefined (reading 'map')",
+            "url": "https://stackoverflow.com/questions/69080597/typeerror-cannot-read-properties-of-undefined-reading-map",
+            "description": "Initialize state with an empty array.",
+            "siteName": "stackoverflow.com",
+            "highlightScores": [0.36]
+          },
+          {
+            "title": "Uncaught TypeError: Cannot read properties of undefined (reading 'map') in Redux selector",
+            "url": "https://stackoverflow.com/questions/70368760/uncaught-typeerror-cannot-read-properties-of-undefined-reading-map-in-redux",
+            "description": "The slice's initial state doesn't define the key you're selecting.",
+            "siteName": "stackoverflow.com",
+            "highlightScores": [0.3]
+          }
+        ]
+      }
+    }
+  },
+  "pages": [
+    {
+      "id": "so-69080597",
+      "grade": 3,
+      "urls": [
+        "https://stackoverflow.com/questions/69080597/typeerror-cannot-read-properties-of-undefined-reading-map",
+        "https://stackoverflow.com/questions/69080597/typeerror-cannot-read-properties-of-undefined-reading-map/69080694"
+      ]
+    },
+    { "id": "so-24706267", "grade": 2, "urls": ["https://stackoverflow.com/questions/24706267/cannot-read-property-map-of-undefined"] },
+    { "id": "bobbyhadz", "grade": 3, "urls": ["https://bobbyhadz.com/blog/react-cannot-read-property-map-of-undefined"] },
+    {
+      "id": "react-dev-rendering-lists",
+      "grade": 1,
+      "urls": ["https://react.dev/learn/rendering-lists", "https://react.dev/learn/rendering-lists#rendering-data-from-arrays"]
+    },
+    { "id": "so-71213052", "grade": 2, "urls": ["https://stackoverflow.com/questions/71213052/react-cannot-read-properties-of-undefined-reading-map-after-fetch"] },
+    { "id": "devto-thin", "grade": 1, "urls": ["https://dev.to/codewithsam/how-to-fix-cannot-read-properties-of-undefined-reading-map-in-react-3k1o"] },
+    { "id": "so-70368760", "grade": 2, "urls": ["https://stackoverflow.com/questions/70368760/uncaught-typeerror-cannot-read-properties-of-undefined-reading-map-in-redux"] },
+    {
+      "id": "freecodecamp-map-undefined",
+      "grade": 3,
+      "urls": [
+        "https://www.freecodecamp.org/news/how-to-prevent-cannot-read-property-map-of-undefined/",
+        "https://www.freecodecamp.org/news/how-to-prevent-cannot-read-property-map-of-undefined"
+      ]
+    },
+    {
+      "id": "medium-devjourney",
+      "grade": 1,
+      "urls": [
+        "https://medium.com/@devjourney/fixing-cannot-read-properties-of-undefined-reading-map-in-react-9f1c2b7d4e10?source=search",
+        "https://medium.com/@devjourney/fixing-cannot-read-properties-of-undefined-reading-map-in-react-9f1c2b7d4e10"
+      ]
+    },
+    { "id": "farm-jserrorfix", "grade": 0, "urls": ["https://jserrorfix.com/cannot-read-properties-of-undefined-reading-map/"] },
+    { "id": "mdn-optional-chaining", "grade": 1, "urls": ["https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Optional_chaining"] }
+  ]
+}

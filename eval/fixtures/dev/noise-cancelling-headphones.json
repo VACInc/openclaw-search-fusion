@@ -1,0 +1,63 @@
+{
+  "id": "noise-cancelling-headphones",
+  "query": "best noise cancelling headphones 2026",
+  "notes": "Product comparison; sponsored retailer hit, SEO listicle, Reddit and YouTube; review sites returned with tracking params and AMP-style variants.",
+  "providers": {
+    "brave": {
+      "payload": {
+        "results": [
+          { "title": "Sony WH-1000XM6 - Amazon.com", "url": "https://www.amazon.com/dp/B0F1XM6SONY?tag=brave-ad-20", "description": "Shop Sony WH-1000XM6 wireless noise cancelling headphones.", "siteName": "amazon.com", "sponsored": true },
+          { "title": "The 7 Best Noise Cancelling Headphones of 2026 - RTINGS.com", "url": "https://www.rtings.com/headphones/reviews/best/by-feature/noise-cancelling", "description": "We've tested over 900 headphones. Our pick for the best noise cancelling headphones is the Sony WH-1000XM6.", "siteName": "rtings.com" },
+          { "title": "The Best Noise-Cancelling Headphones | Reviews by Wirecutter", "url": "https://www.nytimes.com/wirecutter/reviews/best-noise-cancelling-headphones/?utm_source=brave&utm_medium=search", "description": "After testing dozens of pairs, we recommend the Sony WH-1000XM6 and the Bose QuietComfort Ultra.", "siteName": "nytimes.com" },
+          { "title": "Best noise-cancelling headphones 2026: tested and rated | TechRadar", "url": "https://www.techradar.com/news/best-noise-cancelling-headphones", "description": "The best noise-cancelling headphones we've tested, from Sony, Bose, Apple and more.", "siteName": "techradar.com" },
+          { "title": "Top 10 Best Noise Cancelling Headphones 2026 – Buyer's Guide", "url": "https://top10bestreviewshub.com/best-noise-cancelling-headphones", "description": "Top 10 best noise cancelling headphones 2026 buyer's guide. #1 will shock you!", "siteName": "top10bestreviewshub.com" },
+          { "title": "Sony XM6 vs Bose QC Ultra - YouTube", "url": "https://www.youtube.com/watch?v=q8Xq2bV9kLs", "description": "Head-to-head ANC comparison.", "siteName": "youtube.com" }
+        ]
+      }
+    },
+    "duckduckgo": {
+      "payload": {
+        "results": [
+          { "title": "Best noise cancelling headphones? : r/headphones", "url": "https://www.reddit.com/r/headphones/comments/1abcde/best_noise_cancelling_headphones_2026/", "snippet": "XM6 for ANC, AirPods Max for Apple users, Bose for comfort.", "siteName": "reddit.com" },
+          { "title": "The Best Noise-Cancelling Headphones | Wirecutter", "url": "https://www.nytimes.com/wirecutter/reviews/best-noise-cancelling-headphones/", "snippet": "We recommend the Sony WH-1000XM6 and the Bose QuietComfort Ultra.", "siteName": "nytimes.com" },
+          { "title": "Sony WH-1000XM6 review | What Hi-Fi?", "url": "https://www.whathifi.com/reviews/sony-wh-1000xm6", "snippet": "Sony's flagship ANC headphones are better than ever.", "siteName": "whathifi.com" },
+          { "title": "The 7 Best Noise Cancelling Headphones - RTINGS.com", "url": "https://rtings.com/headphones/reviews/best/by-feature/noise-cancelling", "snippet": "Our pick for the best noise cancelling headphones is the Sony WH-1000XM6.", "siteName": "rtings.com" },
+          { "title": "Top 10 Best Noise Cancelling Headphones 2026", "url": "https://top10bestreviewshub.com/best-noise-cancelling-headphones", "snippet": "#1 will shock you!", "siteName": "top10bestreviewshub.com" }
+        ]
+      }
+    },
+    "tavily": {
+      "payload": {
+        "results": [
+          { "title": "The 7 Best Noise Cancelling Headphones of 2026", "url": "https://www.rtings.com/headphones/reviews/best/by-feature/noise-cancelling", "snippet": "Our pick for the best noise cancelling headphones is the Sony WH-1000XM6. Its industry-leading ANC blocks a wide range of noise, and it has a long 30-hour battery life. If you want something more comfortable, the Bose QuietComfort Ultra Headphones are a great alternative.", "score": 0.89 },
+          { "title": "The Best Noise-Cancelling Headphones", "url": "https://www.nytimes.com/wirecutter/reviews/best-noise-cancelling-headphones", "snippet": "Wirecutter's picks after testing dozens of pairs.", "score": 0.85 },
+          { "title": "Best noise-cancelling headphones 2026 | TechRadar", "url": "https://www.techradar.com/news/best-noise-cancelling-headphones", "snippet": "The best noise-cancelling headphones we've tested.", "score": 0.8 },
+          { "title": "Sony WH-1000XM6 review", "url": "https://www.whathifi.com/reviews/sony-wh-1000xm6", "snippet": "Five-star review of Sony's WH-1000XM6.", "score": 0.66 },
+          { "title": "Bose QuietComfort Ultra Headphones review | SoundGuys", "url": "https://www.soundguys.com/bose-quietcomfort-ultra-headphones-review-104050/", "snippet": "Bose's flagship ANC headphones reviewed.", "score": 0.61 }
+        ]
+      }
+    },
+    "exa": {
+      "payload": {
+        "results": [
+          { "title": "Best noise cancelling headphones 2026", "url": "https://www.techradar.com/news/best-noise-cancelling-headphones?region-switch=1", "description": "TechRadar's tested picks for noise-cancelling headphones.", "siteName": "techradar.com" },
+          { "title": "Bose QuietComfort Ultra Headphones review", "url": "https://www.soundguys.com/bose-quietcomfort-ultra-headphones-review-104050/", "description": "SoundGuys review of Bose's flagship.", "siteName": "soundguys.com" },
+          { "title": "Best noise cancelling headphones? : r/headphones", "url": "https://old.reddit.com/r/headphones/comments/1abcde/best_noise_cancelling_headphones_2026/", "description": "Community recommendations.", "siteName": "old.reddit.com" },
+          { "title": "Noise cancelling headphones tier list", "url": "https://www.youtube.com/watch?v=Zt7Lm0pQ3rA", "description": "Ranking every ANC headphone.", "siteName": "youtube.com" }
+        ]
+      }
+    }
+  },
+  "pages": [
+    { "id": "rtings", "grade": 3, "urls": ["https://www.rtings.com/headphones/reviews/best/by-feature/noise-cancelling", "https://rtings.com/headphones/reviews/best/by-feature/noise-cancelling"] },
+    { "id": "wirecutter", "grade": 3, "urls": ["https://www.nytimes.com/wirecutter/reviews/best-noise-cancelling-headphones/?utm_source=brave&utm_medium=search", "https://www.nytimes.com/wirecutter/reviews/best-noise-cancelling-headphones/", "https://www.nytimes.com/wirecutter/reviews/best-noise-cancelling-headphones"] },
+    { "id": "techradar", "grade": 2, "urls": ["https://www.techradar.com/news/best-noise-cancelling-headphones", "https://www.techradar.com/news/best-noise-cancelling-headphones?region-switch=1"] },
+    { "id": "whathifi", "grade": 2, "urls": ["https://www.whathifi.com/reviews/sony-wh-1000xm6"] },
+    { "id": "soundguys", "grade": 2, "urls": ["https://www.soundguys.com/bose-quietcomfort-ultra-headphones-review-104050/"] },
+    { "id": "reddit", "grade": 1, "urls": ["https://www.reddit.com/r/headphones/comments/1abcde/best_noise_cancelling_headphones_2026/", "https://old.reddit.com/r/headphones/comments/1abcde/best_noise_cancelling_headphones_2026/"] },
+    { "id": "yt-compare", "grade": 1, "urls": ["https://www.youtube.com/watch?v=q8Xq2bV9kLs"] },
+    { "id": "yt-tierlist", "grade": 1, "urls": ["https://www.youtube.com/watch?v=Zt7Lm0pQ3rA"] },
+    { "id": "listicle", "grade": 0, "urls": ["https://top10bestreviewshub.com/best-noise-cancelling-headphones"] },
+    { "id": "amazon-ad", "grade": 0, "urls": ["https://www.amazon.com/dp/B0F1XM6SONY?tag=brave-ad-20"] }
+  ]
+}

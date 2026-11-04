@@ -1,0 +1,51 @@
+{
+  "id": "k8s-crashloopbackoff",
+  "query": "kubernetes pod CrashLoopBackOff how to debug",
+  "notes": "Troubleshooting query; Tavily scores sit in a low 0.3-0.5 band although its hits are good; Exa fails; vendor blogs dominate.",
+  "providers": {
+    "brave": {
+      "payload": {
+        "results": [
+          { "title": "What is Kubernetes CrashLoopBackOff? And how to fix it", "url": "https://sysdig.com/blog/debug-kubernetes-crashloopbackoff/", "description": "CrashLoopBackOff is a status message that indicates one of your pods is in a constant state of flux.", "siteName": "sysdig.com" },
+          { "title": "CrashLoopBackOff Kubernetes error: 7 causes and fixes (2026)", "url": "https://k8sfixesnow.com/crashloopbackoff-7-causes", "description": "7 causes and fixes. Fix it in 5 minutes!", "siteName": "k8sfixesnow.com" },
+          { "title": "Kubernetes CrashLoopBackOff: what it is and how to fix it - Komodor", "url": "https://komodor.com/learn/how-to-fix-crashloopbackoff-kubernetes-error/", "description": "Learn about CrashLoopBackOff, common causes and how to troubleshoot it with kubectl describe and kubectl logs --previous.", "siteName": "komodor.com" },
+          { "title": "Debug Running Pods | Kubernetes", "url": "https://kubernetes.io/docs/tasks/debug/debug-application/debug-running-pod/", "description": "This page explains how to debug Pods running (or crashing) on a Node.", "siteName": "kubernetes.io" },
+          { "title": "Pod Lifecycle | Kubernetes", "url": "https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/", "description": "Container restart policy and backoff delay. After containers in a Pod exit, the kubelet restarts them with an exponential back-off delay.", "siteName": "kubernetes.io" }
+        ]
+      }
+    },
+    "tavily": {
+      "payload": {
+        "results": [
+          { "title": "Debug Running Pods", "url": "https://kubernetes.io/docs/tasks/debug/debug-application/debug-running-pod", "snippet": "Use kubectl describe pod to see events and the last state of a crashing container, and kubectl logs --previous to read output of the crashed instance. Ephemeral debug containers let you inspect a pod whose image lacks a shell.", "score": 0.47 },
+          { "title": "Determine the Reason for Pod Failure", "url": "https://kubernetes.io/docs/tasks/debug/debug-application/determine-reason-pod-failure/", "snippet": "Write a termination message to /dev/termination-log and read it from the pod status to see why a container exited.", "score": 0.44 },
+          { "title": "Debugging CrashLoopBackOff - Learnk8s", "url": "https://learnk8s.io/troubleshooting-deployments", "snippet": "A visual guide on troubleshooting Kubernetes deployments, including CrashLoopBackOff, ImagePullBackOff and readiness probe failures.", "score": 0.41 },
+          { "title": "How to fix CrashLoopBackOff - Komodor", "url": "https://komodor.com/learn/how-to-fix-crashloopbackoff-kubernetes-error/", "snippet": "Common causes and troubleshooting steps.", "score": 0.36 },
+          { "title": "CrashLoopBackOff 7 causes and fixes", "url": "https://k8sfixesnow.com/crashloopbackoff-7-causes", "snippet": "7 causes and fixes.", "score": 0.22 }
+        ]
+      }
+    },
+    "duckduckgo": {
+      "payload": {
+        "results": [
+          { "title": "What is Kubernetes CrashLoopBackOff?", "url": "https://sysdig.com/blog/debug-kubernetes-crashloopbackoff", "snippet": "CrashLoopBackOff indicates a pod is repeatedly crashing.", "siteName": "sysdig.com" },
+          { "title": "My pod keeps going into CrashLoopBackOff : r/kubernetes", "url": "https://www.reddit.com/r/kubernetes/comments/v7k2m1/pod_keeps_crashloopbackoff/", "snippet": "Check kubectl logs --previous first.", "siteName": "reddit.com" },
+          { "title": "kubernetes - My kubernetes pods keep crashing with CrashLoopBackOff - Stack Overflow", "url": "https://stackoverflow.com/questions/41604499/my-kubernetes-pods-keep-crashing-with-crashloopbackoff-but-i-cant-find-any-lo", "snippet": "Your container's main process exits immediately; give it a long-running command.", "siteName": "stackoverflow.com" },
+          { "title": "Debug Running Pods | Kubernetes", "url": "https://kubernetes.io/docs/tasks/debug/debug-application/debug-running-pod/", "snippet": "How to debug Pods running or crashing on a Node.", "siteName": "kubernetes.io" }
+        ]
+      }
+    },
+    "exa": { "error": "Exa API error (503): Service Unavailable" }
+  },
+  "pages": [
+    { "id": "k8s-debug-running", "grade": 3, "urls": ["https://kubernetes.io/docs/tasks/debug/debug-application/debug-running-pod/", "https://kubernetes.io/docs/tasks/debug/debug-application/debug-running-pod"] },
+    { "id": "k8s-pod-failure", "grade": 3, "urls": ["https://kubernetes.io/docs/tasks/debug/debug-application/determine-reason-pod-failure/"] },
+    { "id": "learnk8s", "grade": 3, "urls": ["https://learnk8s.io/troubleshooting-deployments"] },
+    { "id": "komodor", "grade": 2, "urls": ["https://komodor.com/learn/how-to-fix-crashloopbackoff-kubernetes-error/"] },
+    { "id": "sysdig", "grade": 2, "urls": ["https://sysdig.com/blog/debug-kubernetes-crashloopbackoff/", "https://sysdig.com/blog/debug-kubernetes-crashloopbackoff"] },
+    { "id": "so-41604499", "grade": 2, "urls": ["https://stackoverflow.com/questions/41604499/my-kubernetes-pods-keep-crashing-with-crashloopbackoff-but-i-cant-find-any-lo"] },
+    { "id": "pod-lifecycle", "grade": 1, "urls": ["https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/"] },
+    { "id": "reddit", "grade": 1, "urls": ["https://www.reddit.com/r/kubernetes/comments/v7k2m1/pod_keeps_crashloopbackoff/"] },
+    { "id": "farm", "grade": 0, "urls": ["https://k8sfixesnow.com/crashloopbackoff-7-causes"] }
+  ]
+}

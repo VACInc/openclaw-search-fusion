@@ -1,0 +1,144 @@
+{
+  "id": "jaguar-top-speed",
+  "query": "jaguar top speed",
+  "notes": "Ambiguous query (big cat vs car brand): providers split between interpretations, no single authoritative answer, Grok answers both, and an animal-facts listicle site plus Quora fill the gaps.",
+  "providers": {
+    "brave": {
+      "payload": {
+        "results": [
+          {
+            "title": "Jaguar - Wikipedia",
+            "url": "https://en.wikipedia.org/wiki/Jaguar",
+            "description": "The jaguar (Panthera onca) is a large cat species and the only living member of the genus Panthera native to the Americas. ... It can reach speeds of up to 80 km/h (50 mph) over short distances.",
+            "siteName": "Wikipedia"
+          },
+          {
+            "title": "Jaguar | National Geographic",
+            "url": "https://www.nationalgeographic.com/animals/mammals/facts/jaguar",
+            "description": "Jaguars are the largest of South America's big cats. They are powerful swimmers and ambush hunters rather than long-distance runners.",
+            "siteName": "National Geographic"
+          },
+          {
+            "title": "Jaguar F-TYPE R 75 Specifications | Jaguar USA",
+            "url": "https://www.jaguarusa.com/all-models/f-type/specifications.html",
+            "description": "5.0L supercharged V8, 575 PS, 0-60 mph in 3.5 seconds, top speed 186 mph (electronically limited).",
+            "siteName": "Jaguar USA"
+          },
+          {
+            "title": "How Fast Can a Jaguar Run? (Top Speed Explained) - AnimalFactsGuide",
+            "url": "https://www.animalfactsguide.net/how-fast-can-a-jaguar-run/",
+            "description": "How fast can a jaguar run? In this article we answer how fast can a jaguar run and other jaguar speed questions. Jaguar speed facts!",
+            "siteName": "animalfactsguide.net"
+          },
+          {
+            "title": "Jaguar XJ220 - Wikipedia",
+            "url": "https://en.wikipedia.org/wiki/Jaguar_XJ220",
+            "description": "The Jaguar XJ220 is a two-seater supercar produced by Jaguar from 1992 until 1994... a top speed of 212.3 mph, making it the fastest production car of 1992.",
+            "siteName": "Wikipedia"
+          }
+        ]
+      }
+    },
+    "searxng": {
+      "payload": {
+        "results": [
+          {
+            "title": "Jaguar Cars - Wikipedia",
+            "url": "https://en.wikipedia.org/wiki/Jaguar_Cars",
+            "snippet": "Jaguar is the luxury vehicle brand of Jaguar Land Rover, a British multinational car manufacturer.",
+            "siteName": "en.wikipedia.org"
+          },
+          {
+            "title": "Jaguar",
+            "url": "https://en.m.wikipedia.org/wiki/Jaguar",
+            "snippet": "The jaguar (Panthera onca) is a large cat species.",
+            "siteName": "en.m.wikipedia.org"
+          },
+          {
+            "title": "How fast can a jaguar run? - Quora",
+            "url": "https://www.quora.com/How-fast-can-a-jaguar-run",
+            "snippet": "About 50 mph in short bursts, but they rarely chase prey far.",
+            "siteName": "quora.com"
+          },
+          {
+            "title": "Fastest Jaguar cars ever made | Car and Driver",
+            "url": "https://www.caranddriver.com/features/g45127864/fastest-jaguar-cars/",
+            "snippet": "From the XK120 to the XJ220 and the F-Type SVR, these are the quickest Jaguars by top speed.",
+            "siteName": "caranddriver.com"
+          },
+          {
+            "title": "Jaguar F-TYPE Specifications",
+            "url": "https://www.jaguarusa.com/all-models/f-type/specifications.html?cmp=srch",
+            "snippet": "Top speed 186 mph (electronically limited).",
+            "siteName": "jaguarusa.com"
+          }
+        ]
+      }
+    },
+    "exa": {
+      "payload": {
+        "results": [
+          {
+            "title": "Jaguar (Panthera onca) — Animal Diversity Web",
+            "url": "https://animaldiversity.org/accounts/Panthera_onca/",
+            "description": "Jaguars stalk and ambush prey rather than chase it; short sprints are possible but they are not built for sustained speed.",
+            "siteName": "animaldiversity.org",
+            "highlightScores": [0.39]
+          },
+          {
+            "title": "Fastest Jaguar cars ever made",
+            "url": "https://www.caranddriver.com/features/g45127864/fastest-jaguar-cars/",
+            "description": "These are the quickest Jaguars by top speed.",
+            "siteName": "caranddriver.com",
+            "highlightScores": [0.36]
+          },
+          {
+            "title": "Jaguar | National Geographic",
+            "url": "https://www.nationalgeographic.com/animals/mammals/facts/jaguar/",
+            "description": "Jaguars are the largest of South America's big cats.",
+            "siteName": "nationalgeographic.com",
+            "highlightScores": [0.34]
+          },
+          {
+            "title": "Jaguar Type 00 concept: everything you need to know",
+            "url": "https://www.autocar.co.uk/car-news/new-cars/jaguar-type-00-concept-everything-you-need-know",
+            "description": "Jaguar's radical electric GT concept previews its 2026 rebirth as an EV-only brand.",
+            "siteName": "autocar.co.uk",
+            "highlightScores": [0.21]
+          }
+        ]
+      }
+    },
+    "grok": {
+      "payload": {
+        "content": "It depends which jaguar you mean. The animal (Panthera onca) can sprint at roughly 80 km/h (about 50 mph) over short distances, though it is an ambush hunter and rarely runs far. For Jaguar cars, the F-Type R 75 is limited to 186 mph, and the historic XJ220 reached 212.3 mph, the fastest Jaguar production car.",
+        "citations": [
+          "https://en.wikipedia.org/wiki/Jaguar",
+          "https://www.jaguarusa.com/all-models/f-type/specifications.html",
+          "https://en.wikipedia.org/wiki/Jaguar_XJ220"
+        ]
+      }
+    }
+  },
+  "pages": [
+    { "id": "wiki-jaguar-animal", "grade": 2, "urls": ["https://en.wikipedia.org/wiki/Jaguar", "https://en.m.wikipedia.org/wiki/Jaguar"] },
+    {
+      "id": "natgeo-jaguar",
+      "grade": 2,
+      "urls": ["https://www.nationalgeographic.com/animals/mammals/facts/jaguar", "https://www.nationalgeographic.com/animals/mammals/facts/jaguar/"]
+    },
+    {
+      "id": "jaguarusa-ftype-specs",
+      "grade": 2,
+      "urls": ["https://www.jaguarusa.com/all-models/f-type/specifications.html", "https://www.jaguarusa.com/all-models/f-type/specifications.html?cmp=srch"]
+    },
+    { "id": "farm-animalfactsguide", "grade": 0, "urls": ["https://www.animalfactsguide.net/how-fast-can-a-jaguar-run/"] },
+    { "id": "wiki-xj220", "grade": 2, "urls": ["https://en.wikipedia.org/wiki/Jaguar_XJ220"] },
+    { "id": "wiki-jaguar-cars", "grade": 1, "urls": ["https://en.wikipedia.org/wiki/Jaguar_Cars"] },
+    { "id": "quora-jaguar-run", "grade": 1, "urls": ["https://www.quora.com/How-fast-can-a-jaguar-run"] },
+    { "id": "caranddriver-fastest", "grade": 2, "urls": ["https://www.caranddriver.com/features/g45127864/fastest-jaguar-cars/"] },
+    { "id": "adw-panthera-onca", "grade": 1, "urls": ["https://animaldiversity.org/accounts/Panthera_onca/"] },
+    { "id": "autocar-type00", "grade": 0, "urls": ["https://www.autocar.co.uk/car-news/new-cars/jaguar-type-00-concept-everything-you-need-know"] }
+  ],
+  "answer": { "mustMention": ["80 km/h", "186 mph"] }
+}

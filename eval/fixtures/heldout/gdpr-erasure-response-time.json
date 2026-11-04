@@ -1,0 +1,160 @@
+{
+  "id": "gdpr-erasure-response-time",
+  "query": "gdpr right to erasure how long to respond",
+  "notes": "Legal-info query where the precise answer (one month, extendable by two, Art. 12(3)) lives on a different page than the obvious Art. 17 hit; gdpr-info.eu appears under http/https, with and without trailing slash, and vendor compliance blogs fill the rest.",
+  "providers": {
+    "brave": {
+      "payload": {
+        "results": [
+          {
+            "title": "Art. 17 GDPR – Right to erasure ('right to be forgotten') - General Data Protection Regulation (GDPR)",
+            "url": "https://gdpr-info.eu/art-17-gdpr/",
+            "description": "The data subject shall have the right to obtain from the controller the erasure of personal data concerning him or her without undue delay and the controller shall have the obligation to erase personal data without undue delay where one of the following grounds applies...",
+            "siteName": "gdpr-info.eu"
+          },
+          {
+            "title": "Right to erasure | ICO",
+            "url": "https://ico.org.uk/for-organisations/uk-gdpr-guidance-and-resources/individual-rights/individual-rights/right-to-erasure/",
+            "description": "You have one month to respond to a request. You can extend the time to respond by a further two months if the request is complex or you have received a number of requests from the individual.",
+            "siteName": "ICO"
+          },
+          {
+            "title": "Art. 12 GDPR – Transparent information, communication and modalities for the exercise of the rights of the data subject",
+            "url": "https://gdpr-info.eu/art-12-gdpr/",
+            "description": "The controller shall provide information on action taken on a request under Articles 15 to 22 to the data subject without undue delay and in any event within one month of receipt of the request. That period may be extended by two further months where necessary...",
+            "siteName": "gdpr-info.eu"
+          },
+          {
+            "title": "Right to be Forgotten: What It Means Under GDPR | Termly",
+            "url": "https://termly.io/resources/articles/right-to-be-forgotten/",
+            "description": "A plain-English guide to the GDPR right to erasure, including exemptions and response deadlines. Try Termly's free consent manager.",
+            "siteName": "Termly"
+          },
+          {
+            "title": "Do we always have to delete personal data if a person asks? - European Commission",
+            "url": "https://commission.europa.eu/law/law-topic/data-protection/reform/rules-business-and-organisations/dealing-citizens/do-we-always-have-delete-personal-data-if-person-asks_en",
+            "description": "Individuals have the right to have their data erased in certain cases. You must reply within one month.",
+            "siteName": "European Commission"
+          },
+          {
+            "title": "GDPR Compliance Software - Automate DSAR Requests | Start Free Trial",
+            "url": "https://www.privacyautomate.io/dsar-automation?utm_source=brave&utm_medium=cpc",
+            "description": "Respond to erasure requests 10x faster. Trusted by 2,000+ companies. Book a demo today.",
+            "siteName": "privacyautomate.io",
+            "sponsored": true
+          }
+        ]
+      }
+    },
+    "exa": {
+      "payload": {
+        "results": [
+          {
+            "title": "Art. 17 GDPR - Right to erasure ('right to be forgotten')",
+            "url": "http://gdpr-info.eu/art-17-gdpr",
+            "description": "Right to erasure ('right to be forgotten').",
+            "siteName": "gdpr-info.eu",
+            "highlightScores": [0.5]
+          },
+          {
+            "title": "Regulation (EU) 2016/679 (General Data Protection Regulation)",
+            "url": "https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32016R0679",
+            "description": "Regulation (EU) 2016/679 of the European Parliament and of the Council of 27 April 2016 on the protection of natural persons with regard to the processing of personal data and on the free movement of such data.",
+            "siteName": "eur-lex.europa.eu",
+            "highlightScores": [0.43]
+          },
+          {
+            "title": "Responding to data subject requests within the GDPR deadline",
+            "url": "https://iapp.org/news/a/responding-to-data-subject-requests-within-the-gdpr-deadline/",
+            "description": "How regulators interpret 'one month', when the clock starts, and when the two-month extension is justified.",
+            "published": "2023-05-15T00:00:00.000Z",
+            "siteName": "iapp.org",
+            "highlightScores": [0.41]
+          },
+          {
+            "title": "Right to erasure",
+            "url": "https://ico.org.uk/for-organisations/uk-gdpr-guidance-and-resources/individual-rights/individual-rights/right-to-erasure/#how-long",
+            "description": "How long do we have to comply? You must act upon the request without undue delay and at the latest within one month of receipt.",
+            "siteName": "ico.org.uk",
+            "highlightScores": [0.4]
+          }
+        ]
+      }
+    },
+    "firecrawl": {
+      "payload": {
+        "results": [
+          {
+            "title": "Art. 12 GDPR",
+            "url": "https://gdpr-info.eu/art-12-gdpr",
+            "description": "Transparent information, communication and modalities for the exercise of the rights of the data subject.",
+            "siteName": "gdpr-info.eu"
+          },
+          {
+            "title": "Right to be Forgotten: What It Means Under GDPR",
+            "url": "https://termly.io/resources/articles/right-to-be-forgotten/",
+            "description": "A plain-English guide to the GDPR right to erasure.",
+            "siteName": "termly.io"
+          },
+          {
+            "title": "What is the GDPR right to be forgotten? - GDPR.eu",
+            "url": "https://gdpr.eu/right-to-be-forgotten/",
+            "description": "An overview of the right to erasure, when it applies, and when organizations can refuse a request.",
+            "siteName": "gdpr.eu"
+          },
+          {
+            "title": "Time limits for responding to data protection rights requests | ICO",
+            "url": "https://ico.org.uk/for-organisations/uk-gdpr-guidance-and-resources/individual-rights/individual-rights/time-limits-for-responding-to-data-protection-rights-requests/",
+            "description": "Explains how to calculate the one-month time limit, including when the deadline falls on a weekend or bank holiday, and when you can extend it.",
+            "siteName": "ico.org.uk"
+          },
+          {
+            "title": "GDPR Erasure Request Template (Free Download)",
+            "url": "https://www.templatelab.net/gdpr-erasure-request-template/",
+            "description": "Download our free GDPR erasure request letter template in Word and PDF.",
+            "siteName": "templatelab.net"
+          }
+        ]
+      }
+    },
+    "gemini": {
+      "payload": {
+        "content": "Under the GDPR, a controller must respond to a right-to-erasure request (Article 17) without undue delay and in any event within one month of receiving it, as set out in Article 12(3). That deadline can be extended by two further months where necessary, taking into account the complexity and number of requests, but the controller must tell the individual about the extension, with reasons, within the first month. If the controller decides not to act on the request, it must explain why within one month and inform the person of their right to complain to a supervisory authority.",
+        "citations": [
+          { "url": "https://gdpr-info.eu/art-12-gdpr/", "title": "gdpr-info.eu" },
+          { "url": "https://ico.org.uk/for-organisations/uk-gdpr-guidance-and-resources/individual-rights/individual-rights/right-to-erasure/", "title": "ico.org.uk" },
+          { "url": "https://gdpr-info.eu/art-17-gdpr/", "title": "gdpr-info.eu" }
+        ]
+      }
+    }
+  },
+  "pages": [
+    { "id": "gdpr-info-art17", "grade": 2, "urls": ["https://gdpr-info.eu/art-17-gdpr/", "http://gdpr-info.eu/art-17-gdpr"] },
+    {
+      "id": "ico-right-to-erasure",
+      "grade": 3,
+      "urls": [
+        "https://ico.org.uk/for-organisations/uk-gdpr-guidance-and-resources/individual-rights/individual-rights/right-to-erasure/",
+        "https://ico.org.uk/for-organisations/uk-gdpr-guidance-and-resources/individual-rights/individual-rights/right-to-erasure/#how-long"
+      ]
+    },
+    { "id": "gdpr-info-art12", "grade": 3, "urls": ["https://gdpr-info.eu/art-12-gdpr/", "https://gdpr-info.eu/art-12-gdpr"] },
+    { "id": "termly", "grade": 1, "urls": ["https://termly.io/resources/articles/right-to-be-forgotten/"] },
+    {
+      "id": "ec-delete-data",
+      "grade": 3,
+      "urls": ["https://commission.europa.eu/law/law-topic/data-protection/reform/rules-business-and-organisations/dealing-citizens/do-we-always-have-delete-personal-data-if-person-asks_en"]
+    },
+    { "id": "sponsored-privacyautomate", "grade": 0, "urls": ["https://www.privacyautomate.io/dsar-automation?utm_source=brave&utm_medium=cpc"] },
+    { "id": "eurlex-gdpr", "grade": 2, "urls": ["https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32016R0679"] },
+    { "id": "iapp-deadline", "grade": 2, "urls": ["https://iapp.org/news/a/responding-to-data-subject-requests-within-the-gdpr-deadline/"] },
+    { "id": "gdpr-eu-rtbf", "grade": 1, "urls": ["https://gdpr.eu/right-to-be-forgotten/"] },
+    {
+      "id": "ico-time-limits",
+      "grade": 3,
+      "urls": ["https://ico.org.uk/for-organisations/uk-gdpr-guidance-and-resources/individual-rights/individual-rights/time-limits-for-responding-to-data-protection-rights-requests/"]
+    },
+    { "id": "templatelab", "grade": 0, "urls": ["https://www.templatelab.net/gdpr-erasure-request-template/"] }
+  ],
+  "answer": { "mustMention": ["one month", "two further months", "Article 12(3)"] }
+}

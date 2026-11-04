@@ -1,0 +1,152 @@
+{
+  "id": "renew-us-passport-online",
+  "query": "how to renew us passport online",
+  "notes": "Government-info query where the official travel.state.gov page shows up with mixed-case host, http scheme and an anchor, while a sponsored third-party expediter and a look-alike passport service site compete for top slots.",
+  "providers": {
+    "brave": {
+      "payload": {
+        "results": [
+          {
+            "title": "Renew My Passport Online - Expedited Service | PassportFastTrack",
+            "url": "https://www.passportfasttrack.com/renew-online?utm_campaign=renewal&utm_source=brave",
+            "description": "Renew your US passport online in as little as 24 hours. Skip the line — our experts handle your application. Service fees apply.",
+            "siteName": "PassportFastTrack",
+            "sponsored": true
+          },
+          {
+            "title": "Renew my Passport Online",
+            "url": "https://travel.state.gov/content/travel/en/passports/have-passport/renew-online.html",
+            "description": "You may be able to renew your passport online if you are 25 or older, your most recent passport was issued when you were 16 or older, it was issued within the last 15 years, and you are not traveling for at least 6 weeks.",
+            "siteName": "travel.state.gov"
+          },
+          {
+            "title": "Renew an adult passport | USAGov",
+            "url": "https://www.usa.gov/renew-adult-passport",
+            "description": "Learn how to renew an adult passport by mail, online, or in person. Find out if you are eligible and what forms and fees you need.",
+            "siteName": "USAGov"
+          },
+          {
+            "title": "Renew by Mail - Form DS-82",
+            "url": "https://travel.state.gov/content/travel/en/passports/have-passport/renew.html",
+            "description": "If you are eligible, you can renew your passport by mail using Form DS-82. Include your most recent passport, a photo, and the fee.",
+            "siteName": "travel.state.gov"
+          },
+          {
+            "title": "Online passport renewal worked great — 9 days start to finish : r/passports",
+            "url": "https://www.reddit.com/r/passports/comments/1dh8u3k/online_passport_renewal_worked_great_9_days_start/",
+            "description": "Just a data point: applied through MyTravelGov on a Monday, status changed to approved the next week...",
+            "siteName": "Reddit"
+          },
+          {
+            "title": "How to Renew Your Passport Online in 2026 - NerdWallet",
+            "url": "https://www.nerdwallet.com/article/travel/renew-passport-online",
+            "description": "The State Department's online renewal system is open to most adults. Here's how it works, what it costs and how long it takes.",
+            "siteName": "NerdWallet"
+          }
+        ]
+      }
+    },
+    "perplexity": {
+      "payload": {
+        "results": [
+          {
+            "title": "Renew my Passport Online - Travel",
+            "url": "http://travel.state.gov/content/travel/en/passports/have-passport/renew-online.html",
+            "description": "Eligibility requirements to renew online, how to create a MyTravelGov account, and payment of fees.",
+            "siteName": "travel.state.gov"
+          },
+          {
+            "title": "U.S. Passport Renewal Online - Passports.com",
+            "url": "https://www.passports.com/passport-renewal",
+            "description": "Renew your U.S. passport with Passports.com. Expedited service options available. We are a private company, not affiliated with the U.S. government.",
+            "siteName": "passports.com"
+          },
+          {
+            "title": "Renew an adult passport",
+            "url": "https://usa.gov/renew-adult-passport",
+            "description": "Learn how to renew an adult passport.",
+            "siteName": "usa.gov"
+          },
+          {
+            "title": "Passport Fees",
+            "url": "https://travel.state.gov/content/travel/en/passports/how-apply/fees.html",
+            "description": "Adult passport book renewal (DS-82 or online): $130 application fee. Expedited service: additional $60.",
+            "siteName": "travel.state.gov"
+          },
+          {
+            "title": "Department of State Launches Online Passport Renewal",
+            "url": "https://www.state.gov/department-of-state-launches-online-passport-renewal/",
+            "description": "The Department of State is pleased to announce that Online Passport Renewal is now available to the public.",
+            "published": "2024-09-18T00:00:00.000Z",
+            "siteName": "state.gov"
+          }
+        ]
+      }
+    },
+    "duckduckgo": {
+      "payload": {
+        "results": [
+          {
+            "title": "Renew my Passport Online",
+            "url": "https://Travel.State.Gov/content/travel/en/passports/have-passport/renew-online.html#eligibility",
+            "snippet": "You can renew your passport online if you meet all of the requirements below.",
+            "siteName": "travel.state.gov"
+          },
+          {
+            "title": "Renew an adult passport | USAGov",
+            "url": "https://www.usa.gov/renew-adult-passport",
+            "snippet": "Learn how to renew an adult passport by mail, online, or in person.",
+            "siteName": "usa.gov"
+          },
+          {
+            "title": "U.S. Passport Renewal Online - Passports.com",
+            "url": "https://www.passports.com/passport-renewal",
+            "snippet": "Renew your U.S. passport with Passports.com.",
+            "siteName": "passports.com"
+          },
+          {
+            "title": "Renew by Mail - Form DS-82",
+            "url": "https://travel.state.gov/content/travel/en/passports/have-passport/renew.html",
+            "snippet": "Renew your passport by mail using Form DS-82.",
+            "siteName": "travel.state.gov"
+          },
+          {
+            "title": "How to Renew Your Passport Online in 2026",
+            "url": "https://www.nerdwallet.com/article/travel/renew-passport-online",
+            "snippet": "Here's how the online renewal system works.",
+            "siteName": "nerdwallet.com"
+          }
+        ]
+      }
+    },
+    "gemini": {
+      "payload": {
+        "content": "You can renew a U.S. passport online through the State Department's Online Passport Renewal system on travel.state.gov. You are generally eligible if you are 25 or older, your most recent passport was issued when you were 16 or older and within the last 15 years, you are not changing your name (or have documentation), and you are not traveling internationally for at least six weeks. You sign in with a MyTravelGov account, upload a digital photo, and pay the $130 fee by card. If you are not eligible, use Form DS-82 to renew by mail.",
+        "citations": [
+          { "url": "https://travel.state.gov/content/travel/en/passports/have-passport/renew-online.html", "title": "state.gov" },
+          { "url": "https://www.usa.gov/renew-adult-passport", "title": "usa.gov" }
+        ]
+      }
+    }
+  },
+  "pages": [
+    { "id": "sponsored-fasttrack", "grade": 0, "urls": ["https://www.passportfasttrack.com/renew-online?utm_campaign=renewal&utm_source=brave"] },
+    {
+      "id": "state-renew-online",
+      "grade": 3,
+      "urls": [
+        "https://travel.state.gov/content/travel/en/passports/have-passport/renew-online.html",
+        "http://travel.state.gov/content/travel/en/passports/have-passport/renew-online.html",
+        "https://Travel.State.Gov/content/travel/en/passports/have-passport/renew-online.html#eligibility"
+      ]
+    },
+    { "id": "usagov-renew", "grade": 2, "urls": ["https://www.usa.gov/renew-adult-passport", "https://usa.gov/renew-adult-passport"] },
+    { "id": "state-renew-mail", "grade": 1, "urls": ["https://travel.state.gov/content/travel/en/passports/have-passport/renew.html"] },
+    { "id": "reddit-passports", "grade": 1, "urls": ["https://www.reddit.com/r/passports/comments/1dh8u3k/online_passport_renewal_worked_great_9_days_start/"] },
+    { "id": "nerdwallet", "grade": 2, "urls": ["https://www.nerdwallet.com/article/travel/renew-passport-online"] },
+    { "id": "passports-com", "grade": 0, "urls": ["https://www.passports.com/passport-renewal"] },
+    { "id": "state-fees", "grade": 2, "urls": ["https://travel.state.gov/content/travel/en/passports/how-apply/fees.html"] },
+    { "id": "state-launch-pr", "grade": 2, "urls": ["https://www.state.gov/department-of-state-launches-online-passport-renewal/"] }
+  ],
+  "answer": { "mustMention": ["MyTravelGov", "$130", "DS-82"] }
+}
