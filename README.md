@@ -132,7 +132,7 @@ Resolution order:
 
 `providerConfig.<id>` is the canonical place for per-provider overrides like `retry`, `timeoutMs`, `count`, and `weight`.
 
-`totalTimeoutMs` bounds the whole fan-out, including credential preparation, provider attempts, retries, and backoff (default `30000`, range `5000`–`180000`). When it expires, completed providers are returned as partial results and unfinished providers report `deadline exceeded`. `providerTimeoutMs` still bounds each individual attempt; timed-out and aborted attempts are not retried.
+`totalTimeoutMs` bounds the whole fan-out, including credential preparation, provider attempts, retries, and backoff (default `30000`, range `5000`–`180000`). When it expires, completed providers are returned as partial results and unfinished providers report `deadline exceeded`. A failed attempt whose retry backoff would not fit before the deadline is not retried and reports its own error. `providerTimeoutMs` still bounds each individual attempt; timed-out and aborted attempts are not retried.
 
 Retry classification works on the provider error message:
 - rate limits (a standalone `429`, "rate limit", or "too many requests") are always retried, even when the message also mentions the API key, and wait at least 2 seconds before the next attempt
