@@ -11,14 +11,33 @@ const TRACKING_PARAMS = new Set([
     "mc_eid",
     "ref",
 ]);
-function maybeDecode(value) {
-    if (!value)
-        return undefined;
+function isAbsoluteUrl(value) {
     try {
-        return decodeURIComponent(value);
+        new URL(value);
+        return true;
     }
     catch {
-        return value;
+        return false;
+    }
+}
+/**
+ * URLSearchParams already percent-decodes a value once. Decoding it again
+ * would turn an encoded "&", "#", or "%" inside the target URL into a real
+ * delimiter and change which page it points to. Decode a second time only
+ * when the value is not yet a URL, which covers double-encoded wrappers.
+ */
+function redirectTarget(value) {
+    const candidate = value?.trim();
+    if (!candidate)
+        return undefined;
+    if (isAbsoluteUrl(candidate))
+        return candidate;
+    try {
+        const decoded = decodeURIComponent(candidate);
+        return isAbsoluteUrl(decoded) ? decoded : candidate;
+    }
+    catch {
+        return candidate;
     }
 }
 export function asSingleLine(value) {
@@ -136,18 +155,20 @@ function unwrapKnownRedirectUrl(rawUrl) {
         const host = parsed.hostname.toLowerCase();
         const path = parsed.pathname;
         if ((host === "duckduckgo.com" || host === "www.duckduckgo.com") && path.startsWith("/l/")) {
-            const uddg = maybeDecode(parsed.searchParams.get("uddg"));
+            const uddg = redirectTarget(parsed.searchParams.get("uddg"));
             if (uddg)
                 return { url: uddg, unwrapped: true };
         }
         if (["www.google.com", "google.com", "l.google.com", "googleadservices.com", "www.googleadservices.com"].includes(host) &&
             (path === "/url" || path === "/pagead/aclk")) {
-            const q = maybeDecode(parsed.searchParams.get("q")) ?? maybeDecode(parsed.searchParams.get("url")) ?? maybeDecode(parsed.searchParams.get("adurl"));
+            const q = redirectTarget(parsed.searchParams.get("q")) ??
+                redirectTarget(parsed.searchParams.get("url")) ??
+                redirectTarget(parsed.searchParams.get("adurl"));
             if (q)
                 return { url: q, unwrapped: true };
         }
         if ((host === "l.facebook.com" || host === "lm.facebook.com") && path === "/l.php") {
-            const u = maybeDecode(parsed.searchParams.get("u"));
+            const u = redirectTarget(parsed.searchParams.get("u"));
             if (u)
                 return { url: u, unwrapped: true };
         }
