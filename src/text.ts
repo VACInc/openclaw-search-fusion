@@ -226,10 +226,23 @@ function unwrapKnownRedirectUrl(rawUrl: string): { url: string; unwrapped: boole
   return { url: rawUrl.trim(), unwrapped: false };
 }
 
+function isWebUrl(value: string): boolean {
+  try {
+    const protocol = new URL(value).protocol;
+    return protocol === "http:" || protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 export function analyzeUrl(rawUrl: string): UrlAnalysis {
   const originalUrl = rawUrl.trim();
   const flags = new Set<string>();
-  const unwrapped = unwrapKnownRedirectUrl(originalUrl);
+  const candidate = unwrapKnownRedirectUrl(originalUrl);
+  // Follow a wrapper only to a web page. A provider-controlled target such as
+  // javascript:, data:, or a relative path must not replace the wrapper URL.
+  const unwrapped =
+    candidate.unwrapped && !isWebUrl(candidate.url) ? { url: originalUrl, unwrapped: false } : candidate;
   if (unwrapped.unwrapped) {
     flags.add("redirect-wrapper");
   }
