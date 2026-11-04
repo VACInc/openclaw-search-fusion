@@ -277,7 +277,7 @@ The additive `missing` array now reports native catalog providers whose owning p
 
 `envKeyDetected` is boolean-only. Search Fusion never returns environment credential values. A provider can still be configured through plugin config or account auth when this flag is `false`.
 
-Registry-derived provider entries also include a non-secret `credentialSource` annotation when known. Because the plugin context cannot inspect the account-auth profile store directly, registry providers that declare `authProviderId` are included with `account-auth (unverified)` rather than being incorrectly omitted; the delegated OpenClaw runtime still performs the authoritative auth check.
+Registry-derived provider entries also include a non-secret `credentialSource` annotation when known. Because the plugin context cannot inspect the account-auth profile store directly, registry providers that declare `authProviderId` and have no detected env credential are included with `account-auth (unverified)` rather than being incorrectly omitted; the delegated OpenClaw runtime still performs the authoritative auth check.
 
 ### OpenClaw 2026.7.2 provider coverage
 
