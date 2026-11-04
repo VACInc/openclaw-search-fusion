@@ -262,7 +262,7 @@ Lists the providers visible to the broker and whether they appear configured.
 
 #### How discovery works
 
-Search Fusion unions the active runtime registry with its native provider catalog, adding catalog providers whose owning plugin is enabled in the live config. Runtime entries win on id collisions and keep their full credential accessors; catalog entries cover providers not yet present because OpenClaw activates plugins lazily. The resulting union drives listing, selection, modes, intent routing, sibling dedupe, and fan-out; delegated search still asks the runtime to load the selected provider on demand.
+Search Fusion unions the active runtime registry with its native provider catalog, adding catalog providers whose owning plugin is enabled in the live config (an entry under `plugins.entries` or the selected `tools.web.search.provider`). The host plugin policy still applies: `plugins.enabled: false`, a `plugins.deny` entry, an explicit `enabled: false`, or a `plugins.allow` list that omits the plugin (unless `plugins.bundledDiscovery` is `compat`) keeps a catalog provider disabled. Runtime entries win on id collisions and keep their full credential accessors; catalog entries cover providers not yet present because OpenClaw activates plugins lazily. The resulting union drives listing, selection, modes, intent routing, sibling dedupe, and fan-out; delegated search still asks the runtime to load the selected provider on demand.
 
 Before delegation, Search Fusion resolves plugin-entry or scoped credential SecretRefs for catalog-derived provider stubs so lazy-loaded providers receive the resolved credential config.
 
