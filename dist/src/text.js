@@ -88,8 +88,10 @@ const CHAT_TEMPLATE_TOKEN_PATTERN = /<\|[^|<>"\\\n]{0,64}\|>/g;
 const ROLE_WORDS = "system|assistant|developer|user|human|tool";
 const ROLE_TAG_PATTERN = new RegExp(`<\\s*(?:\\/\\s*)?(?:${ROLE_WORDS})\\s*>|\\[\\s*(?:\\/\\s*)?(?:${ROLE_WORDS})\\s*\\]`, "gi");
 // A role word acting as a speaker prefix: at the start of the text, or right
-// after a sentence, bracket, quote, markdown, or escaped-newline boundary.
-const ROLE_PREFIX_PATTERN = new RegExp(`(^|[.!?;:>\\])}|"'\`*#=,\\u2014\\u2013-]\\s*|\\\\[nrt]\\s*|\\n[^\\S\\n]*)(${ROLE_WORDS})\\s*:`, "gi");
+// after a sentence, bracket, quote, markdown, escaped-newline, or line-break
+// boundary. Line breaks include CR, NEL, and the Unicode line/paragraph
+// separators, which JSON.stringify leaves unescaped.
+const ROLE_PREFIX_PATTERN = new RegExp(`(^|[.!?;:>\\])}|"'\`*#=,\\u2014\\u2013-]\\s*|\\\\[nrt]\\s*|[\\n\\r\\u0085\\u2028\\u2029][^\\S\\n\\r\\u2028\\u2029]*)(${ROLE_WORDS})\\s*:`, "gi");
 // An all-caps role prefix reads as a speaker label anywhere in a line.
 const SHOUTED_ROLE_PREFIX_PATTERN = /\b(?:SYSTEM|ASSISTANT|DEVELOPER|USER|HUMAN|TOOL)\s*:/g;
 /**
