@@ -51,7 +51,7 @@
     "openclaw": ">=2026.4.9"
   },
   "devDependencies": {
-    "@openclaw/plugin-inspector": "0.3.10",
+    "@openclaw/plugin-inspector": "0.4.5",
     "@sinclair/typebox": "0.34.52",
     "@types/node": "^22.15.30",
     "openclaw": "2026.9.36",
