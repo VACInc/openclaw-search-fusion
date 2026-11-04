@@ -1001,7 +1001,7 @@ test("source-only configured SecretRefs are resolved with the provider's setter"
   assert.equal(secretResolverCalls.at(-1)?.path, "plugins.entries.srccfg.config.webSearch.apiKey");
 });
 
-test("unparseable result URLs still merge, borrow a later site name, and title from the URL", async () => {
+test("unparseable result URLs are discarded instead of merged", async () => {
   clearRuntimeConfigSnapshot();
   const payload = await runSearchFusion({
     runtime: runtimeWith([simpleProvider("brave"), simpleProvider("tavily")], async ({ providerId }) =>
@@ -1011,14 +1011,12 @@ test("unparseable result URLs still merge, borrow a later site name, and title f
     ),
     config: {},
     pluginConfig: {},
-    request: { query: "odd urls", providers: ["brave", "tavily"] },
+    request: { query: "odd urls", providers: ["brave", "tavily"], includeDiscarded: true },
   });
-  assert.equal(payload.results.length, 1);
-  const [merged] = payload.results;
-  assert.equal(merged?.canonicalUrl, "local reference 42");
-  // The URL-derived title is longer than "local", so it is kept.
-  assert.equal(merged?.title, "local reference 42");
-  assert.equal(merged?.siteName, "Intranet");
-  assert.deepEqual(merged?.flags, []);
-  assert.equal(merged?.providerCount, 2);
+  assert.equal(payload.results.length, 0);
+  const discarded = payload.discardedResults;
+  assert.deepEqual(
+    discarded.map((entry) => entry.reason),
+    ["unsupported-url", "unsupported-url"],
+  );
 });

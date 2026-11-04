@@ -196,15 +196,6 @@ function unwrapKnownRedirectUrl(rawUrl) {
     }
     return { url: rawUrl.trim(), unwrapped: false };
 }
-function isWebUrl(value) {
-    try {
-        const protocol = new URL(value).protocol;
-        return protocol === "http:" || protocol === "https:";
-    }
-    catch {
-        return false;
-    }
-}
 // Alternate front ends that serve the same page as the bare host.
 const HOST_ALIASES = {
     "old.reddit.com": "reddit.com",
@@ -309,6 +300,16 @@ export function analyzeUrl(rawUrl) {
             originalUrl,
             flags: [...flags].sort(),
         };
+    }
+}
+/** True only for an absolute http(s) URL with a host. */
+export function isWebUrl(value) {
+    try {
+        const parsed = new URL(value);
+        return (parsed.protocol === "http:" || parsed.protocol === "https:") && parsed.hostname.length > 0;
+    }
+    catch {
+        return false;
     }
 }
 export function canonicalizeUrl(rawUrl) {

@@ -1,5 +1,5 @@
 import { classifySourceTier, coerceSourceTierMode, sourceTierMultiplier, } from "./source-tier.js";
-import { analyzeUrl, canonicalDedupeHost, cleanProviderText, resolveSiteName, truncate } from "./text.js";
+import { analyzeUrl, canonicalDedupeHost, cleanProviderText, isWebUrl, resolveSiteName, truncate } from "./text.js";
 const DEFAULT_MAX_SNIPPET_LENGTH = 500;
 /** Answer digests are whole synthesized answers, so they get a larger cap than per-page snippets. */
 export const DEFAULT_MAX_ANSWER_LENGTH = 2000;
@@ -142,12 +142,16 @@ function mapResultArray(params) {
         const snippetTruncated = providerSnippet.value
             ? providerSnippet.truncated
             : fallbackSnippet.truncated || params.fallbackTruncated === true;
-        if (!rawUrl) {
+        const analyzedUrl = rawUrl ? analyzeUrl(rawUrl) : undefined;
+        // Only http(s) pages become results. Other schemes (javascript:, data:,
+        // file:, ...) and free text, including targets unwrapped from a redirect
+        // link, would otherwise reach UIs and models as clickable result links.
+        if (!analyzedUrl || !isWebUrl(analyzedUrl.url)) {
             discardedResults.push({
                 providerId: params.providerId,
                 sourceType: params.sourceType,
                 rawRank: index + 1,
-                reason: "missing-url",
+                reason: analyzedUrl ? "unsupported-url" : "missing-url",
                 title: firstCleanText(obj, ["title", "name", "headline", "label"]),
                 snippet,
                 ...(snippetTruncated ? { truncated: true } : {}),
@@ -155,7 +159,6 @@ function mapResultArray(params) {
             });
             return;
         }
-        const analyzedUrl = analyzeUrl(rawUrl);
         const itemFlags = detectItemFlags(obj, analyzedUrl.url);
         const flags = mergeFlags(analyzedUrl.flags, itemFlags);
         const sourceTier = classifySourceTier({ sourceType: params.sourceType, flags });
@@ -190,13 +193,15 @@ function buildCitationDetails(citationsRaw) {
     return citationsRaw.flatMap((entry) => {
         if (typeof entry === "string") {
             const analyzed = analyzeUrl(entry.trim());
-            return analyzed.url ? [{ url: analyzed.url, raw: entry }] : [];
+            return isWebUrl(analyzed.url) ? [{ url: analyzed.url, raw: entry }] : [];
         }
         const obj = asObject(entry);
         const url = firstString(obj, ["url", "link", "href"]);
         if (!url)
             return [];
         const analyzed = analyzeUrl(url);
+        if (!isWebUrl(analyzed.url))
+            return [];
         return [
             {
                 url: analyzed.url,

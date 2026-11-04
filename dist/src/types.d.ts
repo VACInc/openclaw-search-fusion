@@ -132,7 +132,12 @@ export type ResolvedProvider = {
 export type SearchResultFlag = "community" | "redirect-wrapper" | "sponsored" | "tracking-stripped" | "video";
 export type SearchResultSourceType = "results" | "citations" | "sources";
 export type SearchResultSourceTier = "high" | "standard" | "low" | "suppressed";
-export type DiscardedSearchResultReason = "missing-url";
+/**
+ * - `missing-url`: the item had no URL.
+ * - `unsupported-url`: the URL (after redirect unwrapping) is not an absolute
+ *   http(s) URL, e.g. `javascript:`, `data:`, `file:`, or free text.
+ */
+export type DiscardedSearchResultReason = "missing-url" | "unsupported-url";
 export type DiscardedSearchResult = {
     providerId: string;
     sourceType: SearchResultSourceType;
