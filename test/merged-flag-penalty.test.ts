@@ -23,7 +23,7 @@ async function fuse(byProvider: Record<string, Hit[]>) {
   });
 }
 
-test("one provider's sponsored placement does not sink an organically corroborated result", async () => {
+test("a page one provider marks sponsored keeps the sponsored penalty when another returns it organically", async () => {
   const payload = await fuse({
     brave: [
       { title: "Organic A", url: "https://a.example/page" },
@@ -31,12 +31,12 @@ test("one provider's sponsored placement does not sink an organically corroborat
     ],
     tavily: [{ title: "Ad A", url: "https://a.example/page", sponsored: true }],
   });
-  assert.deepEqual(payload.results.map((result) => result.url), ["https://a.example/page", "https://b.example/page"]);
-  const [top] = payload.results;
-  assert.equal(top?.providerCount, 2);
-  assert.equal(top?.ranking.scoreBreakdown.flagPenalty, 0);
-  // The union of flags stays visible for transparency.
-  assert.deepEqual(top?.flags, ["sponsored"]);
+  // Agreement must not lift a page that any provider marks as an ad.
+  assert.deepEqual(payload.results.map((result) => result.url), ["https://b.example/page", "https://a.example/page"]);
+  const ad = payload.results.find((result) => result.url === "https://a.example/page");
+  assert.equal(ad?.providerCount, 2);
+  assert.equal(ad?.ranking.scoreBreakdown.flagPenalty, 0.65);
+  assert.deepEqual(ad?.flags, ["sponsored"]);
 });
 
 test("a redirect-wrapped copy from one provider does not cancel the corroboration bonus", async () => {
@@ -48,7 +48,7 @@ test("a redirect-wrapped copy from one provider does not cancel the corroboratio
   const breakdown = payload.results[0]?.ranking.scoreBreakdown;
   assert.deepEqual(payload.results[0]?.flags, ["redirect-wrapper"]);
   assert.equal(breakdown?.flagPenalty, 0);
-  assert.equal(breakdown?.corroborationBonus, 0.12);
+  assert.equal(breakdown?.corroborationBonus, 0.3);
 });
 
 test("flags shared by every variant are still penalized at merge time", async () => {

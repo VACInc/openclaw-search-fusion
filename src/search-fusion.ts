@@ -24,7 +24,9 @@ import { normalizeProviderPayload } from "./result-normalizer.js";
 import {
   compareSourceTierDesc,
   coerceSourceTierMode,
+  pageFlagTierCap,
   pickHigherSourceTier,
+  pickLowerSourceTier,
   sourceTierMergedAdjustment,
 } from "./source-tier.js";
 import { canonicalizeUrl, sanitizeErrorText } from "./text.js";
@@ -43,6 +45,14 @@ const MIN_PROVIDER_WEIGHT = 0.1;
 const MAX_PROVIDER_WEIGHT = 5;
 const SEARCH_FUSION_PROVIDER_ID = "search-fusion";
 const MERGED_RANKING_STRATEGY = "merged-score-v1" as const;
+/**
+ * Score added for each additional provider that independently returned a
+ * page. Sized so that one extra provider outweighs a few rank positions
+ * (each rank step costs about 0.12 in variant score plus rank bonus): an
+ * independent second engine agreeing is stronger evidence than one engine's
+ * ordering among its own top five.
+ */
+const CORROBORATION_BONUS_PER_PROVIDER = 0.3;
 const MERGED_SORT_ORDER = ["score:desc", "bestRank:asc", "providerCount:desc", "title:asc"] as const;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -703,14 +713,26 @@ function mergedFlagPenalty(flags: readonly SearchResultFlag[]): number {
 
 /**
  * Flags carried by every variant of a merged URL. Delivery flags such as
- * sponsored, redirect-wrapper, and tracking-stripped describe how one
- * provider returned the URL, and that variant's own score already pays for
- * them; they should not penalize copies other providers returned cleanly.
+ * redirect-wrapper and tracking-stripped describe how one provider returned
+ * the URL, and that variant's own score already pays for them; they should
+ * not penalize copies other providers returned cleanly.
  */
 function flagsOnEveryVariant(variants: MergeCandidate["variants"]): SearchResultFlag[] {
   const [first, ...rest] = variants;
   if (!first) return [];
   return first.flags.filter((flag) => rest.every((variant) => variant.flags.includes(flag)));
+}
+
+// Content flags describe the page itself: if any provider marks it sponsored,
+// a video, or a forum thread, agreement from other providers must not lift it
+// past that.
+const PAGE_CONTENT_FLAGS: ReadonlySet<SearchResultFlag> = new Set<SearchResultFlag>(["sponsored", "video", "community"]);
+
+function penaltyFlags(entry: MergeCandidate): SearchResultFlag[] {
+  return mergeFlags(
+    flagsOnEveryVariant(entry.variants),
+    entry.flags.filter((flag) => PAGE_CONTENT_FLAGS.has(flag)),
+  );
 }
 
 function mergedSortOrder(sourceTierMode: SourceTierMode): string[] {
@@ -724,10 +746,16 @@ function computeMergedScoreBreakdown(
   sourceTierMode: SourceTierMode,
 ): FusionScoreBreakdown {
   const bestVariantScore = entry.variants.reduce((max, variant) => Math.max(max, variant.score), 0);
-  const corroborationBonus = Math.max(0, entry.providerCount - 1) * 0.12;
+  const corroborationBonus = Math.max(0, entry.providerCount - 1) * CORROBORATION_BONUS_PER_PROVIDER;
   const bestRankBonus = Math.max(0, 0.35 - (entry.bestRank - 1) * 0.04);
-  const tierAdjustment = sourceTierMergedAdjustment(entry.bestSourceTier, sourceTierMode);
-  const flagPenalty = mergedFlagPenalty(flagsOnEveryVariant(entry.variants));
+  // bestSourceTier is the best of any variant, so one provider that did not
+  // flag an ad or a video would otherwise lift the whole merged page; the
+  // larger agreement bonus made that enough to reach #1.
+  const tierAdjustment = sourceTierMergedAdjustment(
+    pickLowerSourceTier(entry.bestSourceTier, pageFlagTierCap(entry.flags)),
+    sourceTierMode,
+  );
+  const flagPenalty = mergedFlagPenalty(penaltyFlags(entry));
 
   return {
     bestVariantScore,

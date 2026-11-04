@@ -948,6 +948,85 @@ test("runSearchFusion flags mobile and alias spellings like the host they merge 
   }
 });
 
+test("runSearchFusion ranks cross-provider agreement above a single engine's top hit", async () => {
+  const filler = (prefix: string, count: number) =>
+    Array.from({ length: count }, (_, index) => ({ title: `${prefix} ${index}`, url: `https://${prefix}.example/${index}` }));
+  const resultsByProvider: Record<string, unknown> = {
+    // brave: solo top hit, then two fillers, then the agreed page at rank 3 and a deeper agreed page at rank 4.
+    brave: {
+      results: [
+        { title: "Solo top hit", url: "https://solo.example/top" },
+        ...filler("brave", 1),
+        { title: "Agreed", url: "https://agreed.example/page" },
+        { title: "Agreed deep", url: "https://agreed.example/deep" },
+      ],
+    },
+    tavily: {
+      results: [
+        ...filler("tavily", 2),
+        { title: "Agreed", url: "https://agreed.example/page" },
+        { title: "Agreed deep", url: "https://agreed.example/deep" },
+      ],
+    },
+  };
+  const payload = await runSearchFusion({
+    runtime: createRuntime({
+      search: async ({ providerId }) => ({
+        provider: providerId ?? "brave",
+        result: resultsByProvider[providerId ?? "brave"] as Record<string, unknown>,
+      }),
+    }) as never,
+    config: {},
+    pluginConfig: {},
+    request: { query: "agreement", providers: ["brave", "tavily"] },
+  });
+
+  const order = payload.results.map((result) => result.canonicalUrl);
+  const agreed = payload.results.find((result) => result.canonicalUrl === "https://agreed.example/page");
+  assert.equal(order[0], "https://agreed.example/page");
+  assert.equal(agreed?.ranking.scoreBreakdown.corroborationBonus, 0.3);
+  // Agreement only at rank 4 does not outrank a provider's clean #1.
+  assert.ok(order.indexOf("https://solo.example/top") < order.indexOf("https://agreed.example/deep"));
+});
+
+test("runSearchFusion does not let agreement lift a page one provider marked sponsored", async () => {
+  const resultsByProvider: Record<string, unknown> = {
+    brave: { results: [{ title: "Ad", url: "https://ad.example/x", sponsored: true }] },
+    duckduckgo: { results: [{ title: "Ad", url: "https://ad.example/x" }] },
+    tavily: {
+      results: [
+        { title: "Ad", url: "https://ad.example/x" },
+        { title: "Clean", url: "https://clean.example/page" },
+      ],
+    },
+    exa: { results: [{ title: "Clean solo", url: "https://solo.example/page" }] },
+  };
+  const payload = await runSearchFusion({
+    runtime: createRuntime({
+      providers: ["brave", "duckduckgo", "tavily", "exa"].map((id, index) => ({
+        id,
+        label: id,
+        configured: true,
+        autoDetectOrder: index + 1,
+      })),
+      search: async ({ providerId }) => ({
+        provider: providerId ?? "brave",
+        result: resultsByProvider[providerId ?? "brave"] as Record<string, unknown>,
+      }),
+    }) as never,
+    config: {},
+    pluginConfig: {},
+    request: { query: "ads", providers: ["brave", "duckduckgo", "tavily", "exa"] },
+  });
+
+  const order = payload.results.map((result) => result.canonicalUrl);
+  const ad = payload.results.find((result) => result.canonicalUrl === "https://ad.example/x");
+  assert.equal(ad?.providerCount, 3);
+  assert.deepEqual(ad?.flags, ["sponsored"]);
+  assert.equal(ad?.ranking.scoreBreakdown.tierAdjustment, -0.4);
+  assert.equal(order.at(-1), "https://ad.example/x");
+});
+
 test("runSearchFusion prefers a page's own snippet over a longer answer-digest copy", async () => {
   const answer =
     "A long synthesized answer that every citation inherits as its fallback snippet, which is much longer than the page's own snippet text.";
