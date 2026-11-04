@@ -136,3 +136,36 @@ test("package-publish.yml: publish waits for tests, typecheck, inspector, and ta
     "verify job must check the tag against package.json version",
   );
 });
+
+function runCommands(workflowName: string, jobId: string): string[] {
+  const job = readWorkflow(workflowName).jobs?.[jobId];
+  assert.ok(job, `${workflowName} must define job ${jobId}`);
+  return (job.steps ?? []).map((step) => (step as { run?: string }).run ?? "").filter(Boolean);
+}
+
+test("ci.yml: runs tests, typecheck and build on pull requests and main for Node 22 and 24", () => {
+  const workflow = readWorkflow("ci.yml");
+  const on = workflow.on as Record<string, unknown>;
+  assert.ok("pull_request" in on);
+  assert.deepEqual(on.push, { branches: ["main"] });
+  const job = workflow.jobs?.test as Job & { strategy?: { matrix?: { node?: number[] } } };
+  assert.deepEqual(job.strategy?.matrix?.node, [22, 24]);
+  assert.deepEqual(runCommands("ci.yml", "test"), [
+    "pnpm install --frozen-lockfile",
+    "pnpm test",
+    "pnpm check",
+    "pnpm run build",
+  ]);
+});
+
+test("audit.yml: audits runtime deps at any severity and the full tree at high+, on PRs and weekly", () => {
+  const on = readWorkflow("audit.yml").on as Record<string, unknown>;
+  assert.ok("pull_request" in on);
+  assert.deepEqual(on.push, { branches: ["main"] });
+  assert.ok(Array.isArray(on.schedule) && on.schedule.length === 1, "audit must also run on a schedule");
+  assert.deepEqual(runCommands("audit.yml", "audit"), ["pnpm audit --prod", "pnpm audit --audit-level=high"]);
+});
+
+test("plugin-inspector.yml: the inspector gate is still present", () => {
+  assert.ok(runCommands("plugin-inspector.yml", "check").includes("pnpm run plugin:ci"));
+});
