@@ -272,16 +272,18 @@ export function resolveProviderConfiguration(
     // ignore provider accessor errors
   }
 
-  // Plugin contexts do not expose the auth-profile store. Match core's
-  // account-auth route conservatively and make the uncertainty explicit.
-  if (provider.authProviderId) {
-    return { configured: true, credentialSource: "account-auth (unverified)" };
-  }
-
+  // A detected env credential is verifiable, so report it before the
+  // unverifiable account-auth route (catalog entries use the same order).
   for (const envVar of provider.envVars ?? []) {
     if (hasValue(process.env[envVar])) {
       return { configured: true, credentialSource: `environment (${envVar})` };
     }
+  }
+
+  // Plugin contexts do not expose the auth-profile store. Match core's
+  // account-auth route conservatively and make the uncertainty explicit.
+  if (provider.authProviderId) {
+    return { configured: true, credentialSource: "account-auth (unverified)" };
   }
 
   try {
