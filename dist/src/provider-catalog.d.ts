@@ -28,7 +28,13 @@ export type MissingProviderHint = {
  * The qa-lab-only provider is intentionally excluded.
  */
 export declare const KNOWN_PROVIDERS: readonly KnownProviderCatalogEntry[];
-/** Whether a catalog provider's owning plugin is enabled in the live config. */
+/**
+ * Whether a catalog provider's owning plugin is enabled in the live config.
+ * Mirrors the host's plugin policy: a disabled plugin system, a denylist
+ * entry, an explicit `enabled: false`, or a bundled-plugin allowlist that
+ * omits the plugin all keep it disabled, even when it is the selected
+ * web search provider.
+ */
 export declare function isKnownProviderPluginEnabled(provider: KnownProviderCatalogEntry, config: unknown): boolean;
 /**
  * Return catalog providers whose owning plugin is disabled or not enabled in
