@@ -78,13 +78,37 @@ function resolveConfiguredProviderPluginId(config) {
         return undefined;
     return KNOWN_PROVIDERS.find((provider) => provider.id === providerId)?.pluginId;
 }
-/** Whether a catalog provider's owning plugin is enabled in the live config. */
+function normalizePluginIdList(value) {
+    if (!Array.isArray(value))
+        return [];
+    return value
+        .filter((item) => typeof item === "string")
+        .map((item) => item.trim().toLowerCase())
+        .filter(Boolean);
+}
+/**
+ * Whether a catalog provider's owning plugin is enabled in the live config.
+ * Mirrors the host's plugin policy: a disabled plugin system, a denylist
+ * entry, an explicit `enabled: false`, or a bundled-plugin allowlist that
+ * omits the plugin all keep it disabled, even when it is the selected
+ * web search provider.
+ */
 export function isKnownProviderPluginEnabled(provider, config) {
     const root = asRecord(config);
     const plugins = asRecord(root?.plugins);
+    if (plugins?.enabled === false)
+        return false;
+    if (normalizePluginIdList(plugins?.deny).includes(provider.pluginId))
+        return false;
     const entries = asRecord(plugins?.entries);
     const entry = asRecord(entries?.[provider.pluginId]);
-    if (entry && entry.enabled !== false)
+    if (entry?.enabled === false)
+        return false;
+    const allow = normalizePluginIdList(plugins?.allow);
+    if (allow.length > 0 && plugins?.bundledDiscovery !== "compat" && !allow.includes(provider.pluginId)) {
+        return false;
+    }
+    if (entry)
         return true;
     return resolveConfiguredProviderPluginId(config) === provider.pluginId;
 }

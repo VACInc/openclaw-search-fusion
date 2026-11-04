@@ -35,19 +35,40 @@ export type FuzzyUrlAnalysis = {
   meaningfulQuery: string;
 };
 
-function maybeDecode(value: string | null): string | undefined {
-  if (!value) return undefined;
+function isAbsoluteUrl(value: string): boolean {
   try {
-    return decodeURIComponent(value);
+    new URL(value);
+    return true;
   } catch {
-    return value;
+    return false;
+  }
+}
+
+/**
+ * URLSearchParams already percent-decodes a value once. Decoding it again
+ * would turn an encoded "&", "#", or "%" inside the target URL into a real
+ * delimiter and change which page it points to. Decode a second time only
+ * when the value is not yet a URL, which covers double-encoded wrappers.
+ */
+function redirectTarget(value: string | null): string | undefined {
+  const candidate = value?.trim();
+  if (!candidate) return undefined;
+  if (isAbsoluteUrl(candidate)) return candidate;
+  try {
+    const decoded = decodeURIComponent(candidate);
+    return isAbsoluteUrl(decoded) ? decoded : candidate;
+  } catch {
+    return candidate;
   }
 }
 
 export type UrlAnalysis = {
   /** Display URL: redirect-unwrapped, tracking-stripped, query order kept. */
   url: string;
-  /** Dedupe key: `url` with query parameters in a stable sorted order. */
+  /**
+   * Dedupe key: `url` with query parameters in a stable sorted order, an
+   * `https:` scheme, and the host reduced by `canonicalDedupeHost`.
+   */
   canonicalUrl: string;
   originalUrl: string;
   flags: string[];
@@ -60,7 +81,11 @@ export function asSingleLine(value: string): string {
 export function truncate(value: string, max = 220): string {
   const normalized = asSingleLine(value);
   if (normalized.length <= max) return normalized;
-  return `${normalized.slice(0, Math.max(0, max - 1)).trimEnd()}…`;
+  let end = Math.max(0, max - 1);
+  // Do not split a surrogate pair: a lone high surrogate is invalid text.
+  const last = normalized.charCodeAt(end - 1);
+  if (last >= 0xd800 && last <= 0xdbff) end -= 1;
+  return `${normalized.slice(0, end).trimEnd()}…`;
 }
 
 // Zero-width and soft-hyphen characters can split a marker word so it no longer
@@ -111,9 +136,11 @@ const CHAT_TEMPLATE_TOKEN_PATTERN = /<\|[^|<>"\\\n]{0,64}\|>/g;
 const ROLE_WORDS = "system|assistant|developer|user|human|tool";
 const ROLE_TAG_PATTERN = new RegExp(`<\\s*(?:\\/\\s*)?(?:${ROLE_WORDS})\\s*>|\\[\\s*(?:\\/\\s*)?(?:${ROLE_WORDS})\\s*\\]`, "gi");
 // A role word acting as a speaker prefix: at the start of the text, or right
-// after a sentence, bracket, quote, markdown, or escaped-newline boundary.
+// after a sentence, bracket, quote, markdown, escaped-newline, or line-break
+// boundary. Line breaks include CR, NEL, and the Unicode line/paragraph
+// separators, which JSON.stringify leaves unescaped.
 const ROLE_PREFIX_PATTERN = new RegExp(
-  `(^|[.!?;:>\\])}|"'\`*#=,\\u2014\\u2013-]\\s*|\\\\[nrt]\\s*|\\n[^\\S\\n]*)(${ROLE_WORDS})\\s*:`,
+  `(^|[.!?;:>\\])}|"'\`*#=,\\u2014\\u2013-]\\s*|\\\\[nrt]\\s*|[\\n\\r\\u0085\\u2028\\u2029][^\\S\\n\\r\\u2028\\u2029]*)(${ROLE_WORDS})\\s*:`,
   "gi",
 );
 
@@ -141,19 +168,31 @@ export function neutralizeUntrustedText(value: string): string {
 }
 
 // Named credential fields: redact after "=" or ":" (query strings, headers, JSON).
+// A quoted value is redacted up to its closing quote, spaces and escaped
+// quotes included; an unquoted value ends at the next delimiter.
 const SECRET_FIELD_PATTERN =
-  /\b((?:api[_-]?key|access[_-]?token|refresh[_-]?token|auth[_-]?token|id[_-]?token|client[_-]?secret|secret[_-]?key|private[_-]?key|password|passwd|x-api-key|x-goog-api-key|subscription-key)["']?\s*[=:]\s*)(["']?)(?!\[REDACTED\])[^\s&"',;)}\]]+/gi;
+  /\b((?:api[_-]?key|access[_-]?token|refresh[_-]?token|auth[_-]?token|id[_-]?token|client[_-]?secret|secret[_-]?key|private[_-]?key|password|passwd|x-api-key|x-goog-api-key|subscription[_-]?(?:key|token))["']?\s*[=:]\s*)(?:"(?!\[REDACTED\]")(?:[^"\\\n]|\\.)*"|'(?!\[REDACTED\]')(?:[^'\\\n]|\\.)*'|(?!\[REDACTED\]|["'])[^\s&"',;)}\]]+)/gi;
 // Generic names are common words, so only redact the query-string form.
 const SECRET_QUERY_PATTERN = /\b((?:key|token|secret|sig|signature|apikey|auth)=)(?!\[REDACTED\])[^\s&"',;)}\]]+/gi;
 const BEARER_PATTERN = /\b(bearer|basic)\s+[A-Za-z0-9._~+/=-]{8,}/gi;
-const AUTH_HEADER_PATTERN = /\b(authorization\s*[:=]\s*)[^\s,;]+(?:\s+[^\s,;]+)?/gi;
+// Header form ("Authorization: Bearer x") and quoted-key form ('"Authorization": "x"').
+const AUTH_HEADER_PATTERN = /\b(authorization["']?\s*[:=]\s*["']?)(?!\[REDACTED\])[^\s,;"']+(?:\s+[^\s,;"']+)?/gi;
+// user:password@ or token@ in any scheme://authority.
+const URL_USERINFO_PATTERN = /\b([a-z][a-z0-9+.-]*:\/\/)(?!\[REDACTED\]@)[^\s/?#@"'<>]+@/gi;
+
+function redactFieldValue(match: string, prefix: string): string {
+  const value = match.slice(prefix.length);
+  const quote = value[0] === '"' || value[0] === "'" ? value[0] : "";
+  return `${prefix}${quote}[REDACTED]${quote}`;
+}
 
 /** Redact credential values that providers sometimes echo in error text. */
 export function redactSecrets(value: string): string {
   return value
+    .replace(URL_USERINFO_PATTERN, "$1[REDACTED]@")
     .replace(AUTH_HEADER_PATTERN, "$1[REDACTED]")
     .replace(BEARER_PATTERN, "$1 [REDACTED]")
-    .replace(SECRET_FIELD_PATTERN, "$1$2[REDACTED]")
+    .replace(SECRET_FIELD_PATTERN, redactFieldValue)
     .replace(SECRET_QUERY_PATTERN, "$1[REDACTED]");
 }
 
@@ -213,7 +252,7 @@ function unwrapKnownRedirectUrl(rawUrl: string): { url: string; unwrapped: boole
     const path = parsed.pathname;
 
     if ((host === "duckduckgo.com" || host === "www.duckduckgo.com") && path.startsWith("/l/")) {
-      const uddg = maybeDecode(parsed.searchParams.get("uddg"));
+      const uddg = redirectTarget(parsed.searchParams.get("uddg"));
       if (uddg) return { url: uddg, unwrapped: true };
     }
 
@@ -221,12 +260,15 @@ function unwrapKnownRedirectUrl(rawUrl: string): { url: string; unwrapped: boole
       ["www.google.com", "google.com", "l.google.com", "googleadservices.com", "www.googleadservices.com"].includes(host) &&
       (path === "/url" || path === "/pagead/aclk")
     ) {
-      const q = maybeDecode(parsed.searchParams.get("q")) ?? maybeDecode(parsed.searchParams.get("url")) ?? maybeDecode(parsed.searchParams.get("adurl"));
+      const q =
+        redirectTarget(parsed.searchParams.get("q")) ??
+        redirectTarget(parsed.searchParams.get("url")) ??
+        redirectTarget(parsed.searchParams.get("adurl"));
       if (q) return { url: q, unwrapped: true };
     }
 
     if ((host === "l.facebook.com" || host === "lm.facebook.com") && path === "/l.php") {
-      const u = maybeDecode(parsed.searchParams.get("u"));
+      const u = redirectTarget(parsed.searchParams.get("u"));
       if (u) return { url: u, unwrapped: true };
     }
   } catch {
@@ -235,6 +277,60 @@ function unwrapKnownRedirectUrl(rawUrl: string): { url: string; unwrapped: boole
 
   return { url: rawUrl.trim(), unwrapped: false };
 }
+
+// Alternate front ends that serve the same page as the bare host.
+const HOST_ALIASES: Readonly<Record<string, string>> = {
+  "old.reddit.com": "reddit.com",
+  "new.reddit.com": "reddit.com",
+  "np.reddit.com": "reddit.com",
+};
+
+const MOBILE_LABELS = new Set(["m", "mobile"]);
+
+// Two-label country suffixes such as co.uk or com.au: a host is never reduced
+// to one of these (`m.co.uk` stays as is). No public-suffix list is bundled,
+// so this covers the common shapes only.
+const COUNTRY_SECOND_LEVEL_SUFFIX = /^(?:ac|co|com|edu|gob|gouv|gov|go|mil|ne|net|nic|or|org)\.[a-z]{2}$/;
+
+// Shared-hosting suffixes where every subdomain is a different site.
+const SHARED_HOSTING_SUFFIXES = new Set([
+  "blogspot.com",
+  "github.io",
+  "gitlab.io",
+  "herokuapp.com",
+  "netlify.app",
+  "pages.dev",
+  "vercel.app",
+  "wordpress.com",
+]);
+
+/**
+ * Host used only in the dedupe key: drops a leading `www.`, a mobile label
+ * (`m.example.com`, `en.m.wikipedia.org`), and known front-end aliases.
+ * A registrable domain such as `m.co` is never reduced to a bare suffix.
+ */
+export function canonicalDedupeHost(hostname: string): string {
+  // "example.com." and "example.com" are the same host.
+  let labels = hostname.toLowerCase().replace(/\.$/, "").split(".");
+  const drop = (index: number) => {
+    const next = labels.filter((_, position) => position !== index);
+    const rest = next.join(".");
+    if (next.length >= 2 && !COUNTRY_SECOND_LEVEL_SUFFIX.test(rest) && !SHARED_HOSTING_SUFFIXES.has(rest)) {
+      labels = next;
+    }
+  };
+  if (labels[0] === "www") {
+    drop(0);
+  }
+  if (MOBILE_LABELS.has(labels[0])) {
+    drop(0);
+  } else if (labels.length > 3 && MOBILE_LABELS.has(labels[1])) {
+    drop(1);
+  }
+  const host = labels.join(".");
+  return HOST_ALIASES[host] ?? host;
+}
+
 
 function normalizeTrackingPattern(value: string): string {
   return value.trim().replace(/^\?/, "").toLowerCase();
@@ -291,13 +387,12 @@ function foldVariantHostname(hostname: string): string {
   if (normalized.startsWith("www.") && normalized.slice(4).includes(".")) {
     normalized = normalized.slice(4);
   }
-  while (
-    (normalized.startsWith("m.") || normalized.startsWith("amp.")) &&
-    normalized.split(".").length > 2
-  ) {
-    normalized = normalized.slice(normalized.indexOf(".") + 1);
+  while (normalized.startsWith("amp.") && normalized.split(".").length > 2) {
+    normalized = normalized.slice("amp.".length);
   }
-  return normalized;
+  // www., mobile labels (m., en.m.) and front-end aliases (old.reddit.com),
+  // never reducing a host to a bare suffix such as co.uk or github.io.
+  return canonicalDedupeHost(normalized);
 }
 
 function foldAmpPath(pathname: string): string {
@@ -325,7 +420,11 @@ export function analyzeUrl(
 ): UrlAnalysis {
   const originalUrl = rawUrl.trim();
   const flags = new Set<string>();
-  const unwrapped = unwrapKnownRedirectUrl(originalUrl);
+  const candidate = unwrapKnownRedirectUrl(originalUrl);
+  // Follow a wrapper only to a web page. A provider-controlled target such as
+  // javascript:, data:, or a relative path must not replace the wrapper URL.
+  const unwrapped =
+    candidate.unwrapped && !isWebUrl(candidate.url) ? { url: originalUrl, unwrapped: false } : candidate;
   if (unwrapped.unwrapped) {
     flags.add("redirect-wrapper");
   }
@@ -350,6 +449,15 @@ export function analyzeUrl(
     // The same page can arrive with its query parameters in a different order.
     // Sorting is stable, so repeated keys keep their relative order.
     parsed.searchParams.sort();
+    // Providers disagree on scheme and on www/mobile host spellings of the
+    // same page; the dedupe key ignores both. The display URL keeps them.
+    // An explicit port can serve a different site per scheme, so keep it.
+    if (parsed.protocol === "http:" && parsed.port === "") {
+      parsed.protocol = "https:";
+    }
+    if (parsed.protocol === "https:") {
+      parsed.hostname = canonicalDedupeHost(parsed.hostname);
+    }
 
     return {
       url,
@@ -365,6 +473,16 @@ export function analyzeUrl(
       originalUrl,
       flags: [...flags].sort(),
     };
+  }
+}
+
+/** True only for an absolute http(s) URL with a host. */
+export function isWebUrl(value: string): boolean {
+  try {
+    const parsed = new URL(value);
+    return (parsed.protocol === "http:" || parsed.protocol === "https:") && parsed.hostname.length > 0;
+  } catch {
+    return false;
   }
 }
 

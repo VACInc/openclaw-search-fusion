@@ -113,6 +113,7 @@ function minimalPayload(overrides: Partial<FusionSearchPayload> = {}): FusionSea
       includeRawPayloads: false,
       includeDiscarded: false,
       maxSnippetLength: 500,
+      maxAnswerLength: 2000,
     },
     results: [
       {
@@ -552,4 +553,17 @@ test("compareAuditRecords detects provider status changes", () => {
 
   assert.ok(diff.providerChanges.some((c) => c.includes("tavily") && c.includes("failed")));
   assert.match(diff.summary, /Provider status changes/);
+});
+
+test("compareAuditRecords matches records captured under older dedupe keys", () => {
+  const legacy = minimalPayload();
+  legacy.results = legacy.results.map((result, index) =>
+    index === 0 ? { ...result, canonicalUrl: "http://www.docs.openclaw.ai/plugins/sdk" } : result,
+  );
+  const original = createAuditRecord({ payload: legacy, request: defaultRequest, capturedAt: "2026-04-09T10:00:00.000Z" });
+  const rerun = createAuditRecord({ payload: minimalPayload(), request: defaultRequest, capturedAt: "2026-04-09T11:00:00.000Z" });
+  const diff = compareAuditRecords(original, rerun);
+  assert.deepEqual(diff.urlsAdded, []);
+  assert.deepEqual(diff.urlsRemoved, []);
+  assert.equal(diff.urlsRetained.length, 2);
 });

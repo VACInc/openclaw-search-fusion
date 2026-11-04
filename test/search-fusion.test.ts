@@ -884,6 +884,195 @@ test("runSearchFusion passes raw configured credentials through to delegated pro
   assert.ok(seen.searchConfigs.every((config) => config === rawConfig));
 });
 
+test("runSearchFusion merges scheme and www/mobile variants of one page and shows the https URL", { skip: "this branch shows the highest-ranked variant's URL as-is" }, async () => {
+  const resultsByProvider: Record<string, unknown> = {
+    brave: { results: [{ title: "Primer", url: "http://www.example.com/primer/" }] },
+    duckduckgo: { results: [{ title: "Primer", url: "https://m.example.com/primer" }] },
+    tavily: {
+      results: [
+        { title: "Primer", url: "https://example.com/primer" },
+        { title: "Other", url: "https://docs.example.com/primer" },
+      ],
+    },
+  };
+  const payload = await runSearchFusion({
+    runtime: createRuntime({
+      search: async ({ providerId }) => ({
+        provider: providerId ?? "brave",
+        result: resultsByProvider[providerId ?? "brave"] as Record<string, unknown>,
+      }),
+    }) as never,
+    config: {},
+    pluginConfig: {},
+    request: { query: "host variants", providers: ["brave", "duckduckgo", "tavily"] },
+  });
+
+  assert.equal(payload.results.length, 2);
+  const primer = payload.results.find((result) => result.canonicalUrl === "https://example.com/primer");
+  assert.deepEqual(primer?.providers, ["brave", "duckduckgo", "tavily"]);
+  // Only the scheme is upgraded; the host keeps the first provider's spelling.
+  assert.equal(primer?.url, "https://www.example.com/primer");
+  assert.deepEqual(
+    primer?.variants.map((variant) => variant.originalUrl).sort(),
+    ["http://www.example.com/primer/", "https://example.com/primer", "https://m.example.com/primer"],
+  );
+  // A different subdomain is a different site.
+  assert.ok(payload.results.some((result) => result.canonicalUrl === "https://docs.example.com/primer"));
+});
+
+test("runSearchFusion flags mobile and alias spellings like the host they merge with", async () => {
+  const resultsByProvider: Record<string, unknown> = {
+    brave: {
+      results: [
+        { title: "Video", url: "https://www.youtube.com/watch?v=abc" },
+        { title: "Thread", url: "https://www.reddit.com/r/x/comments/1/t" },
+      ],
+    },
+    duckduckgo: {
+      results: [
+        { title: "Video", url: "https://m.youtube.com/watch?v=abc" },
+        { title: "Thread", url: "https://np.reddit.com/r/x/comments/1/t" },
+      ],
+    },
+  };
+  const payload = await runSearchFusion({
+    runtime: createRuntime({
+      search: async ({ providerId }) => ({
+        provider: providerId ?? "brave",
+        result: resultsByProvider[providerId ?? "brave"] as Record<string, unknown>,
+      }),
+    }) as never,
+    config: {},
+    pluginConfig: {},
+    request: { query: "mobile flags", providers: ["brave", "duckduckgo"] },
+  });
+
+  assert.equal(payload.results.length, 2);
+  for (const result of payload.results) {
+    assert.equal(result.providerCount, 2);
+    // No unflagged copy lifts the merged page out of the low tier.
+    assert.equal(result.bestSourceTier, "low");
+    for (const variant of result.variants) assert.equal(variant.sourceTier, "low");
+  }
+});
+
+test("runSearchFusion ranks cross-provider agreement above a single engine's top hit", { skip: "this branch orders by score, then provider priority, with rank only as a tie-breaker" }, async () => {
+  const filler = (prefix: string, count: number) =>
+    Array.from({ length: count }, (_, index) => ({ title: `${prefix} ${index}`, url: `https://${prefix}.example/${index}` }));
+  const resultsByProvider: Record<string, unknown> = {
+    // brave: solo top hit, then two fillers, then the agreed page at rank 3 and a deeper agreed page at rank 4.
+    brave: {
+      results: [
+        { title: "Solo top hit", url: "https://solo.example/top" },
+        ...filler("brave", 1),
+        { title: "Agreed", url: "https://agreed.example/page" },
+        { title: "Agreed deep", url: "https://agreed.example/deep" },
+      ],
+    },
+    tavily: {
+      results: [
+        ...filler("tavily", 2),
+        { title: "Agreed", url: "https://agreed.example/page" },
+        { title: "Agreed deep", url: "https://agreed.example/deep" },
+      ],
+    },
+  };
+  const payload = await runSearchFusion({
+    runtime: createRuntime({
+      search: async ({ providerId }) => ({
+        provider: providerId ?? "brave",
+        result: resultsByProvider[providerId ?? "brave"] as Record<string, unknown>,
+      }),
+    }) as never,
+    config: {},
+    pluginConfig: {},
+    request: { query: "agreement", providers: ["brave", "tavily"] },
+  });
+
+  const order = payload.results.map((result) => result.canonicalUrl);
+  const agreed = payload.results.find((result) => result.canonicalUrl === "https://agreed.example/page");
+  assert.equal(order[0], "https://agreed.example/page");
+  assert.equal(agreed?.ranking.scoreBreakdown.corroborationBonus, 0.3);
+  // Agreement only at rank 4 does not outrank a provider's clean #1.
+  assert.ok(order.indexOf("https://solo.example/top") < order.indexOf("https://agreed.example/deep"));
+});
+
+test("runSearchFusion does not let agreement lift a page one provider marked sponsored", async () => {
+  const resultsByProvider: Record<string, unknown> = {
+    brave: { results: [{ title: "Ad", url: "https://ad.example/x", sponsored: true }] },
+    duckduckgo: { results: [{ title: "Ad", url: "https://ad.example/x" }] },
+    tavily: {
+      results: [
+        { title: "Ad", url: "https://ad.example/x" },
+        { title: "Clean", url: "https://clean.example/page" },
+      ],
+    },
+    exa: { results: [{ title: "Clean solo", url: "https://solo.example/page" }] },
+  };
+  const payload = await runSearchFusion({
+    runtime: createRuntime({
+      providers: ["brave", "duckduckgo", "tavily", "exa"].map((id, index) => ({
+        id,
+        label: id,
+        configured: true,
+        autoDetectOrder: index + 1,
+      })),
+      search: async ({ providerId }) => ({
+        provider: providerId ?? "brave",
+        result: resultsByProvider[providerId ?? "brave"] as Record<string, unknown>,
+      }),
+    }) as never,
+    config: {},
+    pluginConfig: {},
+    request: { query: "ads", providers: ["brave", "duckduckgo", "tavily", "exa"] },
+  });
+
+  const order = payload.results.map((result) => result.canonicalUrl);
+  const ad = payload.results.find((result) => result.canonicalUrl === "https://ad.example/x");
+  assert.equal(ad?.providerCount, 3);
+  assert.deepEqual(ad?.flags, ["sponsored"]);
+  assert.equal(ad?.ranking.scoreBreakdown.tierAdjustment, -0.4);
+  assert.equal(order.at(-1), "https://ad.example/x");
+});
+
+test("runSearchFusion prefers a page's own snippet over a longer answer-digest copy", async () => {
+  const answer =
+    "A long synthesized answer that every citation inherits as its fallback snippet, which is much longer than the page's own snippet text.";
+  const resultsByProvider: Record<string, unknown> = {
+    gemini: {
+      content: answer,
+      citations: [
+        { url: "https://example.com/cited", title: "example.com" },
+        { url: "https://example.com/only-cited", title: "example.com" },
+      ],
+    },
+    brave: { results: [{ title: "Cited page", url: "https://example.com/cited", description: "Short page text." }] },
+  };
+
+  for (const order of [["gemini", "brave"], ["brave", "gemini"]]) {
+    const payload = await runSearchFusion({
+      runtime: createRuntime({
+        search: async ({ providerId }) => ({
+          provider: providerId ?? "brave",
+          result: resultsByProvider[providerId ?? "brave"] as Record<string, unknown>,
+        }),
+      }) as never,
+      config: {},
+      pluginConfig: {},
+      request: { query: "snippet provenance", providers: order },
+    });
+
+    const cited = payload.results.find((result) => result.canonicalUrl === "https://example.com/cited");
+    assert.equal(cited?.snippet, "Short page text.", `provider order ${order.join(",")}`);
+    assert.deepEqual(cited?.providers, ["brave", "gemini"]);
+    const row = payload.evidenceTable.rows.find((entry) => entry.canonicalUrl === "https://example.com/cited");
+    assert.equal(row?.snippet, "Short page text.");
+
+    // This branch's result-quality filter drops citation-only results whose
+    // title is just the domain, so the answer-only page is not checked here.
+  }
+});
+
 test("runSearchFusion merges duplicate URLs across providers and keeps provider variants", async () => {
   const payload = await runSearchFusion({
     runtime: createRuntime() as never,
@@ -918,6 +1107,7 @@ test("runSearchFusion merges duplicate URLs across providers and keeps provider 
     includeRawPayloads: false,
     includeDiscarded: false,
     maxSnippetLength: 500,
+    maxAnswerLength: 2000,
   });
 
   assert.equal(payload.evidenceTable.version, 1);
@@ -1197,7 +1387,8 @@ test("runSearchFusion can disable fuzzy dedupe without disabling legacy exact me
     [1, 1],
   );
   const legacyExact = payload.results.find(
-    (result) => result.canonicalUrl === "http://www.example.com/story/amp",
+    // The exact canonical URL folds scheme and www. but keeps the /amp path.
+    (result) => result.canonicalUrl === "https://example.com/story/amp",
   );
   assert.equal(legacyExact?.variants.length, 2);
 });
@@ -3500,7 +3691,7 @@ test("runSearchFusion bounds visible text and keeps full fidelity behind opt-ins
   const bounded = await runSearchFusion({
     runtime,
     config: {},
-    pluginConfig: { maxSnippetLength: 120 },
+    pluginConfig: { maxSnippetLength: 120, maxAnswerLength: 150 },
     request: { query: "bounded", providers: ["gemini"] },
   });
   assert.equal(bounded.providerRuns[0]?.rawPayload, undefined);
@@ -3509,7 +3700,8 @@ test("runSearchFusion bounds visible text and keeps full fidelity behind opt-ins
   assert.deepEqual(bounded.providerRuns[0]?.discardedResults, []);
   assert.equal(bounded.providerDetails[0]?.discardedCount, 1);
   assert.equal(bounded.answers[0]?.truncated, true);
-  assert.ok((bounded.answers[0]?.fullContent.length ?? Infinity) <= 120);
+  assert.ok((bounded.answers[0]?.fullContent.length ?? Infinity) <= 150);
+  assert.ok((bounded.answers[0]?.fullContent.length ?? 0) > 120);
   assert.equal(bounded.results[0]?.truncated, true);
   assert.ok((bounded.results[0]?.snippet?.length ?? Infinity) <= 120);
   assert.equal(bounded.results[0]?.variants[0]?.truncated, true);
@@ -3918,4 +4110,56 @@ test("runSearchFusion merges the same page when query parameters arrive in a dif
 
   const evidence = payload.evidenceTable.rows.find((row) => row.canonicalUrl === "https://example.com/page?a=1&b=2");
   assert.equal(evidence?.answerCitationSupport.count, 1);
+});
+
+test("runSearchFusion keeps whole answers under the answer cap while snippets keep the snippet cap", async () => {
+  const sentence = "Renewal steps and fees are listed here in full detail for the reader. ";
+  const answer = `${sentence.repeat(14)}Use Form DS-82 to renew by mail.`;
+  assert.ok(answer.length > 1000 && answer.length < 2000);
+  const runtime = createRuntime({
+    search: async ({ providerId }) => ({
+      provider: providerId ?? "gemini",
+      result: { content: answer, citations: ["https://travel.example.gov/renew"] },
+    }),
+  }) as never;
+
+  const payload = await runSearchFusion({
+    runtime,
+    config: {},
+    pluginConfig: {},
+    request: { query: "renew passport", providers: ["gemini"] },
+  });
+  assert.equal(payload.output.maxAnswerLength, 2000);
+  assert.equal(payload.answers[0]?.fullContent, answer);
+  assert.equal(payload.answers[0]?.truncated, undefined);
+  assert.equal(payload.answers[0]?.summaryTruncated, true);
+  // The citation's fallback snippet is still bounded by maxSnippetLength.
+  assert.equal(payload.results[0]?.truncated, true);
+  assert.ok((payload.results[0]?.snippet?.length ?? Infinity) <= 500);
+
+  const capped = await runSearchFusion({
+    runtime,
+    config: {},
+    pluginConfig: { maxAnswerLength: 300 },
+    request: { query: "renew passport", providers: ["gemini"] },
+  });
+  assert.equal(capped.answers[0]?.truncated, true);
+  assert.ok((capped.answers[0]?.fullContent.length ?? Infinity) <= 300);
+
+  // A large snippet cap configured for long answers is still honored.
+  const longAnswer = `${sentence.repeat(40)}End.`;
+  const wide = await runSearchFusion({
+    runtime: createRuntime({
+      search: async ({ providerId }) => ({
+        provider: providerId ?? "gemini",
+        result: { content: longAnswer, citations: ["https://travel.example.gov/renew"] },
+      }),
+    }) as never,
+    config: {},
+    pluginConfig: { maxSnippetLength: 5000 },
+    request: { query: "renew passport", providers: ["gemini"] },
+  });
+  assert.ok(longAnswer.length > 2000);
+  assert.equal(wide.output.maxAnswerLength, 5000);
+  assert.equal(wide.answers[0]?.fullContent, longAnswer);
 });

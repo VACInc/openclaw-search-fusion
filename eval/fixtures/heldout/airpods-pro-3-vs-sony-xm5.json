@@ -1,0 +1,180 @@
+{
+  "id": "airpods-pro-3-vs-sony-xm5",
+  "query": "airpods pro 3 vs sony wf-1000xm5",
+  "notes": "Product comparison with a sponsored Amazon listing on top of Brave, an affiliate listicle farm, retailer pages, review sites that agree with each other only partly on order, and Tavily failing with a 502.",
+  "providers": {
+    "brave": {
+      "payload": {
+        "results": [
+          {
+            "title": "Apple AirPods Pro 3 Wireless Earbuds, Active Noise Cancellation - Amazon.com",
+            "url": "https://www.amazon.com/Apple-AirPods-Pro-Wireless-Cancellation/dp/B0FQFZ3K8L?tag=brv-sp-20",
+            "description": "Shop AirPods Pro 3 with Active Noise Cancellation, heart rate sensing and up to 8 hours of listening. Free delivery on eligible orders.",
+            "siteName": "Amazon.com",
+            "sponsored": true
+          },
+          {
+            "title": "Apple AirPods Pro 3 vs Sony WF-1000XM5 Side-by-Side Comparison - RTINGS.com",
+            "url": "https://www.rtings.com/headphones/tools/compare/apple-airpods-pro-3-truly-wireless-vs-sony-wf-1000xm5-truly-wireless/68110/44342",
+            "description": "The Apple AirPods Pro 3 and the Sony WF-1000XM5 are both premium noise cancelling earbuds. The Apple are better for iPhone users and have a more stable fit, while the Sony have a more customizable sound and slightly better noise isolation in the bass range.",
+            "siteName": "RTINGS.com"
+          },
+          {
+            "title": "AirPods Pro 3 vs Sony WF-1000XM5: which noise-cancelling earbuds should you buy? | What Hi-Fi?",
+            "url": "https://www.whathifi.com/vs/airpods-pro-3-vs-sony-wf-1000xm5",
+            "description": "We compare Apple's latest AirPods with Sony's five-star WF-1000XM5 for sound, noise cancelling, battery life, features and price.",
+            "published": "2025-10-02T00:00:00.000Z",
+            "siteName": "What Hi-Fi?"
+          },
+          {
+            "title": "Sony WF-1000XM5 vs Apple AirPods Pro 3 - SoundGuys",
+            "url": "https://www.soundguys.com/sony-wf-1000xm5-vs-apple-airpods-pro-3-148210/",
+            "description": "We measured ANC attenuation, frequency response and battery life for both. AirPods Pro 3 now edge out the XM5 on noise cancelling in our lab tests; Sony still lasts longer per charge.",
+            "published": "2025-10-20T00:00:00.000Z",
+            "siteName": "SoundGuys"
+          },
+          {
+            "title": "AirPods Pro 3 review: the best AirPods yet | The Verge",
+            "url": "https://www.theverge.com/reviews/airpods-pro-3-review",
+            "description": "Apple's third-gen AirPods Pro bring better noise cancellation, a new fit, and heart-rate sensing.",
+            "published": "2025-09-16T00:00:00.000Z",
+            "siteName": "The Verge"
+          },
+          {
+            "title": "AirPods Pro 3 vs Sony XM5 — which did you pick? : r/headphones",
+            "url": "https://www.reddit.com/r/headphones/comments/1o2k7xq/airpods_pro_3_vs_sony_xm5_which_did_you_pick/",
+            "description": "Had both for a month. Sony sounds fuller with EQ, AirPods fit better and the transparency mode is miles ahead...",
+            "siteName": "Reddit"
+          },
+          {
+            "title": "Sony WF-1000XM5 Truly Wireless Noise Canceling Earbuds - Best Buy",
+            "url": "https://www.bestbuy.com/site/sony-wf1000xm5-true-wireless-noise-canceling-earbuds-black/6554209.p?skuId=6554209",
+            "description": "Shop Sony WF-1000XM5 Truly Wireless Noise Canceling Earbuds Black at Best Buy. Find low everyday prices and buy online for delivery or in-store pick-up.",
+            "siteName": "Best Buy"
+          }
+        ]
+      }
+    },
+    "exa": {
+      "payload": {
+        "results": [
+          {
+            "title": "Sony WF-1000XM5 vs Apple AirPods Pro 3",
+            "url": "https://www.soundguys.com/sony-wf-1000xm5-vs-apple-airpods-pro-3-148210/",
+            "description": "AirPods Pro 3 vs Sony WF-1000XM5: lab measurements of ANC, sound and battery.",
+            "published": "2025-10-20T00:00:00.000Z",
+            "siteName": "soundguys.com",
+            "summary": "SoundGuys finds AirPods Pro 3 slightly better at noise cancelling and much better for iPhone owners, while the Sony WF-1000XM5 offers longer battery life, LDAC support and a more customizable EQ for Android users.",
+            "highlightScores": [0.58]
+          },
+          {
+            "title": "AirPods Pro 3 vs Sony WF-1000XM5",
+            "url": "https://whathifi.com/vs/airpods-pro-3-vs-sony-wf-1000xm5",
+            "description": "Which noise-cancelling earbuds should you buy?",
+            "siteName": "whathifi.com",
+            "highlightScores": [0.52]
+          },
+          {
+            "title": "The 10 Best Wireless Earbuds of 2026 (We Tested Them All!)",
+            "url": "https://besttechpicks.org/best-wireless-earbuds/?ref=exa",
+            "description": "Our experts tested 57 earbuds. #1 AirPods Pro 3 #2 Sony WF-1000XM5 #3... Check price on Amazon!",
+            "siteName": "besttechpicks.org",
+            "highlightScores": [0.47]
+          },
+          {
+            "title": "Sony WF-1000XM5 review: still the earbuds to beat for sound",
+            "url": "https://www.theverge.com/23843486/sony-wf-1000xm5-review-earbuds-noise-canceling",
+            "description": "Sony's WF-1000XM5 are smaller, lighter and sound better than their predecessor.",
+            "published": "2023-07-24T00:00:00.000Z",
+            "siteName": "theverge.com",
+            "highlightScores": [0.33]
+          },
+          {
+            "title": "AirPods Pro 3 vs Sony WF-1000XM5 - The Ultimate Comparison",
+            "url": "https://www.youtube.com/watch?v=pQ7m2vR0e1A",
+            "description": "Six weeks with both: ANC, call quality, sound, comfort tested.",
+            "siteName": "youtube.com",
+            "highlightScores": [0.3]
+          }
+        ]
+      }
+    },
+    "perplexity": {
+      "payload": {
+        "results": [
+          {
+            "title": "Apple AirPods Pro 3 vs Sony WF-1000XM5 Side-by-Side Comparison",
+            "url": "https://www.rtings.com/headphones/tools/compare/apple-airpods-pro-3-truly-wireless-vs-sony-wf-1000xm5-truly-wireless/68110/44342?disabled=1",
+            "description": "Side-by-side comparison of sound profile, noise isolation, battery and microphone performance.",
+            "siteName": "rtings.com"
+          },
+          {
+            "title": "AirPods Pro 3 vs Sony WF-1000XM5 | Tom's Guide",
+            "url": "https://www.tomsguide.com/audio/earbuds/airpods-pro-3-vs-sony-wf-1000xm5",
+            "description": "We put Apple's newest AirPods Pro up against Sony's flagship earbuds in seven rounds. Here's the winner.",
+            "published": "2025-10-08T00:00:00.000Z",
+            "siteName": "Tom's Guide"
+          },
+          {
+            "title": "AirPods Pro 3 vs Sony XM5 — which did you pick?",
+            "url": "https://www.reddit.com/r/headphones/comments/1o2k7xq/airpods_pro_3_vs_sony_xm5_which_did_you_pick",
+            "description": "Had both for a month...",
+            "siteName": "reddit.com"
+          },
+          {
+            "title": "AirPods Pro 3 - Apple",
+            "url": "https://www.apple.com/airpods-pro/",
+            "description": "AirPods Pro 3 feature the world's best in-ear Active Noise Cancellation, Hearing Health features and heart rate sensing.",
+            "siteName": "apple.com"
+          },
+          {
+            "title": "Sony WF-1000XM5 vs Apple AirPods Pro 3 - SoundGuys",
+            "url": "https://www.soundguys.com/sony-wf-1000xm5-vs-apple-airpods-pro-3-148210/?utm_source=perplexity",
+            "description": "We measured ANC attenuation, frequency response and battery life for both.",
+            "siteName": "soundguys.com"
+          }
+        ]
+      }
+    },
+    "tavily": { "error": "Tavily Search API error (502): Bad Gateway" }
+  },
+  "pages": [
+    { "id": "amazon-sponsored", "grade": 0, "urls": ["https://www.amazon.com/Apple-AirPods-Pro-Wireless-Cancellation/dp/B0FQFZ3K8L?tag=brv-sp-20"] },
+    {
+      "id": "rtings-compare",
+      "grade": 3,
+      "urls": [
+        "https://www.rtings.com/headphones/tools/compare/apple-airpods-pro-3-truly-wireless-vs-sony-wf-1000xm5-truly-wireless/68110/44342",
+        "https://www.rtings.com/headphones/tools/compare/apple-airpods-pro-3-truly-wireless-vs-sony-wf-1000xm5-truly-wireless/68110/44342?disabled=1"
+      ]
+    },
+    {
+      "id": "whathifi-vs",
+      "grade": 3,
+      "urls": ["https://www.whathifi.com/vs/airpods-pro-3-vs-sony-wf-1000xm5", "https://whathifi.com/vs/airpods-pro-3-vs-sony-wf-1000xm5"]
+    },
+    {
+      "id": "soundguys-vs",
+      "grade": 3,
+      "urls": [
+        "https://www.soundguys.com/sony-wf-1000xm5-vs-apple-airpods-pro-3-148210/",
+        "https://www.soundguys.com/sony-wf-1000xm5-vs-apple-airpods-pro-3-148210/?utm_source=perplexity"
+      ]
+    },
+    { "id": "tomsguide-vs", "grade": 3, "urls": ["https://www.tomsguide.com/audio/earbuds/airpods-pro-3-vs-sony-wf-1000xm5"] },
+    { "id": "verge-airpods-review", "grade": 1, "urls": ["https://www.theverge.com/reviews/airpods-pro-3-review"] },
+    { "id": "verge-xm5-review", "grade": 1, "urls": ["https://www.theverge.com/23843486/sony-wf-1000xm5-review-earbuds-noise-canceling"] },
+    {
+      "id": "reddit-headphones",
+      "grade": 2,
+      "urls": [
+        "https://www.reddit.com/r/headphones/comments/1o2k7xq/airpods_pro_3_vs_sony_xm5_which_did_you_pick/",
+        "https://www.reddit.com/r/headphones/comments/1o2k7xq/airpods_pro_3_vs_sony_xm5_which_did_you_pick"
+      ]
+    },
+    { "id": "bestbuy-xm5", "grade": 0, "urls": ["https://www.bestbuy.com/site/sony-wf1000xm5-true-wireless-noise-canceling-earbuds-black/6554209.p?skuId=6554209"] },
+    { "id": "farm-besttechpicks", "grade": 0, "urls": ["https://besttechpicks.org/best-wireless-earbuds/?ref=exa"] },
+    { "id": "youtube-comparison", "grade": 2, "urls": ["https://www.youtube.com/watch?v=pQ7m2vR0e1A"] },
+    { "id": "apple-airpods-pro", "grade": 1, "urls": ["https://www.apple.com/airpods-pro/"] }
+  ]
+}

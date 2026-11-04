@@ -2,8 +2,8 @@ import { getRuntimeConfigSnapshot } from "openclaw/plugin-sdk/runtime-config-sna
 import { discoverProviders, resolveSelectedProviders } from "./provider-discovery.js";
 import { readTopPages, resolveReadPagesConfig } from "./page-reader.js";
 import { KNOWN_PROVIDERS } from "./provider-catalog.js";
-import { applySearchResultQuality, calibrateProviderScores, normalizeProviderPayload, validateScoreCalibrationConfig, } from "./result-normalizer.js";
-import { compareSourceTierDesc, coerceSourceTierMode, pickHigherSourceTier, sourceTierMergedAdjustment, } from "./source-tier.js";
+import { applySearchResultQuality, calibrateProviderScores, DEFAULT_MAX_ANSWER_LENGTH, MAX_ANSWER_LENGTH_LIMIT, normalizeProviderPayload, validateScoreCalibrationConfig, } from "./result-normalizer.js";
+import { compareSourceTierDesc, coerceSourceTierMode, pageFlagTierCap, pickHigherSourceTier, pickLowerSourceTier, sourceTierMergedAdjustment, } from "./source-tier.js";
 import { analyzeFuzzyUrl, canonicalizeUrl, sanitizeErrorText, normalizeTitle, } from "./text.js";
 const DEFAULT_UNKNOWN_PROVIDER_COUNT = 5;
 const DEFAULT_GENERIC_PROVIDER_MAX_RESULTS = 10;
@@ -22,6 +22,14 @@ const MIN_PROVIDER_WEIGHT = 0.1;
 const MAX_PROVIDER_WEIGHT = 5;
 const SEARCH_FUSION_PROVIDER_ID = "search-fusion";
 const MERGED_RANKING_STRATEGY = "merged-score-v1";
+/**
+ * Score added for each additional provider that independently returned a
+ * page. Sized so that one extra provider outweighs a few rank positions
+ * (each rank step costs about 0.12 in variant score plus rank bonus): an
+ * independent second engine agreeing is stronger evidence than one engine's
+ * ordering among its own top five.
+ */
+const CORROBORATION_BONUS_PER_PROVIDER = 0.3;
 const MERGED_SORT_ORDER = [
     "score:desc",
     "providerPriority:asc",
@@ -1102,6 +1110,25 @@ function mergedFlagPenalty(flags) {
         penalty += 0.02;
     return penalty;
 }
+/**
+ * Flags carried by every variant of a merged URL. Delivery flags such as
+ * redirect-wrapper and tracking-stripped describe how one provider returned
+ * the URL, and that variant's own score already pays for them; they should
+ * not penalize copies other providers returned cleanly.
+ */
+function flagsOnEveryVariant(variants) {
+    const [first, ...rest] = variants;
+    if (!first)
+        return [];
+    return first.flags.filter((flag) => rest.every((variant) => variant.flags.includes(flag)));
+}
+// Content flags describe the page itself: if any provider marks it sponsored,
+// a video, or a forum thread, agreement from other providers must not lift it
+// past that.
+const PAGE_CONTENT_FLAGS = new Set(["sponsored", "video", "community"]);
+function penaltyFlags(entry) {
+    return mergeFlags(flagsOnEveryVariant(entry.variants), entry.flags.filter((flag) => PAGE_CONTENT_FLAGS.has(flag)));
+}
 function mergedSortOrder() {
     return [...MERGED_SORT_ORDER];
 }
@@ -1123,8 +1150,8 @@ function computeMergedScoreBreakdown(entry, sourceTierMode, ranking = DEFAULT_RA
     const bestVariantScore = entry.variants.reduce((max, variant) => Math.max(max, variant.score), 0);
     if (ranking.strategy === RRF_RANKING_STRATEGY) {
         const rrfScore = computeRrfScore(entry, ranking);
-        const tierAdjustment = sourceTierMergedAdjustment(entry.bestSourceTier, sourceTierMode);
-        const flagPenalty = mergedFlagPenalty(entry.flags);
+        const tierAdjustment = sourceTierMergedAdjustment(pickLowerSourceTier(entry.bestSourceTier, pageFlagTierCap(entry.flags)), sourceTierMode);
+        const flagPenalty = mergedFlagPenalty(penaltyFlags(entry));
         return {
             bestVariantScore,
             corroborationBonus: 0,
@@ -1135,12 +1162,15 @@ function computeMergedScoreBreakdown(entry, sourceTierMode, ranking = DEFAULT_RA
             finalScore: Math.max(0.01, rrfScore + tierAdjustment - flagPenalty),
         };
     }
-    const corroborationBonus = Math.max(0, entry.providerCount - 1) * 0.12;
+    const corroborationBonus = Math.max(0, entry.providerCount - 1) * CORROBORATION_BONUS_PER_PROVIDER;
     // Rank is an explicit tie-breaker after provider priority. Folding it into
     // the score would silently make rank take precedence over provider priority.
     const bestRankBonus = 0;
-    const tierAdjustment = sourceTierMergedAdjustment(entry.bestSourceTier, sourceTierMode);
-    const flagPenalty = mergedFlagPenalty(entry.flags);
+    // bestSourceTier is the best of any variant, so one provider that did not
+    // flag an ad or a video would otherwise lift the whole merged page; the
+    // larger agreement bonus made that enough to reach #1.
+    const tierAdjustment = sourceTierMergedAdjustment(pickLowerSourceTier(entry.bestSourceTier, pageFlagTierCap(entry.flags)), sourceTierMode);
+    const flagPenalty = mergedFlagPenalty(penaltyFlags(entry));
     return {
         bestVariantScore,
         corroborationBonus,
@@ -1206,7 +1236,11 @@ function pickBestSnippet(items) {
         return {};
     }
     const informative = withSnippets.filter((item) => normalizeTitle(item.snippet).length > 0);
-    const candidates = informative.length > 0 ? informative : withSnippets;
+    const informativeOrAll = informative.length > 0 ? informative : withSnippets;
+    // A snippet copied from an answer digest is the same text for every
+    // citation, so the page's own provider snippet wins, however short.
+    const pageSnippets = informativeOrAll.filter((item) => item.snippetSource === "provider");
+    const candidates = pageSnippets.length > 0 ? pageSnippets : informativeOrAll;
     const best = candidates.reduce((current, item) => item.snippet.length > current.snippet.length ? item : current);
     return {
         snippet: best.snippet,
@@ -1568,6 +1602,7 @@ async function runProvider(params) {
                 maxSnippetLength: params.maxSnippetLength,
                 urlOptions: params.urlOptions,
                 query: params.request.query,
+                maxAnswerLength: params.maxAnswerLength,
             });
             if (normalized.error) {
                 const providerError = new Error(normalized.error);
@@ -1630,7 +1665,7 @@ async function runProvider(params) {
             if (delayMs >= remainingBudgetMs) {
                 return failure(retryTiming.rateLimited
                     ? `Rate-limit wait of ${delayMs}ms${retryTiming.source ? ` from ${retryTiming.source}` : ""} exceeds the remaining total timeout budget of ${remainingBudgetMs}ms.`
-                    : "deadline exceeded");
+                    : lastError);
             }
             retryHistory.push({ attempt, error: lastError, delayMs });
             if (retryTiming.rateLimited) {
@@ -1702,7 +1737,10 @@ export async function runSearchFusion(params) {
     const includeRawPayloads = params.request.includeRawPayloads ?? brokerConfig.includeRawPayloads ?? false;
     const includeDiscarded = params.request.includeDiscarded ?? brokerConfig.includeDiscarded ?? false;
     const maxSnippetLength = clamp(brokerConfig.maxSnippetLength ?? DEFAULT_MAX_SNIPPET_LENGTH, 100, 5000);
-    const output = { includeRawPayloads, includeDiscarded, maxSnippetLength };
+    // Answers were once capped by maxSnippetLength; never cut them shorter than
+    // a configured snippet cap unless maxAnswerLength says so explicitly.
+    const maxAnswerLength = clamp(brokerConfig.maxAnswerLength ?? Math.max(DEFAULT_MAX_ANSWER_LENGTH, maxSnippetLength), 100, MAX_ANSWER_LENGTH_LIMIT);
+    const output = { includeRawPayloads, includeDiscarded, maxSnippetLength, maxAnswerLength };
     const runtimeConfigSnapshot = getRuntimeConfigSnapshot();
     const runtimeConfig = applySearchConfigContext(runtimeConfigSnapshot ?? params.contextConfig ?? params.config, params.searchConfig);
     const sourceConfig = await resolveRuntimeSourceConfig(params.config);
@@ -1798,6 +1836,7 @@ export async function runSearchFusion(params) {
                 sourceTierMode,
                 maxSnippetLength,
                 urlOptions: dedupe.enabled ? dedupe : undefined,
+                maxAnswerLength,
                 signal: runController.signal,
                 deadlineAt,
                 cooldowns: providerCooldowns,

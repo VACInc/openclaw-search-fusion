@@ -1,0 +1,137 @@
+{
+  "id": "why-sky-blue-rayleigh",
+  "query": "why is the sky blue rayleigh scattering",
+  "notes": "Science-fact query with Wikipedia appearing as desktop, mobile and percent-encoded variants under different titles, NASA with and without the /en/ path, and answer providers whose citations only partly overlap the index results.",
+  "providers": {
+    "exa": {
+      "payload": {
+        "results": [
+          {
+            "title": "Why Is the Sky Blue? | NASA Space Place – NASA Science for Kids",
+            "url": "https://spaceplace.nasa.gov/blue-sky/en/",
+            "description": "Sunlight reaches Earth's atmosphere and is scattered in all directions by all the gases and particles in the air. Blue light is scattered more than the other colors because it travels as shorter, smaller waves.",
+            "siteName": "spaceplace.nasa.gov",
+            "highlightScores": [0.62]
+          },
+          {
+            "title": "Rayleigh scattering",
+            "url": "https://en.wikipedia.org/wiki/Rayleigh_scattering",
+            "description": "Rayleigh scattering is the scattering or deflection of light by particles much smaller than the wavelength of the radiation. The intensity of the scattered light is inversely proportional to the fourth power of the wavelength.",
+            "siteName": "en.wikipedia.org",
+            "summary": "Rayleigh scattering, named after Lord Rayleigh, is elastic scattering by particles much smaller than the wavelength; its strong 1/λ⁴ dependence means blue light scatters far more than red, which is the main reason the daytime sky appears blue.",
+            "highlightScores": [0.57]
+          },
+          {
+            "title": "Why is the sky blue?",
+            "url": "https://math.ucr.edu/home/baez/physics/General/BlueSky/blue_sky.html",
+            "description": "From the Usenet Physics FAQ: A clear cloudless day-time sky is blue because molecules in the air scatter blue light from the sun more than they scatter red light. Why is the sky not violet?",
+            "siteName": "math.ucr.edu",
+            "highlightScores": [0.54]
+          },
+          {
+            "title": "If shorter wavelengths scatter more, why isn't the sky violet?",
+            "url": "https://physics.stackexchange.com/questions/109/why-is-the-sky-not-purple",
+            "description": "Sunlight contains less violet than blue, some violet is absorbed high in the atmosphere, and our eyes are less sensitive to violet.",
+            "siteName": "physics.stackexchange.com",
+            "highlightScores": [0.44]
+          },
+          {
+            "title": "Diffuse sky radiation",
+            "url": "https://en.wikipedia.org/wiki/Diffuse_sky_radiation",
+            "description": "Diffuse sky radiation is solar radiation reaching the Earth's surface after having been scattered from the direct solar beam by molecules or particulates in the atmosphere.",
+            "siteName": "en.wikipedia.org",
+            "highlightScores": [0.4]
+          }
+        ]
+      }
+    },
+    "brave": {
+      "payload": {
+        "results": [
+          {
+            "title": "Rayleigh scattering - Wikipedia",
+            "url": "https://en.wikipedia.org/wiki/Rayleigh_scattering",
+            "description": "Rayleigh scattering is the scattering or deflection of light by particles much smaller than the wavelength of the radiation.",
+            "siteName": "Wikipedia"
+          },
+          {
+            "title": "Why Is the Sky Blue? | NASA Space Place",
+            "url": "https://spaceplace.nasa.gov/blue-sky/",
+            "description": "Blue light is scattered more than the other colors because it travels as shorter, smaller waves. This is why we see a blue sky most of the time.",
+            "siteName": "NASA Space Place"
+          },
+          {
+            "title": "Why is the sky blue? | Britannica",
+            "url": "https://www.britannica.com/story/why-is-the-sky-blue",
+            "description": "The sky is blue because of the way air molecules scatter sunlight, a phenomenon called Rayleigh scattering.",
+            "siteName": "Britannica"
+          },
+          {
+            "title": "Why is the sky blue? - Met Office",
+            "url": "https://weather.metoffice.gov.uk/learn-about/weather/optical-effects/why-is-the-sky-blue",
+            "description": "Light from the sun is made up of all colours. Short-wavelength blue light is scattered most by the gas molecules in the atmosphere.",
+            "siteName": "Met Office"
+          },
+          {
+            "title": "Why Is the Sky Blue? - Scientific American",
+            "url": "https://www.scientificamerican.com/article/why-is-the-sky-blue/",
+            "description": "A physicist explains Rayleigh scattering and why the sky turns red at sunset.",
+            "siteName": "Scientific American"
+          },
+          {
+            "title": "Why is the sky blue? (simple explanation) - YouTube",
+            "url": "https://www.youtube.com/watch?v=ehUIlhKhzDA",
+            "description": "Minute Physics explains why the sky is blue and not violet.",
+            "siteName": "YouTube"
+          }
+        ]
+      }
+    },
+    "gemini": {
+      "payload": {
+        "content": "The sky is blue because of Rayleigh scattering. Sunlight is a mix of wavelengths, and when it passes through the atmosphere it is scattered by nitrogen and oxygen molecules that are much smaller than the wavelength of light. The amount of scattering is inversely proportional to the fourth power of the wavelength, so short blue wavelengths are scattered roughly five to six times more strongly than red. That scattered blue light reaches our eyes from every direction of the sky. The sky looks blue rather than violet because sunlight contains less violet, some is absorbed in the upper atmosphere, and human eyes are more sensitive to blue.",
+        "citations": [
+          { "url": "https://en.m.wikipedia.org/wiki/Rayleigh_scattering", "title": "wikipedia.org" },
+          { "url": "https://spaceplace.nasa.gov/blue-sky/en/", "title": "nasa.gov" },
+          { "url": "https://www.rmg.co.uk/stories/topics/why-sky-blue", "title": "rmg.co.uk" }
+        ]
+      }
+    },
+    "kimi": {
+      "payload": {
+        "content": "Short answer: air molecules scatter short (blue) wavelengths much more than long (red) wavelengths — Rayleigh scattering scales as 1/λ⁴. So when you look away from the Sun you mostly see scattered blue light. At sunset the light path is long, blue is scattered out, and the remaining direct light looks red/orange.",
+        "citations": [
+          "https://en.wikipedia.org/wiki/Rayleigh%20scattering",
+          "https://math.ucr.edu/home/baez/physics/General/BlueSky/blue_sky.html",
+          "http://hyperphysics.phy-astr.gsu.edu/hbase/atmos/blusky.html"
+        ]
+      }
+    }
+  },
+  "pages": [
+    {
+      "id": "nasa-spaceplace",
+      "grade": 3,
+      "urls": ["https://spaceplace.nasa.gov/blue-sky/en/", "https://spaceplace.nasa.gov/blue-sky/"]
+    },
+    {
+      "id": "wiki-rayleigh",
+      "grade": 3,
+      "urls": [
+        "https://en.wikipedia.org/wiki/Rayleigh_scattering",
+        "https://en.m.wikipedia.org/wiki/Rayleigh_scattering",
+        "https://en.wikipedia.org/wiki/Rayleigh%20scattering"
+      ]
+    },
+    { "id": "ucr-physics-faq", "grade": 3, "urls": ["https://math.ucr.edu/home/baez/physics/General/BlueSky/blue_sky.html"] },
+    { "id": "physics-se-violet", "grade": 2, "urls": ["https://physics.stackexchange.com/questions/109/why-is-the-sky-not-purple"] },
+    { "id": "wiki-diffuse-sky", "grade": 2, "urls": ["https://en.wikipedia.org/wiki/Diffuse_sky_radiation"] },
+    { "id": "britannica", "grade": 2, "urls": ["https://www.britannica.com/story/why-is-the-sky-blue"] },
+    { "id": "met-office", "grade": 2, "urls": ["https://weather.metoffice.gov.uk/learn-about/weather/optical-effects/why-is-the-sky-blue"] },
+    { "id": "sciam", "grade": 2, "urls": ["https://www.scientificamerican.com/article/why-is-the-sky-blue/"] },
+    { "id": "youtube-minutephysics", "grade": 1, "urls": ["https://www.youtube.com/watch?v=ehUIlhKhzDA"] },
+    { "id": "rmg", "grade": 2, "urls": ["https://www.rmg.co.uk/stories/topics/why-sky-blue"] },
+    { "id": "hyperphysics", "grade": 3, "urls": ["http://hyperphysics.phy-astr.gsu.edu/hbase/atmos/blusky.html"] }
+  ],
+  "answer": { "mustMention": ["Rayleigh scattering", "fourth power"] }
+}

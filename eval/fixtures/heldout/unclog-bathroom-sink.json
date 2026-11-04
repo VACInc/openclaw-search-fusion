@@ -1,0 +1,198 @@
+{
+  "id": "unclog-bathroom-sink",
+  "query": "how to unclog bathroom sink without chemicals",
+  "notes": "Consumer how-to with many similar-quality home-improvement pages, low Tavily scores (0.3 range), a YouTube video under two hosts, an AMP variant, and a lead-gen plumber page.",
+  "providers": {
+    "duckduckgo": {
+      "payload": {
+        "results": [
+          {
+            "title": "How to Unclog a Bathroom Sink Drain (Without Chemicals) | Family Handyman",
+            "url": "https://www.familyhandyman.com/project/how-to-unclog-a-bathroom-sink-drain/",
+            "snippet": "Remove the pop-up stopper, pull out the hair clog with a zip-it tool or bent wire, then flush with hot water. If that fails, clean the P-trap.",
+            "siteName": "familyhandyman.com"
+          },
+          {
+            "title": "How to Unclog a Bathroom Sink: 7 Easy Methods - The Spruce",
+            "url": "https://www.thespruce.com/unclog-a-bathroom-sink-drain-2718727",
+            "snippet": "Try boiling water, baking soda and vinegar, a plunger, or a drain snake before reaching for harsh chemical cleaners.",
+            "siteName": "thespruce.com"
+          },
+          {
+            "title": "Clogged Sink? Same-Day Plumber Near You - Call Now | Local Pros",
+            "url": "https://www.localplumberpros.com/clogged-sink-repair?gclid=abc123",
+            "snippet": "Licensed plumbers available 24/7. Get a free quote in 60 seconds. Don't DIY — call the pros!",
+            "siteName": "localplumberpros.com"
+          },
+          {
+            "title": "How to Unclog a Bathroom Sink - YouTube",
+            "url": "https://www.youtube.com/watch?v=7cB4ZEw1v5k",
+            "snippet": "This Old House plumbing and heating expert Richard Trethewey shows how to clear a clogged bathroom sink.",
+            "siteName": "youtube.com"
+          },
+          {
+            "title": "How to Unclog a Drain Without Chemicals - Bob Vila",
+            "url": "https://www.bobvila.com/articles/how-to-unclog-a-drain-without-chemicals/",
+            "snippet": "Baking soda, vinegar, a wire hanger, or a wet/dry vac can clear most clogs.",
+            "siteName": "bobvila.com"
+          }
+        ]
+      }
+    },
+    "brave": {
+      "payload": {
+        "results": [
+          {
+            "title": "How to Unclog a Bathroom Sink - This Old House",
+            "url": "https://www.thisoldhouse.com/plumbing/21015178/how-to-unclog-a-bathroom-sink",
+            "description": "Most bathroom sink clogs are hair and soap scum caught on the pop-up stopper. Here's how to remove it, clean it, and snake the drain without chemicals.",
+            "siteName": "This Old House"
+          },
+          {
+            "title": "How to Unclog a Bathroom Sink Drain",
+            "url": "https://www.familyhandyman.com/project/how-to-unclog-a-bathroom-sink-drain",
+            "description": "Step-by-step photos: remove the stopper, clear the hair, clean the trap.",
+            "siteName": "Family Handyman"
+          },
+          {
+            "title": "Unclogging bathroom sink: what actually worked for me : r/Plumbing",
+            "url": "https://www.reddit.com/r/Plumbing/comments/11k2b8v/unclogging_bathroom_sink_what_actually_worked_for/",
+            "description": "Skip the baking soda volcano. Pull the stopper, use a $3 plastic drain snake. Gross but works every time.",
+            "siteName": "Reddit"
+          },
+          {
+            "title": "How to Unclog a Bathroom Sink",
+            "url": "https://m.youtube.com/watch?v=7cB4ZEw1v5k",
+            "description": "This Old House plumbing expert shows how to clear a clogged sink.",
+            "siteName": "YouTube"
+          },
+          {
+            "title": "How to Unclog a Bathroom Sink: 7 Easy Methods",
+            "url": "https://www.thespruce.com/unclog-a-bathroom-sink-drain-2718727?utm_source=brave&utm_medium=search",
+            "description": "Try boiling water, baking soda and vinegar, a plunger, or a drain snake.",
+            "siteName": "The Spruce"
+          },
+          {
+            "title": "How To Unclog A Drain Naturally | Roto-Rooter",
+            "url": "https://www.rotorooter.com/blog/drain-cleaning/how-to-unclog-a-drain-naturally/",
+            "description": "Our plumbers' advice on hot water, baking soda and vinegar, and when it's time to call a professional.",
+            "siteName": "Roto-Rooter"
+          }
+        ]
+      }
+    },
+    "tavily": {
+      "payload": {
+        "answer": "Remove the sink's pop-up stopper and clean off the hair and gunk, then use a plastic drain snake or bent wire hanger to pull out the clog. Flush with hot water. If it's still slow, pour in baking soda followed by vinegar, wait 15 minutes, and flush again, or remove and clean the P-trap under the sink.",
+        "results": [
+          {
+            "title": "How to Unclog a Bathroom Sink Drain (Without Chemicals)",
+            "url": "https://www.familyhandyman.com/project/how-to-unclog-a-bathroom-sink-drain/",
+            "snippet": "Remove the pop-up stopper, pull out the hair clog with a zip-it tool or bent wire, then flush with hot water.",
+            "score": 0.38
+          },
+          {
+            "title": "How to Unclog a Bathroom Sink - HGTV",
+            "url": "https://www.hgtv.com/how-to/home-improvement/how-to-unclog-a-bathroom-sink",
+            "snippet": "Use a plunger, then a hand auger if needed; clean the P-trap as a last resort.",
+            "score": 0.34
+          },
+          {
+            "title": "15 Genius Drain Hacks That Plumbers Don't Want You To Know",
+            "url": "https://lifehackdaily.co/drain-hacks-plumbers-dont-want-you-to-know/amp/",
+            "snippet": "Number 7 will shock you! Plumbers hate this one simple trick for clogged drains.",
+            "score": 0.31
+          },
+          {
+            "title": "How to Unclog a Drain Without Chemicals",
+            "url": "https://www.bobvila.com/articles/how-to-unclog-a-drain-without-chemicals/amp/",
+            "snippet": "Baking soda, vinegar, a wire hanger, or a wet/dry vac can clear most clogs.",
+            "score": 0.29
+          },
+          {
+            "title": "How to Unclog a Bathroom Sink",
+            "url": "https://www.thisoldhouse.com/plumbing/21015178/how-to-unclog-a-bathroom-sink",
+            "snippet": "Most bathroom sink clogs are hair and soap scum caught on the pop-up stopper.",
+            "score": 0.27
+          }
+        ]
+      }
+    },
+    "searxng": {
+      "payload": {
+        "results": [
+          {
+            "title": "How to Unclog a Bathroom Sink - This Old House",
+            "url": "https://thisoldhouse.com/plumbing/21015178/how-to-unclog-a-bathroom-sink",
+            "snippet": "Here's how to remove the stopper, clean it, and snake the drain.",
+            "siteName": "thisoldhouse.com"
+          },
+          {
+            "title": "How To Unclog A Drain Naturally",
+            "url": "https://www.rotorooter.com/blog/drain-cleaning/how-to-unclog-a-drain-naturally/",
+            "snippet": "Hot water, baking soda and vinegar.",
+            "siteName": "rotorooter.com"
+          },
+          {
+            "title": "Unclogging bathroom sink: what actually worked for me",
+            "url": "https://old.reddit.com/r/Plumbing/comments/11k2b8v/unclogging_bathroom_sink_what_actually_worked_for/",
+            "snippet": "Pull the stopper, use a $3 plastic drain snake.",
+            "siteName": "old.reddit.com"
+          },
+          {
+            "title": "How to Unclog a Bathroom Sink - wikiHow",
+            "url": "https://www.wikihow.com/Unclog-a-Bathroom-Sink",
+            "snippet": "Method 1 of 5: Using Boiling Water. Method 2: Baking Soda and Vinegar...",
+            "siteName": "wikihow.com"
+          }
+        ]
+      }
+    }
+  },
+  "pages": [
+    {
+      "id": "family-handyman",
+      "grade": 3,
+      "urls": [
+        "https://www.familyhandyman.com/project/how-to-unclog-a-bathroom-sink-drain/",
+        "https://www.familyhandyman.com/project/how-to-unclog-a-bathroom-sink-drain"
+      ]
+    },
+    {
+      "id": "the-spruce",
+      "grade": 2,
+      "urls": [
+        "https://www.thespruce.com/unclog-a-bathroom-sink-drain-2718727",
+        "https://www.thespruce.com/unclog-a-bathroom-sink-drain-2718727?utm_source=brave&utm_medium=search"
+      ]
+    },
+    { "id": "plumber-leadgen", "grade": 0, "urls": ["https://www.localplumberpros.com/clogged-sink-repair?gclid=abc123"] },
+    { "id": "youtube-toh", "grade": 2, "urls": ["https://www.youtube.com/watch?v=7cB4ZEw1v5k", "https://m.youtube.com/watch?v=7cB4ZEw1v5k"] },
+    {
+      "id": "bob-vila",
+      "grade": 2,
+      "urls": ["https://www.bobvila.com/articles/how-to-unclog-a-drain-without-chemicals/", "https://www.bobvila.com/articles/how-to-unclog-a-drain-without-chemicals/amp/"]
+    },
+    {
+      "id": "this-old-house",
+      "grade": 3,
+      "urls": [
+        "https://www.thisoldhouse.com/plumbing/21015178/how-to-unclog-a-bathroom-sink",
+        "https://thisoldhouse.com/plumbing/21015178/how-to-unclog-a-bathroom-sink"
+      ]
+    },
+    {
+      "id": "reddit-plumbing",
+      "grade": 2,
+      "urls": [
+        "https://www.reddit.com/r/Plumbing/comments/11k2b8v/unclogging_bathroom_sink_what_actually_worked_for/",
+        "https://old.reddit.com/r/Plumbing/comments/11k2b8v/unclogging_bathroom_sink_what_actually_worked_for/"
+      ]
+    },
+    { "id": "roto-rooter", "grade": 2, "urls": ["https://www.rotorooter.com/blog/drain-cleaning/how-to-unclog-a-drain-naturally/"] },
+    { "id": "hgtv", "grade": 2, "urls": ["https://www.hgtv.com/how-to/home-improvement/how-to-unclog-a-bathroom-sink"] },
+    { "id": "farm-lifehackdaily", "grade": 0, "urls": ["https://lifehackdaily.co/drain-hacks-plumbers-dont-want-you-to-know/amp/"] },
+    { "id": "wikihow", "grade": 2, "urls": ["https://www.wikihow.com/Unclog-a-Bathroom-Sink"] }
+  ],
+  "answer": { "mustMention": ["stopper", "P-trap"] }
+}

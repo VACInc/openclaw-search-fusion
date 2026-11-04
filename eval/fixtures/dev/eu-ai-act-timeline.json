@@ -1,0 +1,60 @@
+{
+  "id": "eu-ai-act-timeline",
+  "query": "EU AI Act when do obligations for general purpose AI models apply",
+  "notes": "Legal/policy query; Grok cites mobile Wikipedia; official EUR-Lex and Commission pages vs news coverage.",
+  "providers": {
+    "brave": {
+      "payload": {
+        "results": [
+          { "title": "AI Act | Shaping Europe's digital future", "url": "https://digital-strategy.ec.europa.eu/en/policies/regulatory-framework-ai", "description": "The AI Act entered into force on 1 August 2024. Obligations for general-purpose AI models apply from 2 August 2025.", "siteName": "digital-strategy.ec.europa.eu" },
+          { "title": "Artificial Intelligence Act - Wikipedia", "url": "https://en.wikipedia.org/wiki/Artificial_Intelligence_Act", "description": "The Artificial Intelligence Act (AI Act) is a European Union regulation concerning artificial intelligence.", "siteName": "en.wikipedia.org" },
+          { "title": "Regulation (EU) 2024/1689 - EUR-Lex", "url": "https://eur-lex.europa.eu/eli/reg/2024/1689/oj", "description": "Regulation (EU) 2024/1689 of the European Parliament and of the Council laying down harmonised rules on artificial intelligence.", "siteName": "eur-lex.europa.eu" },
+          { "title": "Implementation Timeline | EU Artificial Intelligence Act", "url": "https://artificialintelligenceact.eu/implementation-timeline/", "description": "2 August 2025: rules on general-purpose AI models apply. 2 August 2026: the remainder of the Act applies.", "siteName": "artificialintelligenceact.eu" },
+          { "title": "EU AI Act: what businesses need to know", "url": "https://www.reuters.com/technology/eu-ai-act-what-businesses-need-know-2025-07-30/", "description": "Rules for general-purpose AI providers take effect on Aug. 2.", "siteName": "reuters.com" }
+        ]
+      }
+    },
+    "exa": {
+      "payload": {
+        "results": [
+          { "title": "Implementation Timeline", "url": "https://artificialintelligenceact.eu/implementation-timeline", "description": "Timeline of AI Act application dates including GPAI obligations from 2 August 2025.", "siteName": "artificialintelligenceact.eu" },
+          { "title": "General-Purpose AI Code of Practice", "url": "https://digital-strategy.ec.europa.eu/en/policies/contents-code-gpai", "description": "The Code of Practice helps providers of general-purpose AI models comply with the AI Act obligations that apply from 2 August 2025.", "siteName": "digital-strategy.ec.europa.eu" },
+          { "title": "High-level summary of the AI Act", "url": "https://artificialintelligenceact.eu/high-level-summary/", "description": "Summary of the AI Act's risk-based approach.", "siteName": "artificialintelligenceact.eu" },
+          { "title": "What the EU AI Act means for GPAI providers", "url": "https://iapp.org/news/a/what-the-eu-ai-act-means-for-gpai-providers", "description": "Analysis of GPAI obligations and grandfathering of models placed on the market before August 2025.", "siteName": "iapp.org" }
+        ]
+      }
+    },
+    "perplexity": {
+      "payload": {
+        "results": [
+          { "title": "Regulation - EU - 2024/1689 - EN - EUR-Lex", "url": "https://eur-lex.europa.eu/eli/reg/2024/1689/oj/eng", "description": "Official text of the AI Act.", "siteName": "eur-lex.europa.eu" },
+          { "title": "AI Act | Shaping Europe's digital future", "url": "https://digital-strategy.ec.europa.eu/en/policies/regulatory-framework-ai", "description": "Commission page on the AI Act.", "siteName": "digital-strategy.ec.europa.eu" },
+          { "title": "Implementation Timeline", "url": "https://artificialintelligenceact.eu/implementation-timeline/", "description": "AI Act application dates.", "siteName": "artificialintelligenceact.eu" }
+        ]
+      }
+    },
+    "grok": {
+      "payload": {
+        "content": "Obligations for providers of general-purpose AI models under the EU AI Act apply from 2 August 2025. Models already on the market before that date have until 2 August 2027 to comply. Most other provisions apply from 2 August 2026.",
+        "citations": [
+          "https://en.m.wikipedia.org/wiki/Artificial_Intelligence_Act",
+          "https://artificialintelligenceact.eu/implementation-timeline/",
+          "https://digital-strategy.ec.europa.eu/en/policies/regulatory-framework-ai",
+          "https://x.com/EU_Commission/status/1818997134876"
+        ]
+      }
+    }
+  },
+  "pages": [
+    { "id": "commission-ai-act", "grade": 3, "urls": ["https://digital-strategy.ec.europa.eu/en/policies/regulatory-framework-ai"] },
+    { "id": "timeline", "grade": 3, "urls": ["https://artificialintelligenceact.eu/implementation-timeline/", "https://artificialintelligenceact.eu/implementation-timeline"] },
+    { "id": "eurlex", "grade": 3, "urls": ["https://eur-lex.europa.eu/eli/reg/2024/1689/oj", "https://eur-lex.europa.eu/eli/reg/2024/1689/oj/eng"] },
+    { "id": "gpai-code", "grade": 2, "urls": ["https://digital-strategy.ec.europa.eu/en/policies/contents-code-gpai"] },
+    { "id": "wikipedia", "grade": 2, "urls": ["https://en.wikipedia.org/wiki/Artificial_Intelligence_Act", "https://en.m.wikipedia.org/wiki/Artificial_Intelligence_Act"] },
+    { "id": "iapp", "grade": 2, "urls": ["https://iapp.org/news/a/what-the-eu-ai-act-means-for-gpai-providers"] },
+    { "id": "reuters", "grade": 2, "urls": ["https://www.reuters.com/technology/eu-ai-act-what-businesses-need-know-2025-07-30/"] },
+    { "id": "summary", "grade": 1, "urls": ["https://artificialintelligenceact.eu/high-level-summary/"] },
+    { "id": "x-post", "grade": 1, "urls": ["https://x.com/EU_Commission/status/1818997134876"] }
+  ],
+  "answer": { "mustMention": ["2 August 2025"] }
+}

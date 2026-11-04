@@ -1,0 +1,47 @@
+{
+  "id": "gh-cli-manual",
+  "query": "github cli manual",
+  "notes": "Navigational query: user wants the official gh manual; providers agree on it but disagree on the URL form.",
+  "providers": {
+    "brave": {
+      "payload": {
+        "results": [
+          { "title": "GitHub CLI manual", "url": "https://cli.github.com/manual/", "description": "GitHub CLI, or gh, is a command-line interface to GitHub for use in your terminal or your scripts.", "siteName": "cli.github.com" },
+          { "title": "About GitHub CLI - GitHub Docs", "url": "https://docs.github.com/en/github-cli/github-cli/about-github-cli", "description": "GitHub CLI is an open source tool for using GitHub from your computer's command line.", "siteName": "docs.github.com" },
+          { "title": "cli/cli: GitHub's official command line tool", "url": "https://github.com/cli/cli", "description": "gh is GitHub on the command line. It brings pull requests, issues, and other GitHub concepts to the terminal.", "siteName": "github.com" },
+          { "title": "GitHub CLI | Take GitHub to the command line", "url": "https://cli.github.com/", "description": "GitHub CLI brings GitHub to your terminal.", "siteName": "cli.github.com" },
+          { "title": "gh pr create - GitHub CLI manual", "url": "https://cli.github.com/manual/gh_pr_create", "description": "Create a pull request on GitHub.", "siteName": "cli.github.com" }
+        ]
+      }
+    },
+    "duckduckgo": {
+      "payload": {
+        "results": [
+          { "title": "GitHub CLI | Take GitHub to the command line", "url": "https://cli.github.com/", "snippet": "GitHub CLI brings GitHub to your terminal. Free and open source.", "siteName": "cli.github.com" },
+          { "title": "GitHub CLI manual", "url": "https://cli.github.com/manual", "snippet": "GitHub CLI, or gh, is a command-line interface to GitHub.", "siteName": "cli.github.com" },
+          { "title": "GitHub CLI quickstart - GitHub Docs", "url": "https://docs.github.com/en/github-cli/github-cli/quickstart", "snippet": "Start using GitHub CLI to work with GitHub in the command line.", "siteName": "docs.github.com" },
+          { "title": "How to use GitHub CLI - A beginners guide", "url": "https://devopsguides4u.com/github-cli-beginners-guide", "snippet": "A beginners guide to GitHub CLI.", "siteName": "devopsguides4u.com" }
+        ]
+      }
+    },
+    "tavily": {
+      "payload": {
+        "results": [
+          { "title": "GitHub CLI manual", "url": "https://cli.github.com/manual/index", "snippet": "GitHub CLI, or gh, is a command-line interface to GitHub for use in your terminal or your scripts. Installation, configuration, and the full command reference.", "score": 0.97 },
+          { "title": "GitHub CLI quickstart", "url": "https://docs.github.com/en/github-cli/github-cli/quickstart", "snippet": "Start using GitHub CLI.", "score": 0.77 },
+          { "title": "About GitHub CLI", "url": "https://docs.github.com/en/github-cli/github-cli/about-github-cli", "snippet": "GitHub CLI is an open source tool.", "score": 0.74 },
+          { "title": "cli/cli", "url": "https://github.com/cli/cli", "snippet": "GitHub's official command line tool.", "score": 0.6 }
+        ]
+      }
+    }
+  },
+  "pages": [
+    { "id": "gh-manual", "grade": 3, "urls": ["https://cli.github.com/manual/", "https://cli.github.com/manual", "https://cli.github.com/manual/index"] },
+    { "id": "gh-home", "grade": 2, "urls": ["https://cli.github.com/"] },
+    { "id": "about-gh", "grade": 2, "urls": ["https://docs.github.com/en/github-cli/github-cli/about-github-cli"] },
+    { "id": "gh-quickstart", "grade": 2, "urls": ["https://docs.github.com/en/github-cli/github-cli/quickstart"] },
+    { "id": "gh-repo", "grade": 2, "urls": ["https://github.com/cli/cli"] },
+    { "id": "gh-pr-create", "grade": 1, "urls": ["https://cli.github.com/manual/gh_pr_create"] },
+    { "id": "beginners-farm", "grade": 0, "urls": ["https://devopsguides4u.com/github-cli-beginners-guide"] }
+  ]
+}

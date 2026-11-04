@@ -12,7 +12,10 @@ export type FuzzyUrlAnalysis = {
 export type UrlAnalysis = {
     /** Display URL: redirect-unwrapped, tracking-stripped, query order kept. */
     url: string;
-    /** Dedupe key: `url` with query parameters in a stable sorted order. */
+    /**
+     * Dedupe key: `url` with query parameters in a stable sorted order, an
+     * `https:` scheme, and the host reduced by `canonicalDedupeHost`.
+     */
     canonicalUrl: string;
     originalUrl: string;
     flags: string[];
@@ -35,7 +38,15 @@ export declare function stripExternalWrapper(content: string): string;
 export declare function cleanProviderText(value: unknown): string;
 /** Multi-line variant of cleanProviderText, kept for passage splitting. */
 export declare function cleanProviderTextKeepLines(value: unknown): string;
+/**
+ * Host used only in the dedupe key: drops a leading `www.`, a mobile label
+ * (`m.example.com`, `en.m.wikipedia.org`), and known front-end aliases.
+ * A registrable domain such as `m.co` is never reduced to a bare suffix.
+ */
+export declare function canonicalDedupeHost(hostname: string): string;
 export declare function analyzeUrl(rawUrl: string, trackingOptions?: FuzzyUrlOptions): UrlAnalysis;
+/** True only for an absolute http(s) URL with a host. */
+export declare function isWebUrl(value: string): boolean;
 export declare function canonicalizeUrl(rawUrl: string): string;
 /**
  * Builds the conservative identity used for fuzzy result deduplication.

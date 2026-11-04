@@ -1,0 +1,177 @@
+{
+  "id": "python-requests-timeout",
+  "query": "python requests timeout parameter connect vs read",
+  "notes": "API-docs query where the official docs appear under latest/stable aliases, with and without a #timeouts fragment, alongside StackOverflow short links and a content-farm page Tavily ranks too high.",
+  "providers": {
+    "brave": {
+      "payload": {
+        "results": [
+          {
+            "title": "Advanced Usage — Requests 2.32.3 documentation",
+            "url": "https://requests.readthedocs.io/en/latest/user/advanced/#timeouts",
+            "description": "Most requests to external servers should have a timeout attached, in case the server is not responding in a timely manner. By default, requests do not time out unless a timeout value is set explicitly. The connect timeout is the number of seconds Requests will wait for your client to establish a connection to a remote machine...",
+            "siteName": "requests.readthedocs.io"
+          },
+          {
+            "title": "Timeout for python requests.get entire response - Stack Overflow",
+            "url": "https://stackoverflow.com/questions/21965484/timeout-for-python-requests-get-entire-response",
+            "description": "Set the timeout parameter: r = requests.get(w, verify=False, timeout=10). As long as you don't set stream=True on that request, this will cause the call to requests.get() to time out if the connection takes more than ten seconds, or if the server doesn't send data for more than ten seconds.",
+            "siteName": "Stack Overflow"
+          },
+          {
+            "title": "Quickstart — Requests 2.32.3 documentation",
+            "url": "https://requests.readthedocs.io/en/latest/user/quickstart/",
+            "description": "You can tell Requests to stop waiting for a response after a given number of seconds with the timeout parameter. Nearly all production code should use this parameter in nearly all requests.",
+            "siteName": "requests.readthedocs.io"
+          },
+          {
+            "title": "Python's Requests Library (Guide) – Real Python",
+            "url": "https://realpython.com/python-requests/",
+            "description": "In this tutorial on Python's Requests library, you'll see some of the most useful features that Requests has to offer, including timeouts, sessions, and retries.",
+            "siteName": "Real Python"
+          },
+          {
+            "title": "What is the default timeout that requests.get() uses? - Stack Overflow",
+            "url": "https://stackoverflow.com/questions/17782142/why-doesnt-requests-get-return-what-is-the-default-timeout-that-requests-get",
+            "description": "The default timeout is None, which means it'll wait (hang) until the connection is closed.",
+            "siteName": "Stack Overflow"
+          },
+          {
+            "title": "Timeout in Python requests - GeeksforGeeks",
+            "url": "https://www.geeksforgeeks.org/timeout-in-python-requests/",
+            "description": "Timeout in Python requests. Last Updated: 23 Jul, 2025. In this article, we will discuss how to use the timeout parameter in Python requests.",
+            "siteName": "GeeksforGeeks"
+          },
+          {
+            "title": "Python Requests Timeout: The Ultimate Guide (2026 Update)",
+            "url": "https://codingtutorialhub.net/python-requests-timeout-ultimate-guide-2026/",
+            "description": "Looking for python requests timeout? Discover the best python requests timeout tips, tricks and examples in 2026. Python requests timeout explained simply!",
+            "siteName": "codingtutorialhub.net"
+          }
+        ]
+      }
+    },
+    "exa": {
+      "payload": {
+        "results": [
+          {
+            "title": "Advanced Usage — Requests 2.32.3 documentation",
+            "url": "https://requests.readthedocs.io/en/latest/user/advanced/",
+            "description": "Timeouts: Most requests to external servers should have a timeout attached... If you specify a single value for the timeout, like this: r = requests.get('https://github.com', timeout=5) The timeout value will be applied to both the connect and the read timeouts. Specify a tuple if you would like to set the values separately: r = requests.get('https://github.com', timeout=(3.05, 27))",
+            "siteName": "requests.readthedocs.io",
+            "highlightScores": [0.61, 0.48]
+          },
+          {
+            "title": "How to Set Timeouts in Python Requests (Connect vs Read)",
+            "url": "https://www.zenrows.com/blog/python-requests-timeout",
+            "description": "Learn how connect and read timeouts differ in Python Requests, how to pass a tuple, and how to handle Timeout exceptions in scrapers.",
+            "published": "2025-03-11T00:00:00.000Z",
+            "siteName": "ZenRows",
+            "highlightScores": [0.44]
+          },
+          {
+            "title": "Timeout for python requests.get entire response",
+            "url": "https://stackoverflow.com/questions/21965484/timeout-for-python-requests-get-entire-response/",
+            "description": "I'm gathering statistics on a list of websites and I'm using requests for it for simplicity...",
+            "siteName": "stackoverflow.com",
+            "highlightScores": [0.39]
+          },
+          {
+            "title": "Default timeout for requests · Issue #3070 · psf/requests",
+            "url": "https://github.com/psf/requests/issues/3070",
+            "description": "Proposal to add a default timeout to requests. Discussion of why None is the default and why the maintainers recommend always passing timeout explicitly.",
+            "siteName": "GitHub",
+            "highlightScores": [0.31]
+          },
+          {
+            "title": "Python's Requests Library (Guide)",
+            "url": "https://realpython.com/python-requests/#timeouts",
+            "description": "Timeouts: When you make an inline request to an external service, your system will need to wait for the response before moving on...",
+            "siteName": "realpython.com",
+            "highlightScores": [0.29]
+          }
+        ]
+      }
+    },
+    "tavily": {
+      "payload": {
+        "answer": "Pass timeout=(connect, read) to requests, e.g. requests.get(url, timeout=(3.05, 27)). The connect timeout limits how long to wait to establish the TCP connection; the read timeout limits how long to wait between bytes from the server. A single number applies to both. By default requests has no timeout and can hang indefinitely.",
+        "results": [
+          {
+            "title": "Advanced Usage — Requests 2.32.3 documentation",
+            "url": "https://requests.readthedocs.io/en/stable/user/advanced/#timeouts",
+            "snippet": "The connect timeout is the number of seconds Requests will wait for your client to establish a connection to a remote machine (corresponding to the connect()) call on the socket. It's a good practice to set connect timeouts to slightly larger than a multiple of 3, which is the default TCP packet retransmission window. Once your client has connected to the server and sent the HTTP request, the read timeout is the number of seconds the client will wait for the server to send a response.",
+            "score": 0.91
+          },
+          {
+            "title": "Python Requests Timeout: The Ultimate Guide (2026 Update)",
+            "url": "https://codingtutorialhub.net/python-requests-timeout-ultimate-guide-2026/",
+            "snippet": "Python requests timeout is one of the most important python requests topics. In this ultimate python requests timeout guide we explain python requests timeout.",
+            "score": 0.78
+          },
+          {
+            "title": "Timeout in Python requests",
+            "url": "https://www.geeksforgeeks.org/python/timeout-in-python-requests/",
+            "snippet": "Timeout in Python requests - Timeouts are used to ensure that a request does not hang forever.",
+            "score": 0.64
+          },
+          {
+            "title": "Timeout for python requests.get entire response - Stack Overflow",
+            "url": "https://stackoverflow.com/q/21965484",
+            "snippet": "Set the timeout parameter... timeout=(connect timeout, read timeout).",
+            "score": 0.6
+          }
+        ]
+      }
+    },
+    "gemini": {
+      "payload": {
+        "content": "In the Python requests library, the `timeout` argument accepts either a single number or a `(connect, read)` tuple. The connect timeout is how long to wait while establishing the connection; the read timeout is how long to wait for the server to send data once connected, measured between bytes rather than for the whole download. For example `requests.get(url, timeout=(3.05, 27))`. If you omit it, requests does not time out at all.",
+        "citations": [
+          { "url": "https://requests.readthedocs.io/en/latest/user/advanced/", "title": "readthedocs.io" },
+          { "url": "https://stackoverflow.com/questions/21965484/timeout-for-python-requests-get-entire-response", "title": "stackoverflow.com" }
+        ]
+      }
+    }
+  },
+  "pages": [
+    {
+      "id": "requests-advanced-timeouts",
+      "grade": 3,
+      "urls": [
+        "https://requests.readthedocs.io/en/latest/user/advanced/#timeouts",
+        "https://requests.readthedocs.io/en/latest/user/advanced/",
+        "https://requests.readthedocs.io/en/stable/user/advanced/#timeouts"
+      ]
+    },
+    {
+      "id": "so-21965484",
+      "grade": 2,
+      "urls": [
+        "https://stackoverflow.com/questions/21965484/timeout-for-python-requests-get-entire-response",
+        "https://stackoverflow.com/questions/21965484/timeout-for-python-requests-get-entire-response/",
+        "https://stackoverflow.com/q/21965484"
+      ]
+    },
+    { "id": "requests-quickstart", "grade": 2, "urls": ["https://requests.readthedocs.io/en/latest/user/quickstart/"] },
+    {
+      "id": "realpython-requests",
+      "grade": 2,
+      "urls": ["https://realpython.com/python-requests/", "https://realpython.com/python-requests/#timeouts"]
+    },
+    {
+      "id": "so-17782142",
+      "grade": 2,
+      "urls": ["https://stackoverflow.com/questions/17782142/why-doesnt-requests-get-return-what-is-the-default-timeout-that-requests-get"]
+    },
+    {
+      "id": "gfg-timeout",
+      "grade": 1,
+      "urls": ["https://www.geeksforgeeks.org/timeout-in-python-requests/", "https://www.geeksforgeeks.org/python/timeout-in-python-requests/"]
+    },
+    { "id": "farm-codingtutorialhub", "grade": 0, "urls": ["https://codingtutorialhub.net/python-requests-timeout-ultimate-guide-2026/"] },
+    { "id": "zenrows-blog", "grade": 2, "urls": ["https://www.zenrows.com/blog/python-requests-timeout"] },
+    { "id": "gh-requests-3070", "grade": 1, "urls": ["https://github.com/psf/requests/issues/3070"] }
+  ],
+  "answer": { "mustMention": ["(3.05, 27)", "single number"] }
+}

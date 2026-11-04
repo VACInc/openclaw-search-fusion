@@ -1,0 +1,171 @@
+{
+  "id": "python-315-release",
+  "query": "python 3.15 released what's new",
+  "notes": "Recent-release news query: index providers mix official release notes and announcement with older pre-release coverage and HN/Reddit threads; Grok cites a mix of overlapping and new URLs, and Firecrawl's top hits are stale alpha-era posts.",
+  "providers": {
+    "brave": {
+      "payload": {
+        "results": [
+          {
+            "title": "What's New In Python 3.15 — Python 3.15.0 documentation",
+            "url": "https://docs.python.org/3.15/whatsnew/3.15.html",
+            "description": "This article explains the new features in Python 3.15, compared to 3.14. Summary – Release highlights: PEP 810: Explicit lazy imports; PEP 799: A dedicated profiling package and the Tachyon sampling profiler; PEP 686: UTF-8 mode is now the default...",
+            "published": "2026-10-01T00:00:00.000Z",
+            "siteName": "Python documentation"
+          },
+          {
+            "title": "Python Release Python 3.15.0 | Python.org",
+            "url": "https://www.python.org/downloads/release/python-3150/",
+            "description": "Python 3.15.0 is the newest major release of the Python programming language, and it contains many new features and optimizations compared to Python 3.14.",
+            "published": "2026-10-01T00:00:00.000Z",
+            "siteName": "Python.org"
+          },
+          {
+            "title": "Python 3.15.0 final is now available - Core Development - Discussions on Python.org",
+            "url": "https://discuss.python.org/t/python-3-15-0-final-is-now-available/104512",
+            "description": "It's here! Python 3.15.0 is the newest feature release... Some of the major new features: explicit lazy imports, UTF-8 mode by default, the Tachyon profiler...",
+            "published": "2026-10-01T00:00:00.000Z",
+            "siteName": "Discussions on Python.org"
+          },
+          {
+            "title": "Python 3.15 is out | Hacker News",
+            "url": "https://news.ycombinator.com/item?id=45441209",
+            "description": "412 points · 198 comments",
+            "published": "2026-10-01T00:00:00.000Z",
+            "siteName": "Hacker News"
+          },
+          {
+            "title": "Python 3.15: Lazy Imports, UTF-8 by Default, and Other New Features – Real Python",
+            "url": "https://realpython.com/python315-new-features/",
+            "description": "Python 3.15 was released on October 1, 2026. In this tutorial, you'll explore the most important new features: explicit lazy imports, the new sampling profiler, UTF-8 mode, and more.",
+            "published": "2026-10-06T00:00:00.000Z",
+            "siteName": "Real Python"
+          },
+          {
+            "title": "PEP 790 – Python 3.15 Release Schedule | peps.python.org",
+            "url": "https://peps.python.org/pep-0790/",
+            "description": "This document describes the development and release schedule for Python 3.15.",
+            "siteName": "peps.python.org"
+          }
+        ]
+      }
+    },
+    "perplexity": {
+      "payload": {
+        "results": [
+          {
+            "title": "What's New In Python 3.15",
+            "url": "https://docs.python.org/3.15/whatsnew/3.15.html#summary-release-highlights",
+            "description": "Summary – Release highlights. PEP 810: Explicit lazy imports...",
+            "siteName": "docs.python.org"
+          },
+          {
+            "title": "Python 3.15 arrives with lazy imports and a sampling profiler | InfoWorld",
+            "url": "https://www.infoworld.com/article/4065512/python-3-15-arrives-with-lazy-imports-and-a-sampling-profiler.html",
+            "description": "The latest annual release of Python adds an explicit 'lazy import' syntax, switches UTF-8 mode on by default, and ships the Tachyon statistical profiler.",
+            "published": "2026-10-02T00:00:00.000Z",
+            "siteName": "InfoWorld"
+          },
+          {
+            "title": "Python 3.15.0 final is now available",
+            "url": "https://discuss.python.org/t/python-3-15-0-final-is-now-available/104512/1",
+            "description": "It's here! Python 3.15.0 is the newest feature release of the Python language.",
+            "siteName": "discuss.python.org"
+          },
+          {
+            "title": "Python 3.15 released! : r/Python",
+            "url": "https://www.reddit.com/r/Python/comments/1nv3c8p/python_315_released/",
+            "description": "Lazy imports finally landed. Anyone measured startup time differences yet?",
+            "siteName": "reddit.com"
+          },
+          {
+            "title": "Python Release Python 3.15.0",
+            "url": "https://python.org/downloads/release/python-3150/",
+            "description": "Python 3.15.0 is the newest major release.",
+            "siteName": "python.org"
+          }
+        ]
+      }
+    },
+    "firecrawl": {
+      "payload": {
+        "results": [
+          {
+            "title": "Python 3.15.0 alpha 1 is now available",
+            "url": "https://discuss.python.org/t/python-3-15-0-alpha-1/100412",
+            "description": "This is an early developer preview of Python 3.15.",
+            "published": "2025-10-14T00:00:00.000Z",
+            "siteName": "discuss.python.org"
+          },
+          {
+            "title": "Python 3.15 features we're excited about - 2025 preview",
+            "url": "https://medium.com/@pydevtips/python-3-15-features-we-are-excited-about-a7c1e93f20b4",
+            "description": "Python 3.15 is coming! Here are the rumoured features you should know about.",
+            "published": "2025-11-03T00:00:00.000Z",
+            "siteName": "Medium"
+          },
+          {
+            "title": "What's New In Python 3.15",
+            "url": "https://docs.python.org/3.15/whatsnew/3.15.html",
+            "description": "This article explains the new features in Python 3.15, compared to 3.14.",
+            "siteName": "docs.python.org"
+          },
+          {
+            "title": "Python 3.15 Download Free - Latest Version 2026",
+            "url": "https://softwarefreedl.net/python-3-15-download/",
+            "description": "Download Python 3.15 free for Windows 11 64 bit. Safe and fast download. Python 3.15 latest version full setup.",
+            "siteName": "softwarefreedl.net"
+          },
+          {
+            "title": "PEP 810 – Explicit lazy imports | peps.python.org",
+            "url": "https://peps.python.org/pep-0810/",
+            "description": "This PEP introduces syntax for lazy imports as an explicit language feature: lazy import json.",
+            "siteName": "peps.python.org"
+          }
+        ]
+      }
+    },
+    "grok": {
+      "payload": {
+        "content": "Python 3.15.0 was released on October 1, 2026. Headline changes: explicit lazy imports via the new `lazy import` syntax (PEP 810); UTF-8 mode is now on by default (PEP 686), so open() without an encoding uses UTF-8; a new profiling package with the Tachyon sampling profiler (PEP 799); plus continued JIT and free-threading improvements. Developers on X are mostly celebrating lazy imports for CLI startup time.",
+        "citations": [
+          "https://docs.python.org/3.15/whatsnew/3.15.html",
+          "https://discuss.python.org/t/python-3-15-0-final-is-now-available/104512",
+          "https://peps.python.org/pep-0810/",
+          "https://x.com/ThePSF/status/1973412345678901234"
+        ]
+      }
+    }
+  },
+  "pages": [
+    {
+      "id": "whatsnew-315",
+      "grade": 3,
+      "urls": ["https://docs.python.org/3.15/whatsnew/3.15.html", "https://docs.python.org/3.15/whatsnew/3.15.html#summary-release-highlights"]
+    },
+    {
+      "id": "python-org-release",
+      "grade": 3,
+      "urls": ["https://www.python.org/downloads/release/python-3150/", "https://python.org/downloads/release/python-3150/"]
+    },
+    {
+      "id": "discuss-final-announcement",
+      "grade": 3,
+      "urls": [
+        "https://discuss.python.org/t/python-3-15-0-final-is-now-available/104512",
+        "https://discuss.python.org/t/python-3-15-0-final-is-now-available/104512/1"
+      ]
+    },
+    { "id": "hn-thread", "grade": 1, "urls": ["https://news.ycombinator.com/item?id=45441209"] },
+    { "id": "realpython-315", "grade": 2, "urls": ["https://realpython.com/python315-new-features/"] },
+    { "id": "pep-790-schedule", "grade": 1, "urls": ["https://peps.python.org/pep-0790/"] },
+    { "id": "infoworld", "grade": 2, "urls": ["https://www.infoworld.com/article/4065512/python-3-15-arrives-with-lazy-imports-and-a-sampling-profiler.html"] },
+    { "id": "reddit-r-python", "grade": 1, "urls": ["https://www.reddit.com/r/Python/comments/1nv3c8p/python_315_released/"] },
+    { "id": "discuss-alpha1", "grade": 1, "urls": ["https://discuss.python.org/t/python-3-15-0-alpha-1/100412"] },
+    { "id": "medium-preview", "grade": 0, "urls": ["https://medium.com/@pydevtips/python-3-15-features-we-are-excited-about-a7c1e93f20b4"] },
+    { "id": "farm-softwarefreedl", "grade": 0, "urls": ["https://softwarefreedl.net/python-3-15-download/"] },
+    { "id": "pep-810", "grade": 2, "urls": ["https://peps.python.org/pep-0810/"] },
+    { "id": "x-psf-post", "grade": 1, "urls": ["https://x.com/ThePSF/status/1973412345678901234"] }
+  ],
+  "answer": { "mustMention": ["October 1, 2026", "lazy import", "UTF-8"] }
+}

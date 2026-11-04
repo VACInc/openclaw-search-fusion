@@ -1,0 +1,60 @@
+{
+  "id": "ibuprofen-adult-dose",
+  "query": "maximum daily dose of ibuprofen for adults",
+  "notes": "Health query; authoritative sources vs pharmacy ad; Gemini answer cites pages that index providers also return with real snippets.",
+  "providers": {
+    "brave": {
+      "payload": {
+        "results": [
+          { "title": "Buy Ibuprofen 200mg – Free Shipping | PharmaDirect", "url": "https://www.pharmadirect-shop.com/ibuprofen-200mg", "description": "Order ibuprofen online. Fast delivery.", "siteName": "pharmadirect-shop.com", "sponsored": true },
+          { "title": "Ibuprofen for adults - NHS", "url": "https://www.nhs.uk/medicines/ibuprofen-for-adults/how-and-when-to-take-ibuprofen/", "description": "The usual dose for adults is one or two 200mg tablets 3 times a day. Do not take more than 1,200mg in 24 hours unless advised by a doctor.", "siteName": "nhs.uk" },
+          { "title": "Ibuprofen Dosage Guide + Max Dose, Adjustments - Drugs.com", "url": "https://www.drugs.com/dosage/ibuprofen.html", "description": "Usual adult dose: 400 to 800 mg orally every 6 to 8 hours. Maximum dose: 3200 mg/day (prescription).", "siteName": "drugs.com" },
+          { "title": "Ibuprofen: MedlinePlus Drug Information", "url": "https://medlineplus.gov/druginfo/meds/a682159.html", "description": "Ibuprofen is used to relieve pain, tenderness, swelling and stiffness. Do not take more than directed.", "siteName": "medlineplus.gov" },
+          { "title": "Ibuprofen (oral route) - Mayo Clinic", "url": "https://www.mayoclinic.org/drugs-supplements/ibuprofen-oral-route/proper-use/drg-20070602", "description": "For mild to moderate pain: adults—400 milligrams (mg) every 4 to 6 hours, as needed.", "siteName": "mayoclinic.org" }
+        ]
+      }
+    },
+    "tavily": {
+      "payload": {
+        "results": [
+          { "title": "How and when to take ibuprofen - NHS", "url": "https://www.nhs.uk/medicines/ibuprofen-for-adults/how-and-when-to-take-ibuprofen", "snippet": "Adults can take 1 or 2 tablets (200mg) 3 times a day. Do not take more than 1,200mg in 24 hours without talking to a doctor. A doctor may prescribe a higher dose of up to 600mg to take 4 times a day (2,400mg in 24 hours).", "score": 0.93 },
+          { "title": "Ibuprofen Dosage Guide - Drugs.com", "url": "https://www.drugs.com/dosage/ibuprofen.html", "snippet": "Maximum dose: 3200 mg/day. Over-the-counter: 200 to 400 mg every 4 to 6 hours, not to exceed 1200 mg in 24 hours.", "score": 0.9 },
+          { "title": "Ibuprofen - StatPearls - NCBI Bookshelf", "url": "https://www.ncbi.nlm.nih.gov/books/NBK542299/", "snippet": "The maximum daily dose of ibuprofen is 3200 mg for prescription use; OTC dosing should not exceed 1200 mg/day.", "score": 0.84 },
+          { "title": "Ibuprofen dosage: how much is safe? - Healthline", "url": "https://www.healthline.com/health/ibuprofen-dosage", "snippet": "Most adults can take 200 to 400 mg every four to six hours.", "score": 0.72 }
+        ],
+        "answer": "Over the counter, adults should not exceed 1,200 mg of ibuprofen in 24 hours; under medical supervision the maximum is 3,200 mg per day."
+      }
+    },
+    "gemini": {
+      "payload": {
+        "content": "For adults using over-the-counter ibuprofen, the usual maximum is 1,200 mg in 24 hours (for example 200–400 mg every 4–6 hours). Under a doctor's supervision the dose can go up to 3,200 mg per day, divided into 3–4 doses. Take it with food and avoid it if you have stomach ulcers, kidney disease, or are in late pregnancy.",
+        "citations": [
+          { "url": "https://www.nhs.uk/medicines/ibuprofen-for-adults/how-and-when-to-take-ibuprofen/", "title": "nhs.uk" },
+          { "url": "https://www.drugs.com/dosage/ibuprofen.html", "title": "drugs.com" },
+          { "url": "https://www.ncbi.nlm.nih.gov/books/NBK542299/", "title": "nih.gov" }
+        ]
+      }
+    },
+    "exa": {
+      "payload": {
+        "results": [
+          { "title": "Ibuprofen - StatPearls", "url": "https://www.ncbi.nlm.nih.gov/books/NBK542299", "description": "Ibuprofen is an NSAID; maximum daily dose 3200 mg in divided doses.", "siteName": "ncbi.nlm.nih.gov" },
+          { "title": "Ibuprofen: MedlinePlus", "url": "http://medlineplus.gov/druginfo/meds/a682159.html", "description": "MedlinePlus drug information on ibuprofen.", "siteName": "medlineplus.gov" },
+          { "title": "How much ibuprofen is too much? Doctors explain", "url": "https://www.wellnesstipsblog.net/how-much-ibuprofen-is-too-much", "description": "Doctors explain everything you need to know.", "siteName": "wellnesstipsblog.net" },
+          { "title": "Ibuprofen dosage: how much is safe?", "url": "https://www.healthline.com/health/ibuprofen-dosage", "description": "Healthline guide to ibuprofen dosage.", "siteName": "healthline.com" }
+        ]
+      }
+    }
+  },
+  "pages": [
+    { "id": "nhs", "grade": 3, "urls": ["https://www.nhs.uk/medicines/ibuprofen-for-adults/how-and-when-to-take-ibuprofen/", "https://www.nhs.uk/medicines/ibuprofen-for-adults/how-and-when-to-take-ibuprofen"] },
+    { "id": "drugs-com", "grade": 3, "urls": ["https://www.drugs.com/dosage/ibuprofen.html"] },
+    { "id": "statpearls", "grade": 3, "urls": ["https://www.ncbi.nlm.nih.gov/books/NBK542299/", "https://www.ncbi.nlm.nih.gov/books/NBK542299"] },
+    { "id": "mayo", "grade": 2, "urls": ["https://www.mayoclinic.org/drugs-supplements/ibuprofen-oral-route/proper-use/drg-20070602"] },
+    { "id": "medlineplus", "grade": 2, "urls": ["https://medlineplus.gov/druginfo/meds/a682159.html", "http://medlineplus.gov/druginfo/meds/a682159.html"] },
+    { "id": "healthline", "grade": 2, "urls": ["https://www.healthline.com/health/ibuprofen-dosage"] },
+    { "id": "wellness-blog", "grade": 0, "urls": ["https://www.wellnesstipsblog.net/how-much-ibuprofen-is-too-much"] },
+    { "id": "pharmacy-ad", "grade": 0, "urls": ["https://www.pharmadirect-shop.com/ibuprofen-200mg"] }
+  ],
+  "answer": { "mustMention": ["1,200 mg", "3,200 mg"] }
+}

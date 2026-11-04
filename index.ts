@@ -90,7 +90,7 @@ const SearchFusionParameters = Type.Object(
       }),
     ),
     includeDiscarded: Type.Optional(
-      Type.Boolean({ description: "Include missing-URL items discarded from merging. Defaults to false." }),
+      Type.Boolean({ description: "Include items discarded from merging (missing URL, or a URL that is not http(s)). Defaults to false." }),
     ),
   },
   { additionalProperties: false },

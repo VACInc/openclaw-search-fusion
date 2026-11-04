@@ -84,6 +84,7 @@ Optional plugin config:
           "providerTimeoutMs": 15000,
           "totalTimeoutMs": 30000,
           "maxSnippetLength": 500,
+          "maxAnswerLength": 2000,
           "includeRawPayloads": false,
           "includeDiscarded": false,
           "retry": {
@@ -195,7 +196,7 @@ Use `providerConfig.<id>.maxResults` to lower a provider's ceiling:
 
 A per-call `count`, legacy `providerConfig.<id>.count`, or shared `countPerProvider` can select a smaller pull size. None can exceed `providerConfig.<id>.maxResults` or the native adapter maximum. `maxMergedResults` remains the independent fusion-level output cap, so deeper provider pulls improve dedupe and ranking without increasing the returned merged-result count. `rawCount` reports every transport result item encountered in the supported result arrays, including items later discarded for a missing URL.
 
-`totalTimeoutMs` bounds the whole fan-out, including credential preparation, provider attempts, retries, and backoff (default `30000`, range `5000`–`180000`). When it expires, completed providers are returned as partial results and unfinished providers report `deadline exceeded`. `providerTimeoutMs` still bounds each individual attempt; timed-out and aborted attempts are not retried.
+`totalTimeoutMs` bounds the whole fan-out, including credential preparation, provider attempts, retries, and backoff (default `30000`, range `5000`–`180000`). When it expires, completed providers are returned as partial results and unfinished providers report `deadline exceeded`. A failed attempt whose retry backoff would not fit before the deadline is not retried and reports its own error. `providerTimeoutMs` still bounds each individual attempt; timed-out and aborted attempts are not retried.
 
 Retry classification works on the provider error message:
 - rate limits (a standalone `429`, "rate limit", or "too many requests") are always retried, even when the message also mentions the API key, and wait at least 2 seconds (longer when the provider sends a retry-after hint) before the next attempt
@@ -207,8 +208,9 @@ Status codes count only as standalone numbers: digits inside a longer number or 
 Model-visible output is compact by default:
 
 - `includeRawPayloads` (default `false`) controls full provider payloads and complete audit evidence. Without it, `providerRuns[].results` includes one item per provider for each returned merged URL, merged `variants`/`rankings` and evidence-table provider evidence include one item per contributing provider, and `ranking.dropped` omits detailed records while retaining `droppedCount`.
-- `includeDiscarded` (default `false`) controls missing-URL items preserved outside the merged results.
-- `maxSnippetLength` (default `500`, range `100`–`5000`) caps result snippets, variant snippets, evidence snippets, and provider answer text. Affected objects carry `truncated: true`.
+- `includeDiscarded` (default `false`) controls items preserved outside the merged results: `reason: "missing-url"` for items without a URL and `reason: "unsupported-url"` for URLs that are not absolute `http(s)` URLs (for example `javascript:`, `data:`, `file:`, or free text, including such targets unwrapped from a redirect link). Answer citations with such URLs are dropped.
+- `maxSnippetLength` (default `500`, range `100`–`5000`) caps result snippets, variant snippets, and evidence snippets, including answer text reused as a citation's fallback snippet. Affected objects carry `truncated: true`.
+- `maxAnswerLength` (default the larger of `2000` and `maxSnippetLength`, range `100`–`10000`) caps provider answer digests (`answers[].fullContent`). Answer-style providers often return more than 500 characters, and the last sentences frequently carry the specifics. Truncated answers carry `truncated: true`. Earlier releases capped answers with `maxSnippetLength`; set `maxAnswerLength` to the same value to keep that bound.
 
 Both include flags can be set in plugin config or overridden per `search_fusion` call. Audit consumers such as Atlas can enable both flags to retain full source fidelity in raw payloads while normalized model-visible fields remain bounded.
 
@@ -341,7 +343,7 @@ The structured payload retains `externalContent.untrusted: true` metadata for no
 
 Merged payloads include:
 
-- `results[].ranking` with the final rank, score breakdown (`bestVariantScore`, `corroborationBonus`, `bestRankBonus`, `tierAdjustment`, `flagPenalty`, `finalScore`), and tie-breaker values. `bestRankBonus` is retained as a compatibility field with value `0`; original rank is applied only as the explicit final tie-breaker.
+- `results[].ranking` with the final rank, score breakdown (`bestVariantScore`, `corroborationBonus`, `bestRankBonus`, `tierAdjustment`, `flagPenalty`, `finalScore`), and tie-breaker values. `bestRankBonus` is retained as a compatibility field with value `0`; original rank is applied only as the explicit final tie-breaker. `flagPenalty` counts delivery flags (`redirect-wrapper`, `tracking-stripped`) only when every provider's copy of the URL carries them, and page flags (`sponsored`, `video`, `community`) when any provider reports them; `flags` still lists every flag any provider reported. `corroborationBonus` adds 0.3 for each additional provider that independently returned the page; a page that any provider flags as sponsored, video, or community keeps that tier penalty even when other providers return it unflagged.
 - top-level `ranking` metadata with the strategy, sort order, considered/returned counts, and `droppedCount` for results trimmed by the output cap. Detailed `dropped[]` records (with `reason: "maxMergedResults"`) are included only with `includeRawPayloads: true`.
 
 Final ordering is deterministic: descending score, selected-provider priority, then original provider rank. Results still tied on all three keys retain their insertion order. The selected `providers`/mode order therefore acts as the provider-priority order and is exposed in `ranking.tieBreakers`.
@@ -352,7 +354,7 @@ Lists the providers visible to the broker and whether they appear configured.
 
 #### How discovery works
 
-Search Fusion unions the active runtime registry with its native provider catalog, adding catalog providers whose owning plugin is enabled in the live config. Runtime entries win on id collisions and keep their full credential accessors; catalog entries cover providers not yet present because OpenClaw activates plugins lazily. The resulting union drives listing, selection, modes, intent routing, sibling dedupe, and fan-out; delegated search still asks the runtime to load the selected provider on demand.
+Search Fusion unions the active runtime registry with its native provider catalog, adding catalog providers whose owning plugin is enabled in the live config (an entry under `plugins.entries` or the selected `tools.web.search.provider`). The host plugin policy still applies: `plugins.enabled: false`, a `plugins.deny` entry, an explicit `enabled: false`, or a `plugins.allow` list that omits the plugin (unless `plugins.bundledDiscovery` is `compat`) keeps a catalog provider disabled. Runtime entries win on id collisions and keep their full credential accessors; catalog entries cover providers not yet present because OpenClaw activates plugins lazily. The resulting union drives listing, selection, modes, intent routing, sibling dedupe, and fan-out; delegated search still asks the runtime to load the selected provider on demand.
 
 Before delegation, Search Fusion resolves plugin-entry or scoped credential SecretRefs for catalog-derived provider stubs so lazy-loaded providers receive the resolved credential config.
 
@@ -367,7 +369,7 @@ The additive `missing` array now reports native catalog providers whose owning p
 
 `envKeyDetected` is boolean-only. Search Fusion never returns environment credential values. A provider can still be configured through plugin config or account auth when this flag is `false`.
 
-Registry-derived provider entries also include a non-secret `credentialSource` annotation when known. Because the plugin context cannot inspect the account-auth profile store directly, registry providers that declare `authProviderId` are included with `account-auth (unverified)` rather than being incorrectly omitted; the delegated OpenClaw runtime still performs the authoritative auth check.
+Registry-derived provider entries also include a non-secret `credentialSource` annotation when known. Because the plugin context cannot inspect the account-auth profile store directly, registry providers that declare `authProviderId` and have no detected env credential are included with `account-auth (unverified)` rather than being incorrectly omitted; the delegated OpenClaw runtime still performs the authoritative auth check.
 
 ### OpenClaw 2026.7.2 provider coverage
 
@@ -425,7 +427,19 @@ const tableRows = payload.evidenceTable.rows.map((row) => ({
 pnpm install
 pnpm check
 pnpm test
+pnpm run eval   # offline result-quality eval, see eval/README.md
 ```
+
+`pnpm run eval` replays recorded provider payloads from `eval/fixtures/` through the real merge and ranking pipeline and scores the output against relevance judgments (nDCG, precision, duplicate rate, snippet provenance, answer recall). `pnpm test` fails if any gated metric drops below `eval/baseline.json`; refresh it with `pnpm run eval -- --write-baseline` when a change is meant to move the numbers.
+
+## Releasing
+
+ClawHub publishes of `@vacinc/search-fusion` run from `.github/workflows/package-publish.yml` and only for version tags:
+
+1. Bump `version` in `package.json` and merge it to `main`.
+2. Push a matching tag: `git tag v<version> && git push origin v<version>`.
+
+The workflow refuses any ref that is not a `v*` tag (including manual `workflow_dispatch` runs from a branch), fails if the tag does not equal `v` + the `package.json` version, and runs `pnpm test`, `pnpm check`, and `pnpm run plugin:ci` before publishing.
 
 ## Current behavior
 
@@ -436,13 +450,13 @@ pnpm test
 - prefers a paid sibling only when it is configured; otherwise keeps the keyless sibling
 - reports native providers whose plugins are disabled/not enabled, with plugin ids and boolean-only credential detection hints
 - excludes itself to avoid recursion
-- dedupes fuzzy URL variants by default, with same-host normalized titles as a guarded secondary signal
+- dedupes fuzzy URL variants by default, with same-host normalized titles as a guarded secondary signal; canonical URLs also unwrap redirect wrappers, strip tracking parameters, ignore query parameter order, and treat `http`/`https` and `www.`/mobile host spellings (such as `m.` or `en.m.wikipedia.org`) as one page
 - retries transient provider failures with global defaults and per-provider overrides via `providerConfig.<id>.retry`
 - calibrates each provider's relevance scores with default minmax normalization, rank fallback for degenerate score sets, and optional fixed curves
 - supports deterministic provider weighting via `providerConfig.<id>.weight` to bias ranking by provider trust/value
 - isolates unexpected provider pipeline crashes so one provider cannot abort the whole fusion run
 - omits raw provider payloads and discarded items by default; exposes them through explicit output flags
-- caps model-visible snippets and answers with explicit `truncated: true` markers
+- caps model-visible snippets (`maxSnippetLength`) and answer digests (`maxAnswerLength`) with explicit `truncated: true` markers
 - honors caller cancellation, aborts delegated searches, and enforces a whole-fan-out deadline with partial results
 - preserves per-provider merged variants in `results[].variants[]`
 - emits `evidenceTable.columns[]` and `evidenceTable.rows[]` for direct evidence-table rendering

@@ -1,7 +1,10 @@
 import { classifySourceTier, coerceSourceTierMode, sourceTierMultiplier, } from "./source-tier.js";
 import { focusSnippet } from "./page-reader.js";
-import { analyzeUrl, cleanProviderText, cleanProviderTextKeepLines, resolveSiteName, truncate, } from "./text.js";
+import { analyzeUrl, canonicalDedupeHost, cleanProviderText, cleanProviderTextKeepLines, isWebUrl, resolveSiteName, truncate, } from "./text.js";
 const DEFAULT_MAX_SNIPPET_LENGTH = 500;
+/** Answer digests are whole synthesized answers, so they get a larger cap than per-page snippets. */
+export const DEFAULT_MAX_ANSWER_LENGTH = 2000;
+export const MAX_ANSWER_LENGTH_LIMIT = 10000;
 function limitText(value, maxLength) {
     if (!value)
         return { truncated: false };
@@ -58,6 +61,12 @@ function titleFromUrl(url) {
         return url;
     }
 }
+// Matched with every subdomain (m., music., new., np., player., vm., ...).
+const VIDEO_DOMAINS = ["youtube.com", "youtu.be", "vimeo.com", "tiktok.com"];
+const COMMUNITY_DOMAINS = ["reddit.com", "lobste.rs", "lemmy.world"];
+function isHostOrSubdomain(host, domain) {
+    return host === domain || host.endsWith(`.${domain}`);
+}
 function detectItemFlags(obj, url) {
     const flags = new Set();
     if (obj) {
@@ -67,18 +76,14 @@ function detectItemFlags(obj, url) {
         }
     }
     try {
-        const host = new URL(url).hostname.toLowerCase();
-        if (["youtube.com", "www.youtube.com", "youtu.be", "vimeo.com", "www.vimeo.com", "tiktok.com", "www.tiktok.com"].includes(host)) {
+        // Classify on the dedupe host so m.youtube.com, np.reddit.com and similar
+        // spellings get the same flags as the host they merge with.
+        const host = canonicalDedupeHost(new URL(url).hostname);
+        if (VIDEO_DOMAINS.some((domain) => isHostOrSubdomain(host, domain))) {
             flags.add("video");
         }
-        if ([
-            "reddit.com",
-            "www.reddit.com",
-            "old.reddit.com",
-            "news.ycombinator.com",
-            "lobste.rs",
-            "lemmy.world",
-        ].includes(host) ||
+        if (COMMUNITY_DOMAINS.some((domain) => isHostOrSubdomain(host, domain)) ||
+            host === "news.ycombinator.com" ||
             host.startsWith("forum.") ||
             host.startsWith("forums.") ||
             host.startsWith("discuss.") ||
@@ -281,12 +286,16 @@ function mapResultArray(params) {
         const snippetTruncated = providerSnippet.value
             ? providerSnippet.truncated
             : fallbackSnippet.truncated || params.fallbackTruncated === true;
-        if (!rawUrl) {
+        const analyzedUrl = rawUrl ? analyzeUrl(rawUrl, params.urlOptions) : undefined;
+        // Only http(s) pages become results. Other schemes (javascript:, data:,
+        // file:, ...) and free text, including targets unwrapped from a redirect
+        // link, would otherwise reach UIs and models as clickable result links.
+        if (!analyzedUrl || !isWebUrl(analyzedUrl.url)) {
             discardedResults.push({
                 providerId: params.providerId,
                 sourceType: params.sourceType,
                 rawRank: index + 1,
-                reason: "missing-url",
+                reason: analyzedUrl ? "unsupported-url" : "missing-url",
                 title: firstCleanText(obj, ["title", "name", "headline", "label"]),
                 snippet,
                 ...(snippetTruncated ? { truncated: true } : {}),
@@ -294,7 +303,6 @@ function mapResultArray(params) {
             });
             return;
         }
-        const analyzedUrl = analyzeUrl(rawUrl, params.urlOptions);
         const itemFlags = detectItemFlags(obj, analyzedUrl.url);
         const flags = mergeFlags(analyzedUrl.flags, itemFlags);
         const sourceTier = classifySourceTier({ sourceType: params.sourceType, flags });
@@ -335,13 +343,15 @@ function buildCitationDetails(citationsRaw, urlOptions) {
     return citationsRaw.flatMap((entry) => {
         if (typeof entry === "string") {
             const analyzed = analyzeUrl(entry.trim(), urlOptions);
-            return analyzed.url ? [{ url: analyzed.url, raw: entry }] : [];
+            return isWebUrl(analyzed.url) ? [{ url: analyzed.url, raw: entry }] : [];
         }
         const obj = asObject(entry);
         const url = firstString(obj, ["url", "link", "href"]);
         if (!url)
             return [];
         const analyzed = analyzeUrl(url, urlOptions);
+        if (!isWebUrl(analyzed.url))
+            return [];
         return [
             {
                 url: analyzed.url,
@@ -351,12 +361,12 @@ function buildCitationDetails(citationsRaw, urlOptions) {
         ];
     });
 }
-export function extractProviderAnswer(payload, providerId, maxSnippetLength = DEFAULT_MAX_SNIPPET_LENGTH, urlOptions) {
+export function extractProviderAnswer(payload, providerId, maxAnswerLength = DEFAULT_MAX_ANSWER_LENGTH, urlOptions) {
     const rawFullContent = firstCleanText(payload, ["content", "answer"]);
     if (!rawFullContent)
         return undefined;
-    const fullContent = truncate(rawFullContent, maxSnippetLength);
-    const summaryMaxLength = Math.min(320, maxSnippetLength);
+    const fullContent = truncate(rawFullContent, maxAnswerLength);
+    const summaryMaxLength = Math.min(320, maxAnswerLength);
     const citationsRaw = Array.isArray(payload.citations) ? payload.citations : [];
     const citationDetails = buildCitationDetails(citationsRaw, urlOptions);
     return {
@@ -364,7 +374,7 @@ export function extractProviderAnswer(payload, providerId, maxSnippetLength = DE
         summary: truncate(rawFullContent, summaryMaxLength),
         fullContent,
         summaryTruncated: rawFullContent.length > summaryMaxLength,
-        ...(rawFullContent.length > maxSnippetLength ? { truncated: true } : {}),
+        ...(rawFullContent.length > maxAnswerLength ? { truncated: true } : {}),
         citations: citationDetails.map((entry) => entry.url),
         citationDetails,
     };
@@ -372,7 +382,8 @@ export function extractProviderAnswer(payload, providerId, maxSnippetLength = DE
 export function normalizeProviderPayload(params) {
     const payload = params.payload;
     const maxSnippetLength = Math.max(100, Math.min(5000, params.maxSnippetLength ?? DEFAULT_MAX_SNIPPET_LENGTH));
-    const answer = extractProviderAnswer(payload, params.providerId, maxSnippetLength, params.urlOptions);
+    const maxAnswerLength = Math.max(100, Math.min(MAX_ANSWER_LENGTH_LIMIT, params.maxAnswerLength ?? DEFAULT_MAX_ANSWER_LENGTH));
+    const answer = extractProviderAnswer(payload, params.providerId, maxAnswerLength, params.urlOptions);
     const sourceTierMode = coerceSourceTierMode(params.sourceTierMode);
     const resultArrays = [];
     const discardedArrays = [];

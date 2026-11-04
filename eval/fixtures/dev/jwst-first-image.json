@@ -1,0 +1,56 @@
+{
+  "id": "jwst-first-image",
+  "query": "what was the first full color image released by the James Webb Space Telescope",
+  "notes": "Science fact query; answer providers agree; NASA pages arrive as http and with mobile/legacy host variants.",
+  "providers": {
+    "brave": {
+      "payload": {
+        "results": [
+          { "title": "NASA's Webb Delivers Deepest Infrared Image of Universe Yet - NASA", "url": "https://www.nasa.gov/image-article/nasas-webb-delivers-deepest-infrared-image-of-universe-yet/", "description": "Webb's First Deep Field shows galaxy cluster SMACS 0723, released July 11, 2022.", "siteName": "nasa.gov" },
+          { "title": "Webb's First Deep Field - Wikipedia", "url": "https://en.wikipedia.org/wiki/Webb%27s_First_Deep_Field", "description": "Webb's First Deep Field is the first operational image taken by the James Webb Space Telescope, of galaxy cluster SMACS 0723.", "siteName": "en.wikipedia.org" },
+          { "title": "First Images from the James Webb Space Telescope - NASA Science", "url": "https://science.nasa.gov/mission/webb/first-images/", "description": "Explore the first full-color images: SMACS 0723, Carina Nebula, Stephan's Quintet, Southern Ring Nebula, and WASP-96 b.", "siteName": "science.nasa.gov" },
+          { "title": "Biden reveals first image from Webb telescope - BBC News", "url": "https://www.bbc.com/news/science-environment-62116296", "description": "President Biden unveiled the deepest image of the universe ever taken.", "siteName": "bbc.com" }
+        ]
+      }
+    },
+    "duckduckgo": {
+      "payload": {
+        "results": [
+          { "title": "Webb's First Deep Field", "url": "https://en.m.wikipedia.org/wiki/Webb%27s_First_Deep_Field", "snippet": "First operational image taken by JWST.", "siteName": "en.m.wikipedia.org" },
+          { "title": "ESA - Webb's First Deep Field", "url": "https://esawebb.org/images/weic2209a/", "snippet": "ESA/Webb image release of SMACS 0723.", "siteName": "esawebb.org" },
+          { "title": "First Images from Webb", "url": "http://science.nasa.gov/mission/webb/first-images/", "snippet": "The first full-color images and spectroscopic data.", "siteName": "science.nasa.gov" },
+          { "title": "JWST first images explained (video)", "url": "https://www.youtube.com/watch?v=nmMV0T9E1Lc", "snippet": "Explaining Webb's first images.", "siteName": "youtube.com" }
+        ]
+      }
+    },
+    "gemini": {
+      "payload": {
+        "content": "The first full-color image from the James Webb Space Telescope was Webb's First Deep Field, showing the galaxy cluster SMACS 0723. It was unveiled by President Biden on July 11, 2022, ahead of the full release of the first images on July 12, 2022.",
+        "citations": [
+          { "url": "https://en.wikipedia.org/wiki/Webb%27s_First_Deep_Field", "title": "wikipedia.org" },
+          { "url": "https://www.nasa.gov/image-article/nasas-webb-delivers-deepest-infrared-image-of-universe-yet/", "title": "nasa.gov" },
+          { "url": "https://www.bbc.com/news/science-environment-62116296", "title": "bbc.com" }
+        ]
+      }
+    },
+    "exa": {
+      "payload": {
+        "results": [
+          { "title": "NASA's Webb Delivers Deepest Infrared Image of Universe Yet", "url": "https://nasa.gov/image-article/nasas-webb-delivers-deepest-infrared-image-of-universe-yet", "description": "NASA release for Webb's First Deep Field (SMACS 0723).", "siteName": "nasa.gov" },
+          { "title": "Webb first images", "url": "https://webbtelescope.org/news/first-images", "description": "STScI gallery of Webb's first images.", "siteName": "webbtelescope.org" },
+          { "title": "ESA/Webb weic2209a", "url": "https://esawebb.org/images/weic2209a/", "description": "SMACS 0723 image release.", "siteName": "esawebb.org" }
+        ]
+      }
+    }
+  },
+  "pages": [
+    { "id": "nasa-release", "grade": 3, "urls": ["https://www.nasa.gov/image-article/nasas-webb-delivers-deepest-infrared-image-of-universe-yet/", "https://nasa.gov/image-article/nasas-webb-delivers-deepest-infrared-image-of-universe-yet"] },
+    { "id": "wiki-deep-field", "grade": 3, "urls": ["https://en.wikipedia.org/wiki/Webb%27s_First_Deep_Field", "https://en.m.wikipedia.org/wiki/Webb%27s_First_Deep_Field"] },
+    { "id": "nasa-first-images", "grade": 2, "urls": ["https://science.nasa.gov/mission/webb/first-images/", "http://science.nasa.gov/mission/webb/first-images/"] },
+    { "id": "esa", "grade": 2, "urls": ["https://esawebb.org/images/weic2209a/"] },
+    { "id": "bbc", "grade": 2, "urls": ["https://www.bbc.com/news/science-environment-62116296"] },
+    { "id": "stsci", "grade": 2, "urls": ["https://webbtelescope.org/news/first-images"] },
+    { "id": "yt", "grade": 1, "urls": ["https://www.youtube.com/watch?v=nmMV0T9E1Lc"] }
+  ],
+  "answer": { "mustMention": ["SMACS 0723"] }
+}

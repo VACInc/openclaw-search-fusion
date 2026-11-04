@@ -1,0 +1,26 @@
+{
+  "dev": {
+    "ndcg@5": 0.9461,
+    "ndcg@10": 0.9696,
+    "p@5": 0.8923,
+    "mrr": 1,
+    "dup@10": 0.0231,
+    "junk@5": 0.0462,
+    "domains@5": 4.0769,
+    "snippetFallback": 0,
+    "falseMerge": 0,
+    "answerRecall": 1
+  },
+  "heldout": {
+    "ndcg@5": 0.8346,
+    "ndcg@10": 0.8869,
+    "p@5": 0.7429,
+    "mrr": 0.9615,
+    "dup@10": 0.0929,
+    "junk@5": 0.1,
+    "domains@5": 4.2857,
+    "snippetFallback": 0,
+    "falseMerge": 0.0071,
+    "answerRecall": 1
+  }
+}

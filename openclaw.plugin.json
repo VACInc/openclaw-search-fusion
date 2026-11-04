@@ -131,13 +131,19 @@
       },
       "includeDiscarded": {
         "type": "boolean",
-        "description": "Include missing-URL items discarded from merging. Defaults to false."
+        "description": "Include items discarded from merging (missing URL, or a URL that is not http(s)). Defaults to false."
       },
       "maxSnippetLength": {
         "type": "integer",
         "minimum": 100,
         "maximum": 5000,
-        "description": "Maximum model-visible length for snippets and provider answers. Defaults to 500; truncated fields are marked."
+        "description": "Maximum model-visible length for result, variant, and evidence snippets. Defaults to 500; truncated fields are marked."
+      },
+      "maxAnswerLength": {
+        "type": "integer",
+        "minimum": 100,
+        "maximum": 10000,
+        "description": "Maximum model-visible length for provider answer digests (answers[].fullContent). Defaults to the larger of 2000 and maxSnippetLength; truncated answers are marked."
       },
       "fuzzyDedupe": {
         "type": "boolean",

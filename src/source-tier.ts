@@ -60,6 +60,22 @@ export function classifySourceTier(params: {
   return "high";
 }
 
+/**
+ * Highest tier a merged page may hold given flags that describe the page
+ * itself (any provider marking it sponsored, a video, or a forum thread).
+ * Link-level flags such as redirect-wrapper do not cap the page.
+ */
+export function pageFlagTierCap(flags: readonly SearchResultFlag[]): SearchResultSourceTier {
+  if (flags.includes("sponsored")) return "suppressed";
+  if (flags.includes("video") || flags.includes("community")) return "low";
+  return "high";
+}
+
+/** The lower of two tiers. */
+export function pickLowerSourceTier(a: SearchResultSourceTier, b: SearchResultSourceTier): SearchResultSourceTier {
+  return sourceTierRank(a) <= sourceTierRank(b) ? a : b;
+}
+
 export function sourceTierMultiplier(tier: SearchResultSourceTier, mode: SourceTierMode): number {
   if (mode === "off") return 1;
 

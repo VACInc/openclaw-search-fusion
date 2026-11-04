@@ -1,0 +1,34 @@
+name: audit
+
+# pnpm audit reads pnpm-lock.yaml directly (npm audit needs a
+# package-lock.json, which this repo does not have). The weekly run catches
+# advisories published after a dependency was merged.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "23 6 * * 1"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+        with:
+          run_install: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: 24
+      - name: Runtime dependencies (shipped to users), any severity
+        run: pnpm audit --prod
+      - name: Full dependency tree, high and critical
+        run: pnpm audit --audit-level=high

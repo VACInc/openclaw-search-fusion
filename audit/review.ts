@@ -7,6 +7,7 @@
  */
 
 import type { AuditRecord } from "./types.js";
+import { canonicalizeUrl } from "../src/text.js";
 
 const SEVERITY_PREFIX: Record<string, string> = {
   info: "ℹ",
@@ -98,7 +99,9 @@ export function renderAuditReview(record: AuditRecord): string {
     lines.push("## Provider answer digests");
     for (const ans of record.payload.answers) {
       lines.push(`### ${ans.providerId}`);
-      lines.push(`  ${ans.summary}${ans.summaryTruncated ? "…" : ""}`);
+      // Truncated summaries already end with an ellipsis from truncate().
+      const needsEllipsis = ans.summaryTruncated && !ans.summary.endsWith("…");
+      lines.push(`  ${ans.summary}${needsEllipsis ? "…" : ""}`);
       if (ans.citations.length > 0) {
         lines.push(`  Citations (${ans.citations.length}):`);
         for (const c of ans.citations) {
@@ -131,8 +134,11 @@ export function compareAuditRecords(
   urlsRetained: string[];
   providerChanges: string[];
 } {
-  const originalUrls = new Set(original.payload.results.map((r) => r.canonicalUrl));
-  const rerunUrls = new Set(rerun.payload.results.map((r) => r.canonicalUrl));
+  // Re-key both sides with the current canonicalization so a record captured
+  // under older dedupe rules (e.g. before www./http variants were merged)
+  // still lines up with a fresh rerun.
+  const originalUrls = new Set(original.payload.results.map((r) => canonicalizeUrl(r.canonicalUrl)));
+  const rerunUrls = new Set(rerun.payload.results.map((r) => canonicalizeUrl(r.canonicalUrl)));
 
   const urlsAdded = [...rerunUrls].filter((u) => !originalUrls.has(u));
   const urlsRemoved = [...originalUrls].filter((u) => !rerunUrls.has(u));

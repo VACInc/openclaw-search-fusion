@@ -27,13 +27,17 @@ import { KNOWN_PROVIDERS } from "./provider-catalog.js";
 import {
   applySearchResultQuality,
   calibrateProviderScores,
+  DEFAULT_MAX_ANSWER_LENGTH,
+  MAX_ANSWER_LENGTH_LIMIT,
   normalizeProviderPayload,
   validateScoreCalibrationConfig,
 } from "./result-normalizer.js";
 import {
   compareSourceTierDesc,
   coerceSourceTierMode,
+  pageFlagTierCap,
   pickHigherSourceTier,
+  pickLowerSourceTier,
   sourceTierMergedAdjustment,
 } from "./source-tier.js";
 import {
@@ -62,6 +66,14 @@ const MIN_PROVIDER_WEIGHT = 0.1;
 const MAX_PROVIDER_WEIGHT = 5;
 const SEARCH_FUSION_PROVIDER_ID = "search-fusion";
 const MERGED_RANKING_STRATEGY = "merged-score-v1" as const;
+/**
+ * Score added for each additional provider that independently returned a
+ * page. Sized so that one extra provider outweighs a few rank positions
+ * (each rank step costs about 0.12 in variant score plus rank bonus): an
+ * independent second engine agreeing is stronger evidence than one engine's
+ * ordering among its own top five.
+ */
+const CORROBORATION_BONUS_PER_PROVIDER = 0.3;
 const MERGED_SORT_ORDER = [
   "score:desc",
   "providerPriority:asc",
@@ -1478,6 +1490,30 @@ function mergedFlagPenalty(flags: readonly SearchResultFlag[]): number {
   return penalty;
 }
 
+/**
+ * Flags carried by every variant of a merged URL. Delivery flags such as
+ * redirect-wrapper and tracking-stripped describe how one provider returned
+ * the URL, and that variant's own score already pays for them; they should
+ * not penalize copies other providers returned cleanly.
+ */
+function flagsOnEveryVariant(variants: MergeCandidate["variants"]): SearchResultFlag[] {
+  const [first, ...rest] = variants;
+  if (!first) return [];
+  return first.flags.filter((flag) => rest.every((variant) => variant.flags.includes(flag)));
+}
+
+// Content flags describe the page itself: if any provider marks it sponsored,
+// a video, or a forum thread, agreement from other providers must not lift it
+// past that.
+const PAGE_CONTENT_FLAGS: ReadonlySet<SearchResultFlag> = new Set<SearchResultFlag>(["sponsored", "video", "community"]);
+
+function penaltyFlags(entry: MergeCandidate): SearchResultFlag[] {
+  return mergeFlags(
+    flagsOnEveryVariant(entry.variants),
+    entry.flags.filter((flag) => PAGE_CONTENT_FLAGS.has(flag)),
+  );
+}
+
 function mergedSortOrder(): string[] {
   return [...MERGED_SORT_ORDER];
 }
@@ -1505,8 +1541,11 @@ function computeMergedScoreBreakdown(
   const bestVariantScore = entry.variants.reduce((max, variant) => Math.max(max, variant.score), 0);
   if (ranking.strategy === RRF_RANKING_STRATEGY) {
     const rrfScore = computeRrfScore(entry, ranking);
-    const tierAdjustment = sourceTierMergedAdjustment(entry.bestSourceTier, sourceTierMode);
-    const flagPenalty = mergedFlagPenalty(entry.flags);
+    const tierAdjustment = sourceTierMergedAdjustment(
+      pickLowerSourceTier(entry.bestSourceTier, pageFlagTierCap(entry.flags)),
+      sourceTierMode,
+    );
+    const flagPenalty = mergedFlagPenalty(penaltyFlags(entry));
     return {
       bestVariantScore,
       corroborationBonus: 0,
@@ -1517,12 +1556,18 @@ function computeMergedScoreBreakdown(
       finalScore: Math.max(0.01, rrfScore + tierAdjustment - flagPenalty),
     };
   }
-  const corroborationBonus = Math.max(0, entry.providerCount - 1) * 0.12;
+  const corroborationBonus = Math.max(0, entry.providerCount - 1) * CORROBORATION_BONUS_PER_PROVIDER;
   // Rank is an explicit tie-breaker after provider priority. Folding it into
   // the score would silently make rank take precedence over provider priority.
   const bestRankBonus = 0;
-  const tierAdjustment = sourceTierMergedAdjustment(entry.bestSourceTier, sourceTierMode);
-  const flagPenalty = mergedFlagPenalty(entry.flags);
+  // bestSourceTier is the best of any variant, so one provider that did not
+  // flag an ad or a video would otherwise lift the whole merged page; the
+  // larger agreement bonus made that enough to reach #1.
+  const tierAdjustment = sourceTierMergedAdjustment(
+    pickLowerSourceTier(entry.bestSourceTier, pageFlagTierCap(entry.flags)),
+    sourceTierMode,
+  );
+  const flagPenalty = mergedFlagPenalty(penaltyFlags(entry));
 
   return {
     bestVariantScore,
@@ -1613,7 +1658,11 @@ function pickBestSnippet(
   }
 
   const informative = withSnippets.filter((item) => normalizeTitle(item.snippet).length > 0);
-  const candidates = informative.length > 0 ? informative : withSnippets;
+  const informativeOrAll = informative.length > 0 ? informative : withSnippets;
+  // A snippet copied from an answer digest is the same text for every
+  // citation, so the page's own provider snippet wins, however short.
+  const pageSnippets = informativeOrAll.filter((item) => item.snippetSource === "provider");
+  const candidates = pageSnippets.length > 0 ? pageSnippets : informativeOrAll;
   const best = candidates.reduce((current, item) =>
     item.snippet.length > current.snippet.length ? item : current,
   );
@@ -1964,6 +2013,7 @@ async function runProvider(params: {
   sourceTierMode: SourceTierMode;
   maxSnippetLength: number;
   urlOptions?: FuzzyUrlOptions;
+  maxAnswerLength: number;
   signal: AbortSignal;
   deadlineAt: number;
   cooldowns: Map<string, ProviderCooldown>;
@@ -2063,6 +2113,7 @@ async function runProvider(params: {
         maxSnippetLength: params.maxSnippetLength,
         urlOptions: params.urlOptions,
         query: params.request.query,
+        maxAnswerLength: params.maxAnswerLength,
       });
 
       if (normalized.error) {
@@ -2144,7 +2195,7 @@ async function runProvider(params: {
         return failure(
           retryTiming.rateLimited
             ? `Rate-limit wait of ${delayMs}ms${retryTiming.source ? ` from ${retryTiming.source}` : ""} exceeds the remaining total timeout budget of ${remainingBudgetMs}ms.`
-            : "deadline exceeded",
+            : lastError,
         );
       }
       retryHistory.push({ attempt, error: lastError, delayMs });
@@ -2258,7 +2309,14 @@ export async function runSearchFusion(params: {
     100,
     5000,
   );
-  const output = { includeRawPayloads, includeDiscarded, maxSnippetLength };
+  // Answers were once capped by maxSnippetLength; never cut them shorter than
+  // a configured snippet cap unless maxAnswerLength says so explicitly.
+  const maxAnswerLength = clamp(
+    brokerConfig.maxAnswerLength ?? Math.max(DEFAULT_MAX_ANSWER_LENGTH, maxSnippetLength),
+    100,
+    MAX_ANSWER_LENGTH_LIMIT,
+  );
+  const output = { includeRawPayloads, includeDiscarded, maxSnippetLength, maxAnswerLength };
   const runtimeConfigSnapshot = getRuntimeConfigSnapshot();
   const runtimeConfig = applySearchConfigContext(
     runtimeConfigSnapshot ?? params.contextConfig ?? params.config,
@@ -2373,6 +2431,7 @@ export async function runSearchFusion(params: {
             sourceTierMode,
             maxSnippetLength,
             urlOptions: dedupe.enabled ? dedupe : undefined,
+            maxAnswerLength,
             signal: runController.signal,
             deadlineAt,
             cooldowns: providerCooldowns,

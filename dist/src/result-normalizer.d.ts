@@ -1,5 +1,8 @@
 import type { DiscardedSearchResult, NormalizedSearchResult, ProviderAnswerDigest, ScoreCalibrationStrategy, SearchResultFlag, SearchResultSourceType, SearchFusionScoreCalibrationConfig, SourceTierMode } from "./types.js";
 import { type FuzzyUrlOptions } from "./text.js";
+/** Answer digests are whole synthesized answers, so they get a larger cap than per-page snippets. */
+export declare const DEFAULT_MAX_ANSWER_LENGTH = 2000;
+export declare const MAX_ANSWER_LENGTH_LIMIT = 10000;
 export type ScoreCalibrationFallback = "single-result" | "missing-or-invalid-scores" | "constant-scores";
 export type CalibratedProviderScores = {
     scores: number[];
@@ -23,7 +26,7 @@ export declare function applySearchResultQuality(params: {
     sourceTierMode: SourceTierMode;
     normalizeHighTier?: boolean;
 }): number;
-export declare function extractProviderAnswer(payload: Record<string, unknown>, providerId: string, maxSnippetLength?: number, urlOptions?: FuzzyUrlOptions): ProviderAnswerDigest | undefined;
+export declare function extractProviderAnswer(payload: Record<string, unknown>, providerId: string, maxAnswerLength?: number, urlOptions?: FuzzyUrlOptions): ProviderAnswerDigest | undefined;
 export declare function normalizeProviderPayload(params: {
     providerId: string;
     payload: Record<string, unknown>;
@@ -31,6 +34,7 @@ export declare function normalizeProviderPayload(params: {
     maxSnippetLength?: number;
     urlOptions?: FuzzyUrlOptions;
     query?: string;
+    maxAnswerLength?: number;
 }): {
     results: NormalizedSearchResult[];
     discardedResults: DiscardedSearchResult[];

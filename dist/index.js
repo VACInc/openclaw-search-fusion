@@ -46,7 +46,7 @@ const SearchFusionParameters = Type.Object({
     includeRawPayloads: Type.Optional(Type.Boolean({
         description: "Include full provider payloads, complete normalized provider runs, duplicate merged evidence, and detailed dropped-result records. Defaults to false.",
     })),
-    includeDiscarded: Type.Optional(Type.Boolean({ description: "Include missing-URL items discarded from merging. Defaults to false." })),
+    includeDiscarded: Type.Optional(Type.Boolean({ description: "Include items discarded from merging (missing URL, or a URL that is not http(s)). Defaults to false." })),
 }, { additionalProperties: false });
 function asJsonResult(payload) {
     return {

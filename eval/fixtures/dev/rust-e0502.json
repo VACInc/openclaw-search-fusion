@@ -1,0 +1,62 @@
+{
+  "id": "rust-e0502",
+  "query": "rust error E0502 cannot borrow as mutable because it is also borrowed as immutable",
+  "notes": "Error-message troubleshooting; official error index plus many Stack Overflow threads; Kimi answer with bare-string citations.",
+  "providers": {
+    "brave": {
+      "payload": {
+        "results": [
+          { "title": "E0502 - Error codes index", "url": "https://doc.rust-lang.org/error_codes/E0502.html", "description": "A variable already borrowed with a certain mutability (either mutable or immutable) was borrowed again with a different mutability.", "siteName": "doc.rust-lang.org" },
+          { "title": "Cannot borrow as mutable because it is also borrowed as immutable - Stack Overflow", "url": "https://stackoverflow.com/questions/47618823/cannot-borrow-as-mutable-because-it-is-also-borrowed-as-immutable", "description": "The immutable borrow lives until its last use; move the read after the mutation or clone the value.", "siteName": "stackoverflow.com" },
+          { "title": "Rust borrow checker error E0502 in loop - Stack Overflow", "url": "https://stackoverflow.com/questions/58295535/cannot-borrow-as-mutable-in-loop", "description": "Iterating over a Vec while pushing to it triggers E0502.", "siteName": "stackoverflow.com" },
+          { "title": "Why does pushing to a vector while iterating fail? - Stack Overflow", "url": "https://stackoverflow.com/questions/30177395/when-iterating-over-a-vector-why-cant-i-push", "description": "Explains why the iterator holds an immutable borrow.", "siteName": "stackoverflow.com" },
+          { "title": "Stuck on E0502 for hours - help - The Rust Programming Language Forum", "url": "https://users.rust-lang.org/t/stuck-on-e0502-for-hours/98231", "description": "Forum thread asking for help with E0502 in a HashMap entry pattern.", "siteName": "users.rust-lang.org" },
+          { "title": "References and Borrowing - The Rust Programming Language", "url": "https://doc.rust-lang.org/book/ch04-02-references-and-borrowing.html", "description": "We also cannot have a mutable reference while we have an immutable one to the same value.", "siteName": "doc.rust-lang.org" }
+        ]
+      }
+    },
+    "duckduckgo": {
+      "payload": {
+        "results": [
+          { "title": "E0502 - Error codes index", "url": "https://doc.rust-lang.org/error_codes/E0502.html", "snippet": "A variable already borrowed with a certain mutability was borrowed again with a different mutability.", "siteName": "doc.rust-lang.org" },
+          { "title": "References and Borrowing - The Rust Programming Language", "url": "https://doc.rust-lang.org/stable/book/ch04-02-references-and-borrowing.html", "snippet": "Mutable references have one big restriction.", "siteName": "doc.rust-lang.org" },
+          { "title": "Cannot borrow as mutable because it is also borrowed as immutable", "url": "https://stackoverflow.com/questions/47618823/cannot-borrow-as-mutable-because-it-is-also-borrowed-as-immutable", "snippet": "The immutable borrow lives until its last use.", "siteName": "stackoverflow.com" },
+          { "title": "Rust E0502 explained with examples | RustTutorialsPro", "url": "https://rusttutorialspro.com/e0502-explained", "snippet": "Rust E0502 explained with examples. Learn Rust fast!", "siteName": "rusttutorialspro.com" },
+          { "title": "Non-lexical lifetimes - Rust RFC 2094", "url": "https://rust-lang.github.io/rfcs/2094-nll.html", "snippet": "Non-lexical lifetimes make borrows end at last use.", "siteName": "rust-lang.github.io" }
+        ]
+      }
+    },
+    "exa": {
+      "payload": {
+        "results": [
+          { "title": "Two-phase borrows and E0502", "url": "https://rustc-dev-guide.rust-lang.org/borrow_check/two_phase_borrows.html", "description": "Two-phase borrows allow vec.push(vec.len()) by delaying activation of the mutable borrow.", "siteName": "rustc-dev-guide.rust-lang.org" },
+          { "title": "Cannot borrow as mutable because it is also borrowed as immutable", "url": "https://stackoverflow.com/questions/47618823/cannot-borrow-as-mutable-because-it-is-also-borrowed-as-immutable/", "description": "Top answer explains last-use semantics of borrows under NLL.", "siteName": "stackoverflow.com" },
+          { "title": "E0502", "url": "https://doc.rust-lang.org/error_codes/E0502.html?search=E0502", "description": "Error code E0502.", "siteName": "doc.rust-lang.org" },
+          { "title": "Non-lexical lifetimes", "url": "https://rust-lang.github.io/rfcs/2094-nll.html", "description": "RFC 2094.", "siteName": "rust-lang.github.io" }
+        ]
+      }
+    },
+    "kimi": {
+      "payload": {
+        "content": "E0502 means you tried to take a mutable borrow while an immutable borrow of the same value is still alive. Under non-lexical lifetimes a borrow ends at its last use, so reorder the code so the immutable reference is no longer used before mutating, clone the data you need, or restructure with indices instead of iterators.",
+        "citations": [
+          "https://doc.rust-lang.org/error_codes/E0502.html",
+          "https://stackoverflow.com/questions/47618823/cannot-borrow-as-mutable-because-it-is-also-borrowed-as-immutable",
+          "https://rust-lang.github.io/rfcs/2094-nll.html"
+        ]
+      }
+    }
+  },
+  "pages": [
+    { "id": "e0502-index", "grade": 3, "urls": ["https://doc.rust-lang.org/error_codes/E0502.html", "https://doc.rust-lang.org/error_codes/E0502.html?search=E0502"] },
+    { "id": "so-47618823", "grade": 3, "urls": ["https://stackoverflow.com/questions/47618823/cannot-borrow-as-mutable-because-it-is-also-borrowed-as-immutable", "https://stackoverflow.com/questions/47618823/cannot-borrow-as-mutable-because-it-is-also-borrowed-as-immutable/"] },
+    { "id": "book-borrowing", "grade": 2, "urls": ["https://doc.rust-lang.org/book/ch04-02-references-and-borrowing.html", "https://doc.rust-lang.org/stable/book/ch04-02-references-and-borrowing.html"] },
+    { "id": "nll-rfc", "grade": 2, "urls": ["https://rust-lang.github.io/rfcs/2094-nll.html"] },
+    { "id": "two-phase", "grade": 2, "urls": ["https://rustc-dev-guide.rust-lang.org/borrow_check/two_phase_borrows.html"] },
+    { "id": "so-58295535", "grade": 2, "urls": ["https://stackoverflow.com/questions/58295535/cannot-borrow-as-mutable-in-loop"] },
+    { "id": "so-30177395", "grade": 1, "urls": ["https://stackoverflow.com/questions/30177395/when-iterating-over-a-vector-why-cant-i-push"] },
+    { "id": "urlo-thread", "grade": 1, "urls": ["https://users.rust-lang.org/t/stuck-on-e0502-for-hours/98231"] },
+    { "id": "tutorial-farm", "grade": 0, "urls": ["https://rusttutorialspro.com/e0502-explained"] }
+  ],
+  "answer": { "mustMention": ["last use"] }
+}

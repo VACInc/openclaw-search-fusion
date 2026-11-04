@@ -1,0 +1,60 @@
+{
+  "id": "postgres-jsonb-index",
+  "query": "postgres index jsonb column for containment queries",
+  "notes": "Database docs query; docs pages under /current/ and /16/ are distinct versions; fragments on the same page; Firecrawl and Exa include extra Stack Overflow threads.",
+  "providers": {
+    "brave": {
+      "payload": {
+        "results": [
+          { "title": "PostgreSQL: Documentation: 17: 8.14. JSON Types", "url": "https://www.postgresql.org/docs/current/datatype-json.html", "description": "GIN indexes can be used to efficiently search for keys or key/value pairs occurring within a large number of jsonb documents.", "siteName": "postgresql.org" },
+          { "title": "PostgreSQL: Documentation: 17: 64.4. GIN Indexes", "url": "https://www.postgresql.org/docs/current/gin.html", "description": "GIN stands for Generalized Inverted Index. jsonb_ops and jsonb_path_ops operator classes.", "siteName": "postgresql.org" },
+          { "title": "How to index jsonb for @> queries? - Stack Overflow", "url": "https://stackoverflow.com/questions/36075918/postgresql-index-on-jsonb", "description": "CREATE INDEX ON tbl USING gin (data jsonb_path_ops); supports @> containment.", "siteName": "stackoverflow.com" },
+          { "title": "Indexing JSONB in Postgres - Crunchy Data Blog", "url": "https://www.crunchydata.com/blog/indexing-jsonb-in-postgres", "description": "A practical guide to GIN, expression and partial indexes on jsonb.", "siteName": "crunchydata.com" },
+          { "title": "PostgreSQL: Documentation: 16: 8.14. JSON Types", "url": "https://www.postgresql.org/docs/16/datatype-json.html", "description": "JSON data types are for storing JSON (JavaScript Object Notation) data.", "siteName": "postgresql.org" }
+        ]
+      }
+    },
+    "exa": {
+      "payload": {
+        "results": [
+          { "title": "8.14. JSON Types", "url": "https://www.postgresql.org/docs/current/datatype-json.html#JSON-INDEXING", "description": "jsonb Indexing: GIN indexes can be used to efficiently search for keys or key/value pairs.", "siteName": "postgresql.org" },
+          { "title": "Indexing JSONB in Postgres", "url": "https://www.crunchydata.com/blog/indexing-jsonb-in-postgres", "description": "GIN vs expression indexes for jsonb.", "siteName": "crunchydata.com" },
+          { "title": "jsonb_path_ops vs jsonb_ops - Stack Overflow", "url": "https://stackoverflow.com/questions/43391355/jsonb-path-ops-vs-jsonb-ops", "description": "jsonb_path_ops is smaller and faster for @> but does not support key-exists operators.", "siteName": "stackoverflow.com" },
+          { "title": "Postgres JSONB indexing explained", "url": "https://pganalyze.com/blog/gin-index", "description": "Understanding Postgres GIN indexes: the good and the bad.", "siteName": "pganalyze.com" }
+        ]
+      }
+    },
+    "firecrawl": {
+      "payload": {
+        "results": [
+          { "title": "PostgreSQL: Documentation: 17: 8.14. JSON Types", "url": "https://postgresql.org/docs/current/datatype-json.html", "description": "jsonb indexing with GIN.", "siteName": "postgresql.org" },
+          { "title": "Understanding Postgres GIN Indexes: The Good and the Bad", "url": "https://pganalyze.com/blog/gin-index", "description": "How GIN indexes work, when they help jsonb containment queries, and the write-amplification trade-off from fastupdate and pending lists.", "siteName": "pganalyze.com" },
+          { "title": "postgresql - Index on jsonb - Stack Overflow", "url": "https://stackoverflow.com/questions/36075918/postgresql-index-on-jsonb", "description": "Use a GIN index with jsonb_path_ops.", "siteName": "stackoverflow.com" },
+          { "title": "Postgres JSONB query performance - Stack Overflow", "url": "https://stackoverflow.com/questions/52263522/postgres-jsonb-query-slow", "description": "Query is slow because ->> comparison cannot use the GIN index.", "siteName": "stackoverflow.com" },
+          { "title": "Postgres JSONB tutorial for beginners", "url": "https://sqltutorialzone.com/postgres-jsonb-tutorial", "description": "Learn JSONB in Postgres from scratch.", "siteName": "sqltutorialzone.com" }
+        ]
+      }
+    },
+    "tavily": {
+      "payload": {
+        "results": [
+          { "title": "8.14. JSON Types", "url": "https://www.postgresql.org/docs/current/datatype-json.html", "snippet": "The default GIN operator class for jsonb supports queries with the key-exists operators ?, ?| and ?&, the containment operator @>, and the jsonpath match operators @? and @@. The non-default GIN operator class jsonb_path_ops does not support the key-exists operators, but it does support @>, @? and @@.", "score": 0.91 },
+          { "title": "64.4. GIN Indexes", "url": "https://www.postgresql.org/docs/current/gin.html", "snippet": "Built-in GIN operator classes include jsonb_ops and jsonb_path_ops.", "score": 0.79 },
+          { "title": "jsonb_path_ops vs jsonb_ops", "url": "https://stackoverflow.com/questions/43391355/jsonb-path-ops-vs-jsonb-ops", "snippet": "jsonb_path_ops is smaller and faster for containment.", "score": 0.74 },
+          { "title": "Indexing JSONB in Postgres", "url": "https://www.crunchydata.com/blog/indexing-jsonb-in-postgres", "snippet": "GIN, expression and partial indexes on jsonb.", "score": 0.7 }
+        ]
+      }
+    }
+  },
+  "pages": [
+    { "id": "pg-json-types", "grade": 3, "urls": ["https://www.postgresql.org/docs/current/datatype-json.html", "https://www.postgresql.org/docs/current/datatype-json.html#JSON-INDEXING", "https://postgresql.org/docs/current/datatype-json.html"] },
+    { "id": "pg-gin", "grade": 3, "urls": ["https://www.postgresql.org/docs/current/gin.html"] },
+    { "id": "so-36075918", "grade": 3, "urls": ["https://stackoverflow.com/questions/36075918/postgresql-index-on-jsonb"] },
+    { "id": "so-43391355", "grade": 2, "urls": ["https://stackoverflow.com/questions/43391355/jsonb-path-ops-vs-jsonb-ops"] },
+    { "id": "crunchy", "grade": 2, "urls": ["https://www.crunchydata.com/blog/indexing-jsonb-in-postgres"] },
+    { "id": "pganalyze", "grade": 2, "urls": ["https://pganalyze.com/blog/gin-index"] },
+    { "id": "so-52263522", "grade": 1, "urls": ["https://stackoverflow.com/questions/52263522/postgres-jsonb-query-slow"] },
+    { "id": "pg16-json", "grade": 1, "urls": ["https://www.postgresql.org/docs/16/datatype-json.html"] },
+    { "id": "farm", "grade": 0, "urls": ["https://sqltutorialzone.com/postgres-jsonb-tutorial"] }
+  ]
+}

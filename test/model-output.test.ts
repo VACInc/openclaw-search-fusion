@@ -78,7 +78,7 @@ function fakePayload(params: { includeRawPayloads?: boolean; withPassages?: numb
     pageReads: [],
     ranking: { strategy: "merged-score-v1", sortOrder: [], consideredCount: 10, returnedCount: 10, droppedCount: 0, dropped: [] },
     evidenceTable: { version: 1, columns: [], rowCount: 0, rows: [] },
-    output: { includeRawPayloads: params.includeRawPayloads ?? false, includeDiscarded: false, maxSnippetLength: 500 },
+    output: { includeRawPayloads: params.includeRawPayloads ?? false, includeDiscarded: false, maxSnippetLength: 500, maxAnswerLength: 2000 },
     externalContent: { untrusted: true, source: "web_search", provider: "search-fusion", aggregated: true },
   } as FusionSearchPayload;
 }
