@@ -98,7 +98,9 @@ export function renderAuditReview(record: AuditRecord): string {
     lines.push("## Provider answer digests");
     for (const ans of record.payload.answers) {
       lines.push(`### ${ans.providerId}`);
-      lines.push(`  ${ans.summary}${ans.summaryTruncated ? "…" : ""}`);
+      // Truncated summaries already end with an ellipsis from truncate().
+      const needsEllipsis = ans.summaryTruncated && !ans.summary.endsWith("…");
+      lines.push(`  ${ans.summary}${needsEllipsis ? "…" : ""}`);
       if (ans.citations.length > 0) {
         lines.push(`  Citations (${ans.citations.length}):`);
         for (const c of ans.citations) {
