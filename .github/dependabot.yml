@@ -1,0 +1,47 @@
+version: 2
+
+updates:
+  # package.json + pnpm-lock.yaml (Dependabot handles pnpm under "npm").
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    # Let new releases age before they are proposed; most malicious
+    # publishes are caught and pulled within days.
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: deps
+    ignore:
+      # @types/node tracks the oldest supported Node (22), not the newest.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+    groups:
+      dev-minor-and-patch:
+        dependency-type: development
+        update-types: [minor, patch]
+        exclude-patterns:
+          # The SDK the plugin builds against is reviewed on its own;
+          # test/sdk-surface.test.ts fails if it drops an import we use.
+          - openclaw
+          - "@openclaw/*"
+      openclaw:
+        patterns:
+          - openclaw
+          - "@openclaw/*"
+
+  # SHA-pinned actions and the reusable ClawHub publish workflow.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: ci
+    groups:
+      github-actions:
+        patterns: ["*"]
