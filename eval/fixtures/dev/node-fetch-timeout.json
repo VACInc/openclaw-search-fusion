@@ -1,0 +1,62 @@
+{
+  "id": "node-fetch-timeout",
+  "query": "node.js fetch request timeout AbortSignal.timeout",
+  "notes": "API docs query; Gemini cites pages Brave also returns; Exa adds trailing slashes; several Stack Overflow threads.",
+  "providers": {
+    "brave": {
+      "payload": {
+        "results": [
+          { "title": "AbortSignal: timeout() static method - Web APIs | MDN", "url": "https://developer.mozilla.org/en-US/docs/Web/API/AbortSignal/timeout_static", "description": "The AbortSignal.timeout() static method returns an AbortSignal that will automatically abort after a specified time.", "siteName": "developer.mozilla.org" },
+          { "title": "Globals | Node.js v22 Documentation", "url": "https://nodejs.org/api/globals.html", "description": "Class: AbortSignal. Static method: AbortSignal.timeout(delay). Returns a new AbortSignal which will be aborted in delay milliseconds.", "siteName": "nodejs.org" },
+          { "title": "How to set a timeout on a fetch request in Node.js? - Stack Overflow", "url": "https://stackoverflow.com/questions/46946380/fetch-api-request-timeout", "description": "Use AbortSignal.timeout(5000) and pass it as the signal option to fetch. The request rejects with a TimeoutError DOMException.", "siteName": "stackoverflow.com" },
+          { "title": "Node.js fetch timeout - 7 easy ways (2026 guide)", "url": "https://codetutorialhub.net/nodejs-fetch-timeout-easy-ways", "description": "Learn 7 easy ways to add timeout to fetch in Node.js. Best tips and tricks for beginners and experts. Read now!", "siteName": "codetutorialhub.net" },
+          { "title": "Fetch with timeout in Node 18+ - Stack Overflow", "url": "https://stackoverflow.com/questions/72780245/fetch-with-timeout-node-18", "description": "Node 18 ships undici fetch; AbortSignal.timeout is available from Node 17.3.", "siteName": "stackoverflow.com" },
+          { "title": "Using the Fetch API - Web APIs | MDN", "url": "https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API/Using_Fetch", "description": "Canceling a request: to cancel a fetch you can use an AbortController.", "siteName": "developer.mozilla.org" }
+        ]
+      }
+    },
+    "tavily": {
+      "payload": {
+        "results": [
+          { "title": "AbortSignal.timeout() - MDN Web Docs", "url": "https://developer.mozilla.org/en-US/docs/Web/API/AbortSignal/timeout_static", "snippet": "The AbortSignal.timeout() static method returns an AbortSignal that will automatically abort after a specified time. The signal aborts with a TimeoutError DOMException on timeout, or with AbortError DOMException due to pressing a browser stop button (or some other inbuilt 'stop' operation).", "score": 0.86 },
+          { "title": "Timeouts with fetch in Node.js | Better Stack Community", "url": "https://betterstack.com/community/guides/scaling-nodejs/nodejs-timeouts/", "snippet": "This guide covers timeouts for outgoing HTTP requests in Node.js, including fetch with AbortSignal.timeout(), combining signals with AbortSignal.any(), and undici dispatcher timeouts.", "score": 0.81 },
+          { "title": "undici fetch headersTimeout and bodyTimeout", "url": "https://undici.nodejs.org/#/docs/api/Dispatcher", "snippet": "headersTimeout: the timeout after which a request will time out, in milliseconds. bodyTimeout: the timeout after which a request will time out if no body data is received.", "score": 0.66 },
+          { "title": "How to set a timeout on a fetch request in Node.js?", "url": "https://stackoverflow.com/questions/46946380/fetch-api-request-timeout", "snippet": "Use AbortSignal.timeout(5000).", "score": 0.61 },
+          { "title": "Node.js fetch timeout - 7 easy ways", "url": "https://codetutorialhub.net/nodejs-fetch-timeout-easy-ways", "snippet": "Learn 7 easy ways to add timeout to fetch in Node.js.", "score": 0.38 }
+        ]
+      }
+    },
+    "exa": {
+      "payload": {
+        "results": [
+          { "title": "Timeouts with fetch in Node.js", "url": "https://betterstack.com/community/guides/scaling-nodejs/nodejs-timeouts", "description": "Covers AbortSignal.timeout, AbortSignal.any and undici-specific timeouts for fetch in Node.js.", "siteName": "betterstack.com", "highlightScores": [0.41] },
+          { "title": "Globals | Node.js Documentation", "url": "https://nodejs.org/api/globals.html/", "description": "AbortSignal.timeout(delay): Returns a new AbortSignal which will be aborted in delay milliseconds.", "siteName": "nodejs.org", "highlightScores": [0.39] },
+          { "title": "Proposal: fetch timeout option · whatwg/fetch", "url": "https://github.com/whatwg/fetch/issues/951", "description": "Discussion about adding a timeout option to fetch() instead of requiring AbortController.", "siteName": "github.com", "highlightScores": [0.33] },
+          { "title": "AbortSignal: timeout() static method", "url": "https://developer.mozilla.org/en-US/docs/Web/API/AbortSignal/timeout_static/", "description": "Returns an AbortSignal that will automatically abort after a specified time.", "siteName": "developer.mozilla.org", "highlightScores": [0.31] }
+        ]
+      }
+    },
+    "gemini": {
+      "payload": {
+        "content": "In Node.js 18 and later, the built-in fetch accepts a `signal` option. The simplest way to add a timeout is `fetch(url, { signal: AbortSignal.timeout(5000) })`, which rejects with a TimeoutError DOMException after 5 seconds. AbortSignal.timeout has been available since Node.js 17.3. To combine a timeout with manual cancellation use AbortSignal.any([controller.signal, AbortSignal.timeout(ms)]).",
+        "citations": [
+          { "url": "https://developer.mozilla.org/en-US/docs/Web/API/AbortSignal/timeout_static", "title": "mozilla.org" },
+          { "url": "https://nodejs.org/api/globals.html", "title": "nodejs.org" },
+          { "url": "https://stackoverflow.com/questions/72780245/fetch-with-timeout-node-18", "title": "stackoverflow.com" }
+        ]
+      }
+    }
+  },
+  "pages": [
+    { "id": "mdn-timeout", "grade": 3, "urls": ["https://developer.mozilla.org/en-US/docs/Web/API/AbortSignal/timeout_static", "https://developer.mozilla.org/en-US/docs/Web/API/AbortSignal/timeout_static/"] },
+    { "id": "node-globals", "grade": 3, "urls": ["https://nodejs.org/api/globals.html", "https://nodejs.org/api/globals.html/"] },
+    { "id": "so-46946380", "grade": 2, "urls": ["https://stackoverflow.com/questions/46946380/fetch-api-request-timeout"] },
+    { "id": "so-72780245", "grade": 2, "urls": ["https://stackoverflow.com/questions/72780245/fetch-with-timeout-node-18"] },
+    { "id": "betterstack", "grade": 2, "urls": ["https://betterstack.com/community/guides/scaling-nodejs/nodejs-timeouts/", "https://betterstack.com/community/guides/scaling-nodejs/nodejs-timeouts"] },
+    { "id": "undici-dispatcher", "grade": 1, "urls": ["https://undici.nodejs.org/#/docs/api/Dispatcher"] },
+    { "id": "whatwg-951", "grade": 1, "urls": ["https://github.com/whatwg/fetch/issues/951"] },
+    { "id": "mdn-using-fetch", "grade": 1, "urls": ["https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API/Using_Fetch"] },
+    { "id": "content-farm", "grade": 0, "urls": ["https://codetutorialhub.net/nodejs-fetch-timeout-easy-ways"] }
+  ],
+  "answer": { "mustMention": ["AbortSignal.timeout", "17.3"] }
+}

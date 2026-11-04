@@ -1,0 +1,189 @@
+{
+  "id": "moist-banana-bread",
+  "query": "moist banana bread recipe",
+  "notes": "Recipe query with several equally good recipe pages, a Pinterest pin and an ad-heavy recipe aggregator, Allrecipes under utm/print variants, and Firecrawl returning mostly weaker results than Brave.",
+  "providers": {
+    "brave": {
+      "payload": {
+        "results": [
+          {
+            "title": "Banana Banana Bread Recipe",
+            "url": "https://www.allrecipes.com/recipe/20144/banana-banana-bread/",
+            "description": "This banana bread is moist and delicious with loads of banana flavor! Friends and family love my recipe and say it's by far the best!",
+            "siteName": "Allrecipes"
+          },
+          {
+            "title": "Best Banana Bread Recipe - Sally's Baking Addiction",
+            "url": "https://sallysbakingaddiction.com/best-banana-bread-recipe/",
+            "description": "This is the best banana bread recipe! It's incredibly moist, thanks to brown sugar, yogurt, and very ripe bananas. Prep 15 min, bake 60 min.",
+            "siteName": "Sally's Baking Addiction"
+          },
+          {
+            "title": "Simply Perfect Banana Bread Recipe",
+            "url": "https://www.simplyrecipes.com/recipes/banana_bread/",
+            "description": "This easy banana bread recipe is made with ripe bananas, butter, sugar, egg, flour, and baking soda. No mixer needed!",
+            "siteName": "Simply Recipes"
+          },
+          {
+            "title": "Banana Bread Recipe | King Arthur Baking",
+            "url": "https://www.kingarthurbaking.com/recipes/banana-bread-recipe",
+            "description": "Our favorite banana bread: moist, rich and tender, with a deep banana flavor. Tested in our kitchen.",
+            "siteName": "King Arthur Baking"
+          },
+          {
+            "title": "Why is my banana bread always dry? : r/Baking",
+            "url": "https://www.reddit.com/r/Baking/comments/1b7hx2c/why_is_my_banana_bread_always_dry/",
+            "description": "You're probably overbaking it or using bananas that aren't ripe enough. Also measure flour by weight...",
+            "siteName": "Reddit"
+          },
+          {
+            "title": "Banana Bread Recipe | NYT Cooking",
+            "url": "https://cooking.nytimes.com/recipes/1017179-easy-banana-bread",
+            "description": "This straightforward banana bread is moist and tender, and comes together quickly.",
+            "siteName": "NYT Cooking"
+          }
+        ]
+      }
+    },
+    "duckduckgo": {
+      "payload": {
+        "results": [
+          {
+            "title": "Banana Banana Bread Recipe - Allrecipes",
+            "url": "https://www.allrecipes.com/recipe/20144/banana-banana-bread/?utm_source=ddg&utm_medium=organic",
+            "snippet": "This banana bread is moist and delicious with loads of banana flavor!",
+            "siteName": "allrecipes.com"
+          },
+          {
+            "title": "Best Banana Bread Recipe",
+            "url": "https://sallysbakingaddiction.com/best-banana-bread-recipe",
+            "snippet": "Incredibly moist, thanks to brown sugar, yogurt, and very ripe bananas.",
+            "siteName": "sallysbakingaddiction.com"
+          },
+          {
+            "title": "Moist Banana Bread on Pinterest",
+            "url": "https://www.pinterest.com/pin/moist-banana-bread--48273507991238715/",
+            "snippet": "Discover recipes, home ideas, style inspiration and other ideas to try.",
+            "siteName": "pinterest.com"
+          },
+          {
+            "title": "Banana Bread Recipe | Food Network",
+            "url": "https://www.foodnetwork.com/recipes/banana-bread-recipe-1969572",
+            "snippet": "Get Banana Bread Recipe from Food Network. Level: Easy. Total: 1 hr 25 min.",
+            "siteName": "foodnetwork.com"
+          },
+          {
+            "title": "Simply Perfect Banana Bread Recipe",
+            "url": "https://simplyrecipes.com/recipes/banana_bread/",
+            "snippet": "No mixer needed!",
+            "siteName": "simplyrecipes.com"
+          }
+        ]
+      }
+    },
+    "tavily": {
+      "payload": {
+        "answer": "For moist banana bread, use 3–4 very ripe (heavily speckled) bananas, melted butter, brown sugar, and a little yogurt or sour cream, and avoid overmixing once the flour goes in. Bake at 350°F (175°C) for about 60 minutes and check early; overbaking is the most common cause of dry banana bread.",
+        "results": [
+          {
+            "title": "Best Banana Bread Recipe - Sally's Baking Addiction",
+            "url": "https://sallysbakingaddiction.com/best-banana-bread-recipe/",
+            "snippet": "It's incredibly moist, thanks to brown sugar, yogurt, and very ripe bananas. Bake at 350°F (177°C) for 60–65 minutes.",
+            "score": 0.82
+          },
+          {
+            "title": "Banana Bread Recipe",
+            "url": "https://www.kingarthurbaking.com/recipes/banana-bread-recipe",
+            "snippet": "Moist, rich and tender, with a deep banana flavor.",
+            "score": 0.77
+          },
+          {
+            "title": "Banana Banana Bread",
+            "url": "https://www.allrecipes.com/recipe/20144/banana-banana-bread/print/",
+            "snippet": "2 cups all-purpose flour, 1 teaspoon baking soda, 1/4 teaspoon salt, 1/2 cup butter, 3/4 cup brown sugar, 2 eggs, 2 1/3 cups mashed overripe bananas.",
+            "score": 0.73
+          },
+          {
+            "title": "The BEST Moist Banana Bread Ever!! (Grandma's Secret)",
+            "url": "https://recipesbyyummymom.net/best-moist-banana-bread-ever/",
+            "snippet": "Jump to Recipe. Banana bread is something everyone loves. I remember when I was a little girl my grandma would... [ad] [ad] Scroll down for the recipe card!",
+            "score": 0.7
+          }
+        ]
+      }
+    },
+    "firecrawl": {
+      "payload": {
+        "results": [
+          {
+            "title": "The BEST Moist Banana Bread Ever!!",
+            "url": "https://recipesbyyummymom.net/best-moist-banana-bread-ever/?amp=1",
+            "description": "Jump to Recipe. Banana bread is something everyone loves.",
+            "siteName": "recipesbyyummymom.net"
+          },
+          {
+            "title": "Moist Banana Bread - YouTube",
+            "url": "https://www.youtube.com/watch?v=qYpFoTWXl2o",
+            "description": "Super moist banana bread in one bowl!",
+            "siteName": "youtube.com"
+          },
+          {
+            "title": "Moist Banana Bread on Pinterest",
+            "url": "https://pinterest.com/pin/moist-banana-bread--48273507991238715/",
+            "description": "Discover recipes, home ideas, style inspiration.",
+            "siteName": "pinterest.com"
+          },
+          {
+            "title": "Banana Bread Recipe | Food Network",
+            "url": "https://www.foodnetwork.com/recipes/banana-bread-recipe-1969572",
+            "description": "Level: Easy. Total: 1 hr 25 min.",
+            "siteName": "foodnetwork.com"
+          },
+          {
+            "title": "Simply Perfect Banana Bread",
+            "url": "https://www.simplyrecipes.com/recipes/banana_bread/",
+            "description": "This easy banana bread recipe is made with ripe bananas, butter, sugar, egg, flour, and baking soda.",
+            "siteName": "simplyrecipes.com"
+          }
+        ]
+      }
+    }
+  },
+  "pages": [
+    {
+      "id": "allrecipes-20144",
+      "grade": 3,
+      "urls": [
+        "https://www.allrecipes.com/recipe/20144/banana-banana-bread/",
+        "https://www.allrecipes.com/recipe/20144/banana-banana-bread/?utm_source=ddg&utm_medium=organic",
+        "https://www.allrecipes.com/recipe/20144/banana-banana-bread/print/"
+      ]
+    },
+    {
+      "id": "sallys",
+      "grade": 3,
+      "urls": ["https://sallysbakingaddiction.com/best-banana-bread-recipe/", "https://sallysbakingaddiction.com/best-banana-bread-recipe"]
+    },
+    {
+      "id": "simplyrecipes",
+      "grade": 3,
+      "urls": ["https://www.simplyrecipes.com/recipes/banana_bread/", "https://simplyrecipes.com/recipes/banana_bread/"]
+    },
+    { "id": "king-arthur", "grade": 3, "urls": ["https://www.kingarthurbaking.com/recipes/banana-bread-recipe"] },
+    { "id": "reddit-baking-dry", "grade": 1, "urls": ["https://www.reddit.com/r/Baking/comments/1b7hx2c/why_is_my_banana_bread_always_dry/"] },
+    { "id": "nyt-cooking", "grade": 2, "urls": ["https://cooking.nytimes.com/recipes/1017179-easy-banana-bread"] },
+    {
+      "id": "pinterest-pin",
+      "grade": 0,
+      "urls": ["https://www.pinterest.com/pin/moist-banana-bread--48273507991238715/", "https://pinterest.com/pin/moist-banana-bread--48273507991238715/"]
+    },
+    { "id": "food-network", "grade": 2, "urls": ["https://www.foodnetwork.com/recipes/banana-bread-recipe-1969572"] },
+    {
+      "id": "farm-yummymom",
+      "grade": 0,
+      "urls": ["https://recipesbyyummymom.net/best-moist-banana-bread-ever/", "https://recipesbyyummymom.net/best-moist-banana-bread-ever/?amp=1"]
+    },
+    { "id": "youtube-banana-bread", "grade": 1, "urls": ["https://www.youtube.com/watch?v=qYpFoTWXl2o"] }
+  ],
+  "answer": { "mustMention": ["ripe", "350°F"] }
+}

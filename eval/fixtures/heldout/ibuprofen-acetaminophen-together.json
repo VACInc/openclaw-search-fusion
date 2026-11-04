@@ -1,0 +1,171 @@
+{
+  "id": "ibuprofen-acetaminophen-together",
+  "query": "can you take ibuprofen and acetaminophen together",
+  "notes": "Health question where authoritative sources (NHS, Mayo, Drugs.com, MedlinePlus) compete with a pharmacy affiliate farm and a Reddit thread; NHS appears as www and bare host, Mayo with a mobile-style query param.",
+  "providers": {
+    "brave": {
+      "payload": {
+        "results": [
+          {
+            "title": "Can I take paracetamol and ibuprofen together? - NHS",
+            "url": "https://www.nhs.uk/common-health-questions/medicines/can-i-take-paracetamol-and-ibuprofen-together/",
+            "description": "It's safe to take paracetamol and ibuprofen together if you're aged 16 or over. Do not take more than the recommended dose for each medicine. Paracetamol is called acetaminophen in the US.",
+            "siteName": "nhs.uk"
+          },
+          {
+            "title": "Drug Interactions between acetaminophen and ibuprofen - Drugs.com",
+            "url": "https://www.drugs.com/drug-interactions/acetaminophen-with-ibuprofen-3-0-1291-0.html",
+            "description": "No interactions were found between acetaminophen and ibuprofen. This does not necessarily mean no interactions exist. Always consult your healthcare provider.",
+            "siteName": "Drugs.com"
+          },
+          {
+            "title": "Is it safe to take Tylenol and Advil together? - Mayo Clinic Health System",
+            "url": "https://www.mayoclinichealthsystem.org/hometown-health/speaking-of-health/mixing-medications-tylenol-and-advil",
+            "description": "Acetaminophen and ibuprofen work differently, so they can be taken together or alternated for pain. Follow label limits: no more than 3,000 to 4,000 mg of acetaminophen a day.",
+            "siteName": "Mayo Clinic Health System"
+          },
+          {
+            "title": "Can You Take Ibuprofen and Tylenol Together? Safety, Dosage & More",
+            "url": "https://www.healthline.com/health/can-you-take-ibuprofen-and-tylenol-together",
+            "description": "Yes, most adults can take ibuprofen and Tylenol (acetaminophen) together. We explain dosages, timing, and who should avoid combining them.",
+            "siteName": "Healthline"
+          },
+          {
+            "title": "Taking Ibuprofen and Tylenol Together : r/AskDocs",
+            "url": "https://www.reddit.com/r/AskDocs/comments/14cq0ke/taking_ibuprofen_and_tylenol_together/",
+            "description": "Doctor told me to alternate every 3 hours but I'm confused about how much is too much...",
+            "siteName": "Reddit"
+          },
+          {
+            "title": "Acetaminophen: MedlinePlus Drug Information",
+            "url": "https://medlineplus.gov/druginfo/meds/a681004.html",
+            "description": "Acetaminophen is used to relieve mild to moderate pain and to reduce fever. Do not take more than one product that contains acetaminophen at a time.",
+            "siteName": "MedlinePlus"
+          }
+        ]
+      }
+    },
+    "duckduckgo": {
+      "payload": {
+        "results": [
+          {
+            "title": "Can I take paracetamol and ibuprofen together?",
+            "url": "https://nhs.uk/common-health-questions/medicines/can-i-take-paracetamol-and-ibuprofen-together",
+            "snippet": "It's safe to take paracetamol and ibuprofen together if you're aged 16 or over.",
+            "siteName": "nhs.uk"
+          },
+          {
+            "title": "Ibuprofen and Tylenol Together: Is It Safe? Buy Both Online - Save 40%",
+            "url": "https://rxdiscountpharmacy-online.com/blog/ibuprofen-acetaminophen-together",
+            "snippet": "Ibuprofen and acetaminophen together is safe for most people. Order generic ibuprofen and acetaminophen online with no prescription. Fast shipping!",
+            "siteName": "rxdiscountpharmacy-online.com"
+          },
+          {
+            "title": "Drug Interactions between acetaminophen and ibuprofen",
+            "url": "https://www.drugs.com/drug-interactions/acetaminophen-with-ibuprofen-3-0-1291-0.html",
+            "snippet": "No interactions were found between acetaminophen and ibuprofen.",
+            "siteName": "drugs.com"
+          },
+          {
+            "title": "Combining Tylenol and Ibuprofen: Is It Safe? - Cleveland Clinic",
+            "url": "https://health.clevelandclinic.org/can-you-take-tylenol-and-ibuprofen-together",
+            "snippet": "Taking acetaminophen and ibuprofen together can be more effective than either alone for some kinds of pain, a pharmacist explains.",
+            "siteName": "health.clevelandclinic.org"
+          },
+          {
+            "title": "Is it safe to take Tylenol and Advil together?",
+            "url": "https://www.mayoclinichealthsystem.org/hometown-health/speaking-of-health/mixing-medications-tylenol-and-advil?mobile=1",
+            "snippet": "Acetaminophen and ibuprofen work differently...",
+            "siteName": "mayoclinichealthsystem.org"
+          }
+        ]
+      }
+    },
+    "exa": {
+      "payload": {
+        "results": [
+          {
+            "title": "Can You Take Ibuprofen and Tylenol Together?",
+            "url": "https://www.healthline.com/health/can-you-take-ibuprofen-and-tylenol-together",
+            "description": "Most adults can take both.",
+            "siteName": "healthline.com",
+            "highlightScores": [0.55]
+          },
+          {
+            "title": "Combined paracetamol and ibuprofen for pain relief after oral surgery: a randomized controlled trial",
+            "url": "https://pubmed.ncbi.nlm.nih.gov/20089853/",
+            "description": "A fixed-dose combination of paracetamol and ibuprofen provided superior analgesia compared with either drug alone.",
+            "published": "2010-01-20T00:00:00.000Z",
+            "siteName": "pubmed.ncbi.nlm.nih.gov",
+            "highlightScores": [0.42]
+          },
+          {
+            "title": "Ibuprofen: MedlinePlus Drug Information",
+            "url": "https://medlineplus.gov/druginfo/meds/a682159.html",
+            "description": "Ibuprofen is used to relieve pain from various conditions. Nonprescription ibuprofen may cause stomach bleeding.",
+            "siteName": "medlineplus.gov",
+            "highlightScores": [0.37]
+          },
+          {
+            "title": "Can I take paracetamol and ibuprofen together? - NHS",
+            "url": "https://www.nhs.uk/common-health-questions/medicines/can-i-take-paracetamol-and-ibuprofen-together/",
+            "description": "It's safe to take paracetamol and ibuprofen together if you're aged 16 or over.",
+            "siteName": "nhs.uk",
+            "highlightScores": [0.35]
+          },
+          {
+            "title": "Combining Tylenol and Ibuprofen: Is It Safe?",
+            "url": "https://health.clevelandclinic.org/can-you-take-tylenol-and-ibuprofen-together/",
+            "description": "A pharmacist explains when you can combine them.",
+            "siteName": "health.clevelandclinic.org",
+            "highlightScores": [0.33]
+          }
+        ]
+      }
+    },
+    "gemini": {
+      "payload": {
+        "content": "Yes. For most healthy adults it is safe to take ibuprofen and acetaminophen (paracetamol) together or to alternate them, because they work in different ways and do not interact with each other. Keep each within its own label limit: generally no more than 3,000–4,000 mg of acetaminophen per day, and no more than 1,200 mg of over-the-counter ibuprofen per day unless a doctor says otherwise. People with kidney disease, stomach ulcers, liver disease, heart problems, or who are pregnant should check with a doctor or pharmacist first.",
+        "citations": [
+          { "url": "https://www.nhs.uk/common-health-questions/medicines/can-i-take-paracetamol-and-ibuprofen-together/", "title": "nhs.uk" },
+          { "url": "https://www.mayoclinichealthsystem.org/hometown-health/speaking-of-health/mixing-medications-tylenol-and-advil", "title": "mayoclinichealthsystem.org" },
+          { "url": "https://www.drugs.com/drug-interactions/acetaminophen-with-ibuprofen-3-0-1291-0.html", "title": "drugs.com" }
+        ]
+      }
+    }
+  },
+  "pages": [
+    {
+      "id": "nhs-paracetamol-ibuprofen",
+      "grade": 3,
+      "urls": [
+        "https://www.nhs.uk/common-health-questions/medicines/can-i-take-paracetamol-and-ibuprofen-together/",
+        "https://nhs.uk/common-health-questions/medicines/can-i-take-paracetamol-and-ibuprofen-together"
+      ]
+    },
+    { "id": "drugs-com-interaction", "grade": 3, "urls": ["https://www.drugs.com/drug-interactions/acetaminophen-with-ibuprofen-3-0-1291-0.html"] },
+    {
+      "id": "mayo-tylenol-advil",
+      "grade": 3,
+      "urls": [
+        "https://www.mayoclinichealthsystem.org/hometown-health/speaking-of-health/mixing-medications-tylenol-and-advil",
+        "https://www.mayoclinichealthsystem.org/hometown-health/speaking-of-health/mixing-medications-tylenol-and-advil?mobile=1"
+      ]
+    },
+    { "id": "healthline", "grade": 2, "urls": ["https://www.healthline.com/health/can-you-take-ibuprofen-and-tylenol-together"] },
+    { "id": "reddit-askdocs", "grade": 1, "urls": ["https://www.reddit.com/r/AskDocs/comments/14cq0ke/taking_ibuprofen_and_tylenol_together/"] },
+    { "id": "medlineplus-acetaminophen", "grade": 2, "urls": ["https://medlineplus.gov/druginfo/meds/a681004.html"] },
+    { "id": "medlineplus-ibuprofen", "grade": 2, "urls": ["https://medlineplus.gov/druginfo/meds/a682159.html"] },
+    { "id": "farm-rx-pharmacy", "grade": 0, "urls": ["https://rxdiscountpharmacy-online.com/blog/ibuprofen-acetaminophen-together"] },
+    {
+      "id": "cleveland-clinic",
+      "grade": 3,
+      "urls": [
+        "https://health.clevelandclinic.org/can-you-take-tylenol-and-ibuprofen-together",
+        "https://health.clevelandclinic.org/can-you-take-tylenol-and-ibuprofen-together/"
+      ]
+    },
+    { "id": "pubmed-oral-surgery-rct", "grade": 1, "urls": ["https://pubmed.ncbi.nlm.nih.gov/20089853/"] }
+  ],
+  "answer": { "mustMention": ["do not interact", "4,000 mg", "1,200 mg"] }
+}

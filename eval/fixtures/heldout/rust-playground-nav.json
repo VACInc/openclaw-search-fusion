@@ -1,0 +1,144 @@
+{
+  "id": "rust-playground-nav",
+  "query": "rust playground",
+  "notes": "Navigational query: exactly one target site (play.rust-lang.org, seen with and without query params and trailing slash); everything else is at best marginal, including clone online-compiler sites.",
+  "providers": {
+    "brave": {
+      "payload": {
+        "results": [
+          {
+            "title": "Rust Playground",
+            "url": "https://play.rust-lang.org/",
+            "description": "A browser interface to the Rust compiler to experiment with the language.",
+            "siteName": "play.rust-lang.org"
+          },
+          {
+            "title": "GitHub - rust-lang/rust-playground: The Rust Playground",
+            "url": "https://github.com/rust-lang/rust-playground",
+            "description": "The Rust Playground. Contribute to rust-lang/rust-playground development by creating an account on GitHub.",
+            "siteName": "GitHub"
+          },
+          {
+            "title": "Online Rust Compiler - Programiz",
+            "url": "https://www.programiz.com/rust/online-compiler/",
+            "description": "Write and run Rust code using our online compiler (interpreter).",
+            "siteName": "Programiz"
+          },
+          {
+            "title": "Rust Programming Language",
+            "url": "https://www.rust-lang.org/",
+            "description": "A language empowering everyone to build reliable and efficient software.",
+            "siteName": "rust-lang.org"
+          },
+          {
+            "title": "Rust Online Compiler & Interpreter - Replit",
+            "url": "https://replit.com/languages/rust",
+            "description": "Write and run Rust code online using Replit's free online IDE.",
+            "siteName": "Replit"
+          }
+        ]
+      }
+    },
+    "duckduckgo": {
+      "payload": {
+        "results": [
+          {
+            "title": "Rust Playground",
+            "url": "https://play.rust-lang.org/?version=stable&mode=debug&edition=2024",
+            "snippet": "A browser interface to the Rust compiler to experiment with the language",
+            "siteName": "play.rust-lang.org"
+          },
+          {
+            "title": "Rust Online Compiler - OneCompiler",
+            "url": "https://onecompiler.com/rust",
+            "snippet": "OneCompiler's Rust online editor helps you to write, compile, debug and run Rust code online.",
+            "siteName": "onecompiler.com"
+          },
+          {
+            "title": "GitHub - rust-lang/rust-playground",
+            "url": "https://github.com/rust-lang/rust-playground",
+            "snippet": "The Rust Playground.",
+            "siteName": "github.com"
+          },
+          {
+            "title": "Is there a way to use external crates in the Rust Playground? : r/rust",
+            "url": "https://www.reddit.com/r/rust/comments/v1e9p0/is_there_a_way_to_use_external_crates_in_the_rust/",
+            "snippet": "The playground includes the top 100 crates from crates.io plus their dependencies.",
+            "siteName": "reddit.com"
+          },
+          {
+            "title": "Rust Playground",
+            "url": "https://play.rust-lang.org",
+            "snippet": "A browser interface to the Rust compiler.",
+            "siteName": "play.rust-lang.org"
+          }
+        ]
+      }
+    },
+    "exa": {
+      "payload": {
+        "results": [
+          {
+            "title": "Rust Playground",
+            "url": "https://play.rust-lang.org/",
+            "description": "A browser interface to the Rust compiler to experiment with the language.",
+            "siteName": "play.rust-lang.org",
+            "highlightScores": [0.7]
+          },
+          {
+            "title": "Rust Explorer",
+            "url": "https://www.rustexplorer.com/b",
+            "description": "Rust playground alternative with support for the top 10k crates.",
+            "siteName": "rustexplorer.com",
+            "highlightScores": [0.41]
+          },
+          {
+            "title": "Rust by Example",
+            "url": "https://doc.rust-lang.org/rust-by-example/",
+            "description": "Rust by Example (RBE) is a collection of runnable examples that illustrate various Rust concepts and standard libraries.",
+            "siteName": "doc.rust-lang.org",
+            "highlightScores": [0.33]
+          },
+          {
+            "title": "GitHub - rust-lang/rust-playground: The Rust Playground",
+            "url": "https://github.com/rust-lang/rust-playground/",
+            "description": "The Rust Playground.",
+            "siteName": "github.com",
+            "highlightScores": [0.32]
+          },
+          {
+            "title": "Rust Playground - Rust Internals",
+            "url": "https://internals.rust-lang.org/t/rust-playground-feedback/19022",
+            "description": "Feedback thread for the playground: share via gist, MIRI, rustfmt, clippy...",
+            "siteName": "internals.rust-lang.org",
+            "highlightScores": [0.29]
+          }
+        ]
+      }
+    }
+  },
+  "pages": [
+    {
+      "id": "play-rust-lang",
+      "grade": 3,
+      "urls": [
+        "https://play.rust-lang.org/",
+        "https://play.rust-lang.org/?version=stable&mode=debug&edition=2024",
+        "https://play.rust-lang.org"
+      ]
+    },
+    {
+      "id": "gh-rust-playground",
+      "grade": 1,
+      "urls": ["https://github.com/rust-lang/rust-playground", "https://github.com/rust-lang/rust-playground/"]
+    },
+    { "id": "programiz", "grade": 0, "urls": ["https://www.programiz.com/rust/online-compiler/"] },
+    { "id": "rust-lang-home", "grade": 1, "urls": ["https://www.rust-lang.org/"] },
+    { "id": "replit", "grade": 0, "urls": ["https://replit.com/languages/rust"] },
+    { "id": "onecompiler", "grade": 0, "urls": ["https://onecompiler.com/rust"] },
+    { "id": "reddit-crates", "grade": 1, "urls": ["https://www.reddit.com/r/rust/comments/v1e9p0/is_there_a_way_to_use_external_crates_in_the_rust/"] },
+    { "id": "rustexplorer", "grade": 0, "urls": ["https://www.rustexplorer.com/b"] },
+    { "id": "rust-by-example", "grade": 0, "urls": ["https://doc.rust-lang.org/rust-by-example/"] },
+    { "id": "internals-feedback", "grade": 1, "urls": ["https://internals.rust-lang.org/t/rust-playground-feedback/19022"] }
+  ]
+}

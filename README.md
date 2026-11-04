@@ -335,7 +335,10 @@ const tableRows = payload.evidenceTable.rows.map((row) => ({
 pnpm install
 pnpm check
 pnpm test
+pnpm run eval   # offline result-quality eval, see eval/README.md
 ```
+
+`pnpm run eval` replays recorded provider payloads from `eval/fixtures/` through the real merge and ranking pipeline and scores the output against relevance judgments (nDCG, precision, duplicate rate, snippet provenance, answer recall). `pnpm test` fails if any gated metric drops below `eval/baseline.json`; refresh it with `pnpm run eval -- --write-baseline` when a change is meant to move the numbers.
 
 ## Releasing
 

@@ -1,0 +1,50 @@
+{
+  "id": "sourdough-starter",
+  "query": "how to make a sourdough starter from scratch",
+  "notes": "Recipe/how-to; Tavily answer; Pinterest and YouTube noise; a recipe page with tracking params from one provider and mobile/print variants.",
+  "providers": {
+    "brave": {
+      "payload": {
+        "results": [
+          { "title": "Sourdough Starter Recipe | King Arthur Baking", "url": "https://www.kingarthurbaking.com/recipes/sourdough-starter-recipe", "description": "Make your own sourdough starter with flour and water. Feed it daily for 5 to 7 days until it doubles within 4 to 6 hours.", "siteName": "kingarthurbaking.com" },
+          { "title": "How to Make a Sourdough Starter From Scratch | Serious Eats", "url": "https://www.seriouseats.com/how-to-make-sourdough-starter", "description": "All you need is flour, water, and time.", "siteName": "seriouseats.com" },
+          { "title": "Sourdough starter ideas | Pinterest", "url": "https://www.pinterest.com/ideas/sourdough-starter/912345678/", "description": "Find and save ideas about sourdough starter on Pinterest.", "siteName": "pinterest.com" },
+          { "title": "How to Make Sourdough Starter - YouTube", "url": "https://www.youtube.com/watch?v=2FVfJTGpXnU", "description": "Day by day sourdough starter walkthrough.", "siteName": "youtube.com" },
+          { "title": "Sourdough starter - The Perfect Loaf", "url": "https://www.theperfectloaf.com/how-to-make-a-sourdough-starter/", "description": "A detailed guide to making and maintaining a sourdough starter with photos for each day.", "siteName": "theperfectloaf.com" }
+        ]
+      }
+    },
+    "duckduckgo": {
+      "payload": {
+        "results": [
+          { "title": "How to Make a Sourdough Starter - The Perfect Loaf", "url": "https://www.theperfectloaf.com/how-to-make-a-sourdough-starter/?ref=ddg", "snippet": "Guide to making a sourdough starter.", "siteName": "theperfectloaf.com" },
+          { "title": "Sourdough Starter Recipe", "url": "https://www.kingarthurbaking.com/recipes/sourdough-starter-recipe?utm_campaign=organic", "snippet": "Make your own sourdough starter.", "siteName": "kingarthurbaking.com" },
+          { "title": "The Science of Sourdough Starter | Serious Eats", "url": "https://www.seriouseats.com/sourdough-starter-science", "snippet": "What's happening inside your jar.", "siteName": "seriouseats.com" },
+          { "title": "Easy sourdough starter in 3 days!! (no fail)", "url": "https://quickrecipesdaily.net/easy-sourdough-starter-3-days", "snippet": "No fail starter in 3 days!!", "siteName": "quickrecipesdaily.net" }
+        ]
+      }
+    },
+    "tavily": {
+      "payload": {
+        "results": [
+          { "title": "Sourdough Starter Recipe | King Arthur Baking", "url": "https://www.kingarthurbaking.com/recipes/sourdough-starter-recipe", "snippet": "Combine 113g whole wheat or pumpernickel flour with 113g cool water. Discard all but 113g and feed with 113g all-purpose flour and 113g water every 24 hours, moving to twice daily on day 3. The starter is ready when it reliably doubles in 6 to 8 hours.", "score": 0.82 },
+          { "title": "How to Make a Sourdough Starter From Scratch", "url": "https://www.seriouseats.com/how-to-make-sourdough-starter", "snippet": "A week-long guide to growing a starter.", "score": 0.77 },
+          { "title": "How to Make a Sourdough Starter", "url": "https://www.theperfectloaf.com/how-to-make-a-sourdough-starter/", "snippet": "Detailed starter guide.", "score": 0.75 },
+          { "title": "Sourdough starter - Wikipedia", "url": "https://en.wikipedia.org/wiki/Sourdough#Starter", "snippet": "A sourdough starter is a fermented mixture of flour and water containing lactic acid bacteria and yeast.", "score": 0.55 }
+        ],
+        "answer": "Mix equal weights of flour and water, keep it at room temperature, and discard and feed it daily for 5 to 7 days until it doubles within a few hours of feeding."
+      }
+    }
+  },
+  "pages": [
+    { "id": "kab", "grade": 3, "urls": ["https://www.kingarthurbaking.com/recipes/sourdough-starter-recipe", "https://www.kingarthurbaking.com/recipes/sourdough-starter-recipe?utm_campaign=organic"] },
+    { "id": "serious-eats", "grade": 3, "urls": ["https://www.seriouseats.com/how-to-make-sourdough-starter"] },
+    { "id": "perfect-loaf", "grade": 3, "urls": ["https://www.theperfectloaf.com/how-to-make-a-sourdough-starter/", "https://www.theperfectloaf.com/how-to-make-a-sourdough-starter/?ref=ddg"] },
+    { "id": "se-science", "grade": 1, "urls": ["https://www.seriouseats.com/sourdough-starter-science"] },
+    { "id": "wiki", "grade": 1, "urls": ["https://en.wikipedia.org/wiki/Sourdough#Starter"] },
+    { "id": "youtube", "grade": 1, "urls": ["https://www.youtube.com/watch?v=2FVfJTGpXnU"] },
+    { "id": "pinterest", "grade": 0, "urls": ["https://www.pinterest.com/ideas/sourdough-starter/912345678/"] },
+    { "id": "farm", "grade": 0, "urls": ["https://quickrecipesdaily.net/easy-sourdough-starter-3-days"] }
+  ],
+  "answer": { "mustMention": ["5 to 7 days"] }
+}

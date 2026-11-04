@@ -1,0 +1,158 @@
+{
+  "id": "esp32-ext1-wakeup-gpio",
+  "query": "esp32 ext1 wakeup multiple gpio find which pin woke deep sleep",
+  "notes": "Long-tail embedded question: the precise answer (esp_sleep_get_ext1_wakeup_status) is in ESP-IDF docs, a tutorial, and a forum thread; ESP-IDF docs appear as stable/latest with fragments; Perplexity is rate-limited, and Brave ranks a generic ESP32 guide farm high.",
+  "providers": {
+    "exa": {
+      "payload": {
+        "results": [
+          {
+            "title": "Sleep Modes - ESP32 - ESP-IDF Programming Guide",
+            "url": "https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/sleep_modes.html#external-wakeup-ext1",
+            "description": "The RTC controller contains logic to trigger wakeup using multiple RTC GPIOs. One of the following two logic functions can be used to trigger ext1 wakeup: wake up if any of the selected pins is high (ESP_EXT1_WAKEUP_ANY_HIGH); wake up if all the selected pins are low (ESP_EXT1_WAKEUP_ALL_LOW). Use esp_sleep_get_ext1_wakeup_status() to get the bitmask of pins that caused wakeup.",
+            "siteName": "docs.espressif.com",
+            "highlightScores": [0.71, 0.66]
+          },
+          {
+            "title": "ESP32 External Wake Up from Deep Sleep | Random Nerd Tutorials",
+            "url": "https://randomnerdtutorials.com/esp32-external-wake-up-deep-sleep/",
+            "description": "Learn how to wake up the ESP32 from deep sleep using an external wake up with ext0 and ext1. With ext1 you can use multiple GPIOs and identify which GPIO caused the wake up with esp_sleep_get_ext1_wakeup_status().",
+            "siteName": "randomnerdtutorials.com",
+            "highlightScores": [0.63]
+          },
+          {
+            "title": "ext1 wakeup: how to know which GPIO triggered? - ESP32 Forum",
+            "url": "https://esp32.com/viewtopic.php?t=11652",
+            "description": "uint64_t wakeup_pin_mask = esp_sleep_get_ext1_wakeup_status(); if (wakeup_pin_mask != 0) { int pin = __builtin_ffsll(wakeup_pin_mask) - 1; ...",
+            "siteName": "esp32.com",
+            "highlightScores": [0.58]
+          },
+          {
+            "title": "esp-idf/examples/system/deep_sleep at master · espressif/esp-idf",
+            "url": "https://github.com/espressif/esp-idf/tree/master/examples/system/deep_sleep",
+            "description": "Example demonstrating deep sleep with timer, ext1 and touch wakeup sources.",
+            "siteName": "github.com",
+            "highlightScores": [0.47]
+          },
+          {
+            "title": "ext1 wakeup status always 0 after reset on ESP32-S3 · Issue #8912 · espressif/arduino-esp32",
+            "url": "https://github.com/espressif/arduino-esp32/issues/8912",
+            "description": "esp_sleep_get_ext1_wakeup_status() returns 0 on ESP32-S3 when GPIO is released too quickly. Workaround: keep pin asserted until boot.",
+            "siteName": "github.com",
+            "highlightScores": [0.41]
+          }
+        ]
+      }
+    },
+    "brave": {
+      "payload": {
+        "results": [
+          {
+            "title": "ESP32 External Wake Up from Deep Sleep (Arduino IDE) | Random Nerd Tutorials",
+            "url": "https://randomnerdtutorials.com/esp32-external-wake-up-deep-sleep",
+            "description": "Learn how to put the ESP32 in deep sleep mode and wake it up using an external wake up (ext0 and ext1).",
+            "siteName": "Random Nerd Tutorials"
+          },
+          {
+            "title": "ESP32 Deep Sleep: The Complete Guide for Beginners (2026)",
+            "url": "https://iotguidehub.com/esp32-deep-sleep-complete-guide/",
+            "description": "ESP32 deep sleep is very important. In this complete guide to ESP32 deep sleep we cover everything about ESP32 deep sleep for beginners.",
+            "siteName": "iotguidehub.com"
+          },
+          {
+            "title": "Insight Into ESP32 Sleep Modes & Their Power Consumption",
+            "url": "https://lastminuteengineers.com/esp32-sleep-modes-power-consumption/",
+            "description": "Overview of active, modem sleep, light sleep, deep sleep and hibernation modes with measured currents.",
+            "siteName": "Last Minute Engineers"
+          },
+          {
+            "title": "Sleep Modes - ESP32 - — ESP-IDF Programming Guide latest documentation",
+            "url": "https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/system/sleep_modes.html",
+            "description": "ESP32 is capable of light sleep and deep sleep power saving modes.",
+            "siteName": "docs.espressif.com"
+          },
+          {
+            "title": "How to determine which GPIO woke ESP32 from deep sleep with ext1? - Stack Overflow",
+            "url": "https://stackoverflow.com/questions/60521538/how-to-determine-which-gpio-woke-esp32-from-deep-sleep-with-ext1",
+            "description": "Use esp_sleep_get_ext1_wakeup_status() which returns a bitmask; log2 of it gives the GPIO number.",
+            "siteName": "Stack Overflow"
+          },
+          {
+            "title": "Deep sleep ext1 with 4 buttons, works but can't tell which : r/esp32",
+            "url": "https://www.reddit.com/r/esp32/comments/18f0t6c/deep_sleep_ext1_with_4_buttons_works_but_cant/",
+            "description": "Using ESP_EXT1_WAKEUP_ANY_HIGH with pull-downs. How do I know which one?",
+            "siteName": "Reddit"
+          }
+        ]
+      }
+    },
+    "searxng": {
+      "payload": {
+        "results": [
+          {
+            "title": "ext1 wakeup: how to know which GPIO triggered?",
+            "url": "https://www.esp32.com/viewtopic.php?t=11652",
+            "snippet": "uint64_t wakeup_pin_mask = esp_sleep_get_ext1_wakeup_status();",
+            "siteName": "esp32.com"
+          },
+          {
+            "title": "Sleep Modes - ESP32 - ESP-IDF Programming Guide",
+            "url": "https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/sleep_modes.html",
+            "snippet": "ESP32 is capable of light sleep and deep sleep power saving modes.",
+            "siteName": "docs.espressif.com"
+          },
+          {
+            "title": "How to determine which GPIO woke ESP32 from deep sleep with ext1?",
+            "url": "https://stackoverflow.com/questions/60521538/how-to-determine-which-gpio-woke-esp32-from-deep-sleep-with-ext1",
+            "snippet": "Use esp_sleep_get_ext1_wakeup_status().",
+            "siteName": "stackoverflow.com"
+          },
+          {
+            "title": "Deep sleep ext1 with 4 buttons, works but can't tell which",
+            "url": "https://old.reddit.com/r/esp32/comments/18f0t6c/deep_sleep_ext1_with_4_buttons_works_but_cant/",
+            "snippet": "How do I know which one?",
+            "siteName": "old.reddit.com"
+          },
+          {
+            "title": "ExternalWakeUp.ino - arduino-esp32 DeepSleep example",
+            "url": "https://github.com/espressif/arduino-esp32/blob/master/libraries/ESP32/examples/DeepSleep/ExternalWakeUp/ExternalWakeUp.ino",
+            "snippet": "esp_sleep_enable_ext1_wakeup_io(BUTTON_PIN_BITMASK(GPIO_NUM_2) | BUTTON_PIN_BITMASK(GPIO_NUM_15), ESP_EXT1_WAKEUP_ANY_HIGH);",
+            "siteName": "github.com"
+          }
+        ]
+      }
+    },
+    "perplexity": { "error": "Perplexity Search API error (429): Rate limit exceeded" }
+  },
+  "pages": [
+    {
+      "id": "espidf-sleep-modes",
+      "grade": 3,
+      "urls": [
+        "https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/sleep_modes.html#external-wakeup-ext1",
+        "https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/system/sleep_modes.html",
+        "https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/sleep_modes.html"
+      ]
+    },
+    {
+      "id": "rnt-external-wakeup",
+      "grade": 3,
+      "urls": ["https://randomnerdtutorials.com/esp32-external-wake-up-deep-sleep/", "https://randomnerdtutorials.com/esp32-external-wake-up-deep-sleep"]
+    },
+    { "id": "esp32-forum-11652", "grade": 3, "urls": ["https://esp32.com/viewtopic.php?t=11652", "https://www.esp32.com/viewtopic.php?t=11652"] },
+    { "id": "espidf-deep-sleep-example", "grade": 2, "urls": ["https://github.com/espressif/esp-idf/tree/master/examples/system/deep_sleep"] },
+    { "id": "arduino-esp32-issue-8912", "grade": 1, "urls": ["https://github.com/espressif/arduino-esp32/issues/8912"] },
+    { "id": "farm-iotguidehub", "grade": 0, "urls": ["https://iotguidehub.com/esp32-deep-sleep-complete-guide/"] },
+    { "id": "lastminuteengineers-sleep", "grade": 1, "urls": ["https://lastminuteengineers.com/esp32-sleep-modes-power-consumption/"] },
+    { "id": "so-60521538", "grade": 3, "urls": ["https://stackoverflow.com/questions/60521538/how-to-determine-which-gpio-woke-esp32-from-deep-sleep-with-ext1"] },
+    {
+      "id": "reddit-esp32-4buttons",
+      "grade": 1,
+      "urls": [
+        "https://www.reddit.com/r/esp32/comments/18f0t6c/deep_sleep_ext1_with_4_buttons_works_but_cant/",
+        "https://old.reddit.com/r/esp32/comments/18f0t6c/deep_sleep_ext1_with_4_buttons_works_but_cant/"
+      ]
+    },
+    { "id": "arduino-esp32-externalwakeup-ino", "grade": 2, "urls": ["https://github.com/espressif/arduino-esp32/blob/master/libraries/ESP32/examples/DeepSleep/ExternalWakeUp/ExternalWakeUp.ino"] }
+  ]
+}
