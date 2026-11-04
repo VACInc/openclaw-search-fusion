@@ -1,5 +1,5 @@
 import { classifySourceTier, coerceSourceTierMode, sourceTierMultiplier, } from "./source-tier.js";
-import { analyzeUrl, cleanProviderText, resolveSiteName, truncate } from "./text.js";
+import { analyzeUrl, canonicalDedupeHost, cleanProviderText, resolveSiteName, truncate } from "./text.js";
 const DEFAULT_MAX_SNIPPET_LENGTH = 500;
 function limitText(value, maxLength) {
     if (!value)
@@ -72,7 +72,9 @@ function detectItemFlags(obj, url) {
         }
     }
     try {
-        const host = new URL(url).hostname.toLowerCase();
+        // Classify on the dedupe host so m.youtube.com, np.reddit.com and similar
+        // spellings get the same flags as the host they merge with.
+        const host = canonicalDedupeHost(new URL(url).hostname);
         if (VIDEO_DOMAINS.some((domain) => isHostOrSubdomain(host, domain))) {
             flags.add("video");
         }

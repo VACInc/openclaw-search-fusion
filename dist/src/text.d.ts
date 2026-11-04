@@ -1,7 +1,10 @@
 export type UrlAnalysis = {
     /** Display URL: redirect-unwrapped, tracking-stripped, query order kept. */
     url: string;
-    /** Dedupe key: `url` with query parameters in a stable sorted order. */
+    /**
+     * Dedupe key: `url` with query parameters in a stable sorted order, an
+     * `https:` scheme, and the host reduced by `canonicalDedupeHost`.
+     */
     canonicalUrl: string;
     originalUrl: string;
     flags: string[];
@@ -22,6 +25,12 @@ export declare function sanitizeErrorText(value: string): string;
 export declare function stripExternalWrapper(content: string): string;
 /** Clean one provider-returned text field for model-visible output. */
 export declare function cleanProviderText(value: unknown): string;
+/**
+ * Host used only in the dedupe key: drops a leading `www.`, a mobile label
+ * (`m.example.com`, `en.m.wikipedia.org`), and known front-end aliases.
+ * A registrable domain such as `m.co` is never reduced to a bare suffix.
+ */
+export declare function canonicalDedupeHost(hostname: string): string;
 export declare function analyzeUrl(rawUrl: string): UrlAnalysis;
 export declare function canonicalizeUrl(rawUrl: string): string;
 export declare function resolveSiteName(rawUrl: string): string | undefined;
