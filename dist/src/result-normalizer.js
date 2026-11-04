@@ -57,6 +57,12 @@ function titleFromUrl(url) {
         return url;
     }
 }
+// Matched with every subdomain (m., music., new., np., player., vm., ...).
+const VIDEO_DOMAINS = ["youtube.com", "youtu.be", "vimeo.com", "tiktok.com"];
+const COMMUNITY_DOMAINS = ["reddit.com", "lobste.rs", "lemmy.world"];
+function isHostOrSubdomain(host, domain) {
+    return host === domain || host.endsWith(`.${domain}`);
+}
 function detectItemFlags(obj, url) {
     const flags = new Set();
     if (obj) {
@@ -67,17 +73,11 @@ function detectItemFlags(obj, url) {
     }
     try {
         const host = new URL(url).hostname.toLowerCase();
-        if (["youtube.com", "www.youtube.com", "youtu.be", "vimeo.com", "www.vimeo.com", "tiktok.com", "www.tiktok.com"].includes(host)) {
+        if (VIDEO_DOMAINS.some((domain) => isHostOrSubdomain(host, domain))) {
             flags.add("video");
         }
-        if ([
-            "reddit.com",
-            "www.reddit.com",
-            "old.reddit.com",
-            "news.ycombinator.com",
-            "lobste.rs",
-            "lemmy.world",
-        ].includes(host) ||
+        if (COMMUNITY_DOMAINS.some((domain) => isHostOrSubdomain(host, domain)) ||
+            host === "news.ycombinator.com" ||
             host.startsWith("forum.") ||
             host.startsWith("forums.") ||
             host.startsWith("discuss.") ||

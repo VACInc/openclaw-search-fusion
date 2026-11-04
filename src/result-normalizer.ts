@@ -75,6 +75,14 @@ function titleFromUrl(url: string): string {
   }
 }
 
+// Matched with every subdomain (m., music., new., np., player., vm., ...).
+const VIDEO_DOMAINS = ["youtube.com", "youtu.be", "vimeo.com", "tiktok.com"] as const;
+const COMMUNITY_DOMAINS = ["reddit.com", "lobste.rs", "lemmy.world"] as const;
+
+function isHostOrSubdomain(host: string, domain: string): boolean {
+  return host === domain || host.endsWith(`.${domain}`);
+}
+
 function detectItemFlags(obj: Record<string, unknown> | null, url: string): SearchResultFlag[] {
   const flags = new Set<SearchResultFlag>();
 
@@ -87,18 +95,12 @@ function detectItemFlags(obj: Record<string, unknown> | null, url: string): Sear
 
   try {
     const host = new URL(url).hostname.toLowerCase();
-    if (["youtube.com", "www.youtube.com", "youtu.be", "vimeo.com", "www.vimeo.com", "tiktok.com", "www.tiktok.com"].includes(host)) {
+    if (VIDEO_DOMAINS.some((domain) => isHostOrSubdomain(host, domain))) {
       flags.add("video");
     }
     if (
-      [
-        "reddit.com",
-        "www.reddit.com",
-        "old.reddit.com",
-        "news.ycombinator.com",
-        "lobste.rs",
-        "lemmy.world",
-      ].includes(host) ||
+      COMMUNITY_DOMAINS.some((domain) => isHostOrSubdomain(host, domain)) ||
+      host === "news.ycombinator.com" ||
       host.startsWith("forum.") ||
       host.startsWith("forums.") ||
       host.startsWith("discuss.") ||
