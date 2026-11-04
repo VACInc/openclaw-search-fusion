@@ -792,11 +792,16 @@ function mergeResults(
   sourceTierMode: SourceTierMode,
 ): { results: FusionMergedResult[]; ranking: FusionRankingMeta } {
   const merged = new Map<string, MergeCandidate>();
+  // Whether each merged snippet is the page's own text. A snippet copied from
+  // an answer digest is the same text for every citation, so any provider
+  // snippet for the page replaces it, however short.
+  const snippetFromPage = new Map<string, boolean>();
 
   for (const provider of results) {
     for (const item of provider.results) {
       const existing = merged.get(item.canonicalUrl);
       if (!existing) {
+        snippetFromPage.set(item.canonicalUrl, item.snippetSource === "provider");
         merged.set(item.canonicalUrl, {
           title: item.title,
           url: item.url,
@@ -842,9 +847,18 @@ function mergeResults(
         sourceTier: item.sourceTier,
         flags: [...item.flags],
       });
-      if ((!existing.snippet || existing.snippet.length < (item.snippet?.length ?? 0)) && item.snippet) {
-        existing.snippet = item.snippet;
-        existing.truncated = item.truncated;
+      if (item.snippet) {
+        const existingIsPageSnippet = snippetFromPage.get(item.canonicalUrl) === true;
+        const itemIsPageSnippet = item.snippetSource === "provider";
+        const better =
+          !existing.snippet ||
+          (itemIsPageSnippet && !existingIsPageSnippet) ||
+          (itemIsPageSnippet === existingIsPageSnippet && existing.snippet.length < item.snippet.length);
+        if (better) {
+          existing.snippet = item.snippet;
+          existing.truncated = item.truncated;
+          snippetFromPage.set(item.canonicalUrl, itemIsPageSnippet);
+        }
       }
       if (existing.title.length < item.title.length) {
         existing.title = item.title;

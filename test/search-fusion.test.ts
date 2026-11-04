@@ -876,6 +876,45 @@ test("runSearchFusion merges the same page when query parameters arrive in a dif
   assert.equal(evidence?.answerCitationSupport.count, 1);
 });
 
+test("runSearchFusion prefers a page's own snippet over a longer answer-digest copy", async () => {
+  const answer =
+    "A long synthesized answer that every citation inherits as its fallback snippet, which is much longer than the page's own snippet text.";
+  const resultsByProvider: Record<string, unknown> = {
+    gemini: {
+      content: answer,
+      citations: [
+        { url: "https://example.com/cited", title: "example.com" },
+        { url: "https://example.com/only-cited", title: "example.com" },
+      ],
+    },
+    brave: { results: [{ title: "Cited page", url: "https://example.com/cited", description: "Short page text." }] },
+  };
+
+  for (const order of [["gemini", "brave"], ["brave", "gemini"]]) {
+    const payload = await runSearchFusion({
+      runtime: createRuntime({
+        search: async ({ providerId }) => ({
+          provider: providerId ?? "brave",
+          result: resultsByProvider[providerId ?? "brave"] as Record<string, unknown>,
+        }),
+      }) as never,
+      config: {},
+      pluginConfig: {},
+      request: { query: "snippet provenance", providers: order },
+    });
+
+    const cited = payload.results.find((result) => result.canonicalUrl === "https://example.com/cited");
+    assert.equal(cited?.snippet, "Short page text.", `provider order ${order.join(",")}`);
+    assert.deepEqual(cited?.providers, ["brave", "gemini"]);
+    const row = payload.evidenceTable.rows.find((entry) => entry.canonicalUrl === "https://example.com/cited");
+    assert.equal(row?.snippet, "Short page text.");
+
+    // A page only the answer cites still falls back to the answer text.
+    const onlyCited = payload.results.find((result) => result.canonicalUrl === "https://example.com/only-cited");
+    assert.equal(onlyCited?.snippet, answer);
+  }
+});
+
 test("runSearchFusion merges duplicate URLs across providers and keeps provider variants", async () => {
   const payload = await runSearchFusion({
     runtime: createRuntime() as never,

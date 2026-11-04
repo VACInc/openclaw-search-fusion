@@ -7,7 +7,7 @@
     "dup@10": 0.1201,
     "junk@5": 0.0615,
     "domains@5": 4,
-    "snippetFallback": 0.1449,
+    "snippetFallback": 0,
     "falseMerge": 0,
     "answerRecall": 1
   },
@@ -19,7 +19,7 @@
     "dup@10": 0.1571,
     "junk@5": 0.1,
     "domains@5": 3.8571,
-    "snippetFallback": 0.1429,
+    "snippetFallback": 0,
     "falseMerge": 0,
     "answerRecall": 0.9667
   }
