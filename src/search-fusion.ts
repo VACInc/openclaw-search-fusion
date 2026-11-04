@@ -1120,7 +1120,9 @@ async function runProvider(params: {
 
       const delayMs = computeRetryDelay(retryPolicy, attempt, lastError);
       if (Date.now() + delayMs >= params.deadlineAt) {
-        return failure("deadline exceeded");
+        // No time left to wait and retry. The attempt itself finished, so
+        // report why it failed rather than a deadline that never fired.
+        return failure(lastError);
       }
       retryHistory.push({ attempt, error: lastError, delayMs });
       try {
