@@ -55,7 +55,11 @@ export function asSingleLine(value: string): string {
 export function truncate(value: string, max = 220): string {
   const normalized = asSingleLine(value);
   if (normalized.length <= max) return normalized;
-  return `${normalized.slice(0, Math.max(0, max - 1)).trimEnd()}…`;
+  let end = Math.max(0, max - 1);
+  // Do not split a surrogate pair: a lone high surrogate is invalid text.
+  const last = normalized.charCodeAt(end - 1);
+  if (last >= 0xd800 && last <= 0xdbff) end -= 1;
+  return `${normalized.slice(0, end).trimEnd()}…`;
 }
 
 // Zero-width and soft-hyphen characters can split a marker word so it no longer
