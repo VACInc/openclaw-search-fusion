@@ -253,7 +253,10 @@ The structured payload retains `externalContent.untrusted: true` metadata for no
 
 Merged payloads include:
 
-- `results[].ranking` with the final rank, score breakdown (`bestVariantScore`, `corroborationBonus`, `bestRankBonus`, `tierAdjustment`, `flagPenalty`, `finalScore`), and tie-breaker values. `flagPenalty` counts only flags carried by every provider's copy of the URL; `flags` still lists every flag any provider reported.
+- `results[].ranking` with the final rank, score breakdown (`bestVariantScore`, `corroborationBonus`, `bestRankBonus`, `tierAdjustment`, `flagPenalty`, `finalScore`), and tie-breaker values. `flagPenalty` counts delivery flags (`redirect-wrapper`, `tracking-stripped`) only when every provider's copy of the URL carries them, and page flags (`sponsored`, `video`, `community`) when any provider reports them; `flags` still lists every flag any provider reported.
+
+- `results[].ranking` with the final rank, score breakdown (`bestVariantScore`, `corroborationBonus`, `bestRankBonus`, `tierAdjustment`, `flagPenalty`, `finalScore`), and tie-breaker values.
+  `corroborationBonus` adds 0.3 for each additional provider that independently returned the page. With equal provider weights and no native scores, two engines that both rank a page third outrank a page only one engine returned at #1 (by a small margin). Native scores, `providerConfig.<id>.weight`, and citation-only variants can change that. A page that any provider flags as sponsored, video, or community keeps that tier penalty even when other providers return it unflagged.
 - top-level `ranking` metadata with the strategy, sort order, considered/returned counts, and `dropped[]` entries (with `reason: "maxMergedResults"`) for results trimmed by the output cap.
 
 ### `search_fusion_providers`
