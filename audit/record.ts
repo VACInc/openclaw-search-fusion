@@ -19,6 +19,19 @@ function fraction(numerator: number, denominator: number): number {
   return Math.round((numerator / denominator) * 1000) / 1000;
 }
 
+/**
+ * Auth failures: a standalone 401/403 status code (the same matching the
+ * retry classifier uses, so "4031", "1.401", or "403 ms" do not count) or
+ * auth/credential wording.
+ */
+const AUTH_STATUS_PATTERN =
+  /(?<!\w|\d\.)(?:401|403)(?!\w|\.\d)(?!\s*(?:ms|s|sec|secs|seconds|milliseconds)\b)/i;
+const AUTH_MESSAGE_PATTERN = /unauthorized|forbidden|invalid api key|api key|credential/i;
+
+function isAuthError(message: string): boolean {
+  return AUTH_STATUS_PATTERN.test(message) || AUTH_MESSAGE_PATTERN.test(message);
+}
+
 function providerCaveats(run: FusionSearchPayload["providerRuns"][number]): AuditCaveat[] {
   const caveats: AuditCaveat[] = [];
 
@@ -32,11 +45,9 @@ function providerCaveats(run: FusionSearchPayload["providerRuns"][number]): Audi
   }
 
   if (!run.ok && run.error) {
-    const isAuth =
-      /401|403|unauthorized|forbidden|invalid api key|api key|credential/i.test(run.error);
     caveats.push({
       severity: "error",
-      code: isAuth ? "provider-auth-error" : "provider-run-failed",
+      code: isAuthError(run.error) ? "provider-auth-error" : "provider-run-failed",
       message: run.error,
       target: run.provider,
     });
