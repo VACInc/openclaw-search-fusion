@@ -85,6 +85,7 @@ Optional plugin config:
           "providerTimeoutMs": 15000,
           "totalTimeoutMs": 30000,
           "maxSnippetLength": 500,
+          "maxAnswerLength": 2000,
           "includeRawPayloads": false,
           "includeDiscarded": false,
           "retry": {
@@ -145,7 +146,8 @@ Model-visible output is compact by default:
 
 - `includeRawPayloads` (default `false`) controls provider `rawPayload` data and raw normalized items.
 - `includeDiscarded` (default `false`) controls missing-URL items preserved outside the merged results.
-- `maxSnippetLength` (default `500`, range `100`–`5000`) caps result snippets, variant snippets, evidence snippets, and provider answer text. Affected objects carry `truncated: true`.
+- `maxSnippetLength` (default `500`, range `100`–`5000`) caps result snippets, variant snippets, and evidence snippets, including answer text reused as a citation's fallback snippet. Affected objects carry `truncated: true`.
+- `maxAnswerLength` (default the larger of `2000` and `maxSnippetLength`, range `100`–`10000`) caps provider answer digests (`answers[].fullContent`). Answer-style providers often return more than 500 characters, and the last sentences frequently carry the specifics. Truncated answers carry `truncated: true`. Earlier releases capped answers with `maxSnippetLength`; set `maxAnswerLength` to the same value to keep that bound.
 
 Both include flags can be set in plugin config or overridden per `search_fusion` call. Audit consumers such as Atlas can enable both flags to retain full source fidelity in raw payloads while normalized model-visible fields remain bounded.
 
@@ -366,7 +368,7 @@ The workflow refuses any ref that is not a `v*` tag (including manual `workflow_
 - supports deterministic provider weighting via `providerConfig.<id>.weight` to bias ranking by provider trust/value
 - isolates unexpected provider pipeline crashes so one provider cannot abort the whole fusion run
 - omits raw provider payloads and discarded items by default; exposes them through explicit output flags
-- caps model-visible snippets and answers with explicit `truncated: true` markers
+- caps model-visible snippets (`maxSnippetLength`) and answer digests (`maxAnswerLength`) with explicit `truncated: true` markers
 - honors caller cancellation, aborts delegated searches, and enforces a whole-fan-out deadline with partial results
 - preserves per-provider merged variants in `results[].variants[]`
 - emits `evidenceTable.columns[]` and `evidenceTable.rows[]` for direct evidence-table rendering

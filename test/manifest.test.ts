@@ -43,6 +43,9 @@ test("manifest exposes deadline and bounded-output configuration", () => {
   assert.equal(asObject(properties.maxSnippetLength)?.type, "integer");
   assert.equal(asObject(properties.maxSnippetLength)?.minimum, 100);
   assert.equal(asObject(properties.maxSnippetLength)?.maximum, 5000);
+  assert.equal(asObject(properties.maxAnswerLength)?.type, "integer");
+  assert.equal(asObject(properties.maxAnswerLength)?.minimum, 100);
+  assert.equal(asObject(properties.maxAnswerLength)?.maximum, 10000);
 });
 
 test("manifest exposes providerConfig weight overrides", () => {

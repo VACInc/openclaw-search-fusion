@@ -1100,6 +1100,7 @@ test("runSearchFusion merges duplicate URLs across providers and keeps provider 
     includeRawPayloads: false,
     includeDiscarded: false,
     maxSnippetLength: 500,
+    maxAnswerLength: 2000,
   });
 
   assert.equal(payload.evidenceTable.version, 1);
@@ -2329,7 +2330,7 @@ test("runSearchFusion bounds visible text and keeps full fidelity behind opt-ins
   const bounded = await runSearchFusion({
     runtime,
     config: {},
-    pluginConfig: { maxSnippetLength: 120 },
+    pluginConfig: { maxSnippetLength: 120, maxAnswerLength: 150 },
     request: { query: "bounded", providers: ["gemini"] },
   });
   assert.equal(bounded.providerRuns[0]?.rawPayload, undefined);
@@ -2338,7 +2339,8 @@ test("runSearchFusion bounds visible text and keeps full fidelity behind opt-ins
   assert.deepEqual(bounded.providerRuns[0]?.discardedResults, []);
   assert.equal(bounded.providerDetails[0]?.discardedCount, 1);
   assert.equal(bounded.answers[0]?.truncated, true);
-  assert.ok((bounded.answers[0]?.fullContent.length ?? Infinity) <= 120);
+  assert.ok((bounded.answers[0]?.fullContent.length ?? Infinity) <= 150);
+  assert.ok((bounded.answers[0]?.fullContent.length ?? 0) > 120);
   assert.equal(bounded.results[0]?.truncated, true);
   assert.ok((bounded.results[0]?.snippet?.length ?? Infinity) <= 120);
   assert.equal(bounded.results[0]?.variants[0]?.truncated, true);
@@ -2361,4 +2363,56 @@ test("runSearchFusion bounds visible text and keeps full fidelity behind opt-ins
   assert.equal((audit.providerRuns[0]?.results[0]?.rawItem as { description?: string })?.description, longText);
   assert.equal(audit.discardedResults.length, 1);
   assert.equal((audit.discardedResults[0]?.rawItem as { description?: string })?.description, longText);
+});
+
+test("runSearchFusion keeps whole answers under the answer cap while snippets keep the snippet cap", async () => {
+  const sentence = "Renewal steps and fees are listed here in full detail for the reader. ";
+  const answer = `${sentence.repeat(14)}Use Form DS-82 to renew by mail.`;
+  assert.ok(answer.length > 1000 && answer.length < 2000);
+  const runtime = createRuntime({
+    search: async ({ providerId }) => ({
+      provider: providerId ?? "gemini",
+      result: { content: answer, citations: ["https://travel.example.gov/renew"] },
+    }),
+  }) as never;
+
+  const payload = await runSearchFusion({
+    runtime,
+    config: {},
+    pluginConfig: {},
+    request: { query: "renew passport", providers: ["gemini"] },
+  });
+  assert.equal(payload.output.maxAnswerLength, 2000);
+  assert.equal(payload.answers[0]?.fullContent, answer);
+  assert.equal(payload.answers[0]?.truncated, undefined);
+  assert.equal(payload.answers[0]?.summaryTruncated, true);
+  // The citation's fallback snippet is still bounded by maxSnippetLength.
+  assert.equal(payload.results[0]?.truncated, true);
+  assert.ok((payload.results[0]?.snippet?.length ?? Infinity) <= 500);
+
+  const capped = await runSearchFusion({
+    runtime,
+    config: {},
+    pluginConfig: { maxAnswerLength: 300 },
+    request: { query: "renew passport", providers: ["gemini"] },
+  });
+  assert.equal(capped.answers[0]?.truncated, true);
+  assert.ok((capped.answers[0]?.fullContent.length ?? Infinity) <= 300);
+
+  // A large snippet cap configured for long answers is still honored.
+  const longAnswer = `${sentence.repeat(40)}End.`;
+  const wide = await runSearchFusion({
+    runtime: createRuntime({
+      search: async ({ providerId }) => ({
+        provider: providerId ?? "gemini",
+        result: { content: longAnswer, citations: ["https://travel.example.gov/renew"] },
+      }),
+    }) as never,
+    config: {},
+    pluginConfig: { maxSnippetLength: 5000 },
+    request: { query: "renew passport", providers: ["gemini"] },
+  });
+  assert.ok(longAnswer.length > 2000);
+  assert.equal(wide.output.maxAnswerLength, 5000);
+  assert.equal(wide.answers[0]?.fullContent, longAnswer);
 });

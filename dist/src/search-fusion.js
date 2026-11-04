@@ -1,7 +1,7 @@
 import { getRuntimeConfigSnapshot } from "openclaw/plugin-sdk/runtime-config-snapshot";
 import { discoverProviders, resolveSelectedProviders } from "./provider-discovery.js";
 import { KNOWN_PROVIDERS } from "./provider-catalog.js";
-import { normalizeProviderPayload } from "./result-normalizer.js";
+import { DEFAULT_MAX_ANSWER_LENGTH, MAX_ANSWER_LENGTH_LIMIT, normalizeProviderPayload, } from "./result-normalizer.js";
 import { compareSourceTierDesc, coerceSourceTierMode, pageFlagTierCap, pickHigherSourceTier, pickLowerSourceTier, sourceTierMergedAdjustment, } from "./source-tier.js";
 import { canonicalizeUrl, sanitizeErrorText } from "./text.js";
 const DEFAULT_COUNT_PER_PROVIDER = 5;
@@ -891,6 +891,7 @@ async function runProvider(params) {
                 payload: response.result,
                 sourceTierMode: params.sourceTierMode,
                 maxSnippetLength: params.maxSnippetLength,
+                maxAnswerLength: params.maxAnswerLength,
             });
             if (normalized.error) {
                 throw new Error(normalized.error);
@@ -976,7 +977,10 @@ export async function runSearchFusion(params) {
     const includeRawPayloads = params.request.includeRawPayloads ?? brokerConfig.includeRawPayloads ?? false;
     const includeDiscarded = params.request.includeDiscarded ?? brokerConfig.includeDiscarded ?? false;
     const maxSnippetLength = clamp(brokerConfig.maxSnippetLength ?? DEFAULT_MAX_SNIPPET_LENGTH, 100, 5000);
-    const output = { includeRawPayloads, includeDiscarded, maxSnippetLength };
+    // Answers were once capped by maxSnippetLength; never cut them shorter than
+    // a configured snippet cap unless maxAnswerLength says so explicitly.
+    const maxAnswerLength = clamp(brokerConfig.maxAnswerLength ?? Math.max(DEFAULT_MAX_ANSWER_LENGTH, maxSnippetLength), 100, MAX_ANSWER_LENGTH_LIMIT);
+    const output = { includeRawPayloads, includeDiscarded, maxSnippetLength, maxAnswerLength };
     const runtimeConfigSnapshot = getRuntimeConfigSnapshot();
     const runtimeConfig = applySearchConfigContext(runtimeConfigSnapshot ?? params.contextConfig ?? params.config, params.searchConfig);
     const sourceConfig = await resolveRuntimeSourceConfig(params.config);
@@ -1047,6 +1051,7 @@ export async function runSearchFusion(params) {
                 provider,
                 sourceTierMode,
                 maxSnippetLength,
+                maxAnswerLength,
                 signal: runController.signal,
                 deadlineAt,
                 agentDir: params.agentDir,
