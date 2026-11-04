@@ -84,6 +84,17 @@ for (const name of workflowFiles) {
     }
   });
 
+  test(`${name}: no run: step interpolates github.* context directly into the shell`, () => {
+    // Refs, branch names and PR titles are attacker-influenced; pass them
+    // through env (e.g. $GITHUB_REF_NAME) instead of ${{ }} in scripts.
+    for (const [jobId, job] of jobsOf(readWorkflow(name))) {
+      for (const step of (job.steps ?? []) as Array<Step & { run?: string }>) {
+        if (!step.run) continue;
+        assert.doesNotMatch(step.run, /\$\{\{\s*github\./, `${name}#${jobId}: move github.* expressions out of run:`);
+      }
+    }
+  });
+
   test(`${name}: actions/checkout does not persist the GITHUB_TOKEN into .git/config`, () => {
     for (const [jobId, job] of jobsOf(readWorkflow(name))) {
       for (const step of job.steps ?? []) {
@@ -93,3 +104,35 @@ for (const name of workflowFiles) {
     }
   });
 }
+
+test("package-publish.yml: releases trigger on version tags only", () => {
+  const workflow = readWorkflow("package-publish.yml");
+  const on = workflow.on as Record<string, unknown>;
+  assert.deepEqual(Object.keys(on).sort(), ["push", "workflow_dispatch"]);
+  assert.deepEqual(on.push, { tags: ["v*"] }, "push must filter on v* tags only (no branches)");
+  assert.equal(on.workflow_dispatch, null, "workflow_dispatch must not take inputs that could pick a ref");
+});
+
+test("package-publish.yml: every job is gated to refs/tags/v* (covers workflow_dispatch from a branch)", () => {
+  for (const [jobId, job] of jobsOf(readWorkflow("package-publish.yml"))) {
+    assert.equal(
+      (job as Job & { if?: string }).if,
+      "startsWith(github.ref, 'refs/tags/v')",
+      `package-publish.yml#${jobId} must be gated to tag refs`,
+    );
+  }
+});
+
+test("package-publish.yml: publish waits for tests, typecheck, inspector, and tag/version match", () => {
+  const jobs = readWorkflow("package-publish.yml").jobs ?? {};
+  const publish = jobs.publish as Job & { needs?: string | string[] };
+  assert.deepEqual([publish.needs].flat(), ["verify"]);
+  const runs = (jobs.verify?.steps ?? []).map((step) => (step as { run?: string }).run ?? "");
+  for (const command of ["pnpm install --frozen-lockfile", "pnpm test", "pnpm check", "pnpm run plugin:ci"]) {
+    assert.ok(runs.includes(command), `verify job must run "${command}"`);
+  }
+  assert.ok(
+    runs.some((run) => run.includes("$GITHUB_REF_NAME") && run.includes("package.json")),
+    "verify job must check the tag against package.json version",
+  );
+});

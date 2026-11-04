@@ -337,6 +337,15 @@ pnpm check
 pnpm test
 ```
 
+## Releasing
+
+ClawHub publishes of `@vacinc/search-fusion` run from `.github/workflows/package-publish.yml` and only for version tags:
+
+1. Bump `version` in `package.json` and merge it to `main`.
+2. Push a matching tag: `git tag v<version> && git push origin v<version>`.
+
+The workflow refuses any ref that is not a `v*` tag (including manual `workflow_dispatch` runs from a branch), fails if the tag does not equal `v` + the `package.json` version, and runs `pnpm test`, `pnpm check`, and `pnpm run plugin:ci` before publishing.
+
 ## Current behavior
 
 - starter modes are built in for fresh installs (`fast`, `balanced`, `deep`) when `modes` is not configured
