@@ -358,7 +358,7 @@ The workflow refuses any ref that is not a `v*` tag (including manual `workflow_
 - prefers a paid sibling only when it is configured; otherwise keeps the keyless sibling
 - reports native providers whose plugins are disabled/not enabled, with plugin ids and boolean-only credential detection hints
 - excludes itself to avoid recursion
-- dedupes by canonical URL (redirect wrappers unwrapped, tracking parameters stripped, query parameter order ignored)
+- dedupes by canonical URL (redirect wrappers unwrapped, tracking parameters stripped, query parameter order ignored, `http`/`https` and `www.`/mobile host spellings such as `m.` or `en.m.wikipedia.org` treated as one page); the merged result shows the `https` URL when any provider returned one
 - retries transient provider failures with global defaults and per-provider overrides via `providerConfig.<id>.retry`
 - supports deterministic provider weighting via `providerConfig.<id>.weight` to bias ranking by provider trust/value
 - isolates unexpected provider pipeline crashes so one provider cannot abort the whole fusion run

@@ -7,6 +7,7 @@
  */
 
 import type { AuditRecord } from "./types.js";
+import { canonicalizeUrl } from "../src/text.js";
 
 const SEVERITY_PREFIX: Record<string, string> = {
   info: "ℹ",
@@ -133,8 +134,11 @@ export function compareAuditRecords(
   urlsRetained: string[];
   providerChanges: string[];
 } {
-  const originalUrls = new Set(original.payload.results.map((r) => r.canonicalUrl));
-  const rerunUrls = new Set(rerun.payload.results.map((r) => r.canonicalUrl));
+  // Re-key both sides with the current canonicalization so a record captured
+  // under older dedupe rules (e.g. before www./http variants were merged)
+  // still lines up with a fresh rerun.
+  const originalUrls = new Set(original.payload.results.map((r) => canonicalizeUrl(r.canonicalUrl)));
+  const rerunUrls = new Set(rerun.payload.results.map((r) => canonicalizeUrl(r.canonicalUrl)));
 
   const urlsAdded = [...rerunUrls].filter((u) => !originalUrls.has(u));
   const urlsRemoved = [...originalUrls].filter((u) => !rerunUrls.has(u));

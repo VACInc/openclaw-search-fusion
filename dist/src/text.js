@@ -205,6 +205,55 @@ function isWebUrl(value) {
         return false;
     }
 }
+// Alternate front ends that serve the same page as the bare host.
+const HOST_ALIASES = {
+    "old.reddit.com": "reddit.com",
+    "new.reddit.com": "reddit.com",
+    "np.reddit.com": "reddit.com",
+};
+const MOBILE_LABELS = new Set(["m", "mobile"]);
+// Two-label country suffixes such as co.uk or com.au: a host is never reduced
+// to one of these (`m.co.uk` stays as is). No public-suffix list is bundled,
+// so this covers the common shapes only.
+const COUNTRY_SECOND_LEVEL_SUFFIX = /^(?:ac|co|com|edu|gob|gouv|gov|go|mil|ne|net|nic|or|org)\.[a-z]{2}$/;
+// Shared-hosting suffixes where every subdomain is a different site.
+const SHARED_HOSTING_SUFFIXES = new Set([
+    "blogspot.com",
+    "github.io",
+    "gitlab.io",
+    "herokuapp.com",
+    "netlify.app",
+    "pages.dev",
+    "vercel.app",
+    "wordpress.com",
+]);
+/**
+ * Host used only in the dedupe key: drops a leading `www.`, a mobile label
+ * (`m.example.com`, `en.m.wikipedia.org`), and known front-end aliases.
+ * A registrable domain such as `m.co` is never reduced to a bare suffix.
+ */
+export function canonicalDedupeHost(hostname) {
+    // "example.com." and "example.com" are the same host.
+    let labels = hostname.toLowerCase().replace(/\.$/, "").split(".");
+    const drop = (index) => {
+        const next = labels.filter((_, position) => position !== index);
+        const rest = next.join(".");
+        if (next.length >= 2 && !COUNTRY_SECOND_LEVEL_SUFFIX.test(rest) && !SHARED_HOSTING_SUFFIXES.has(rest)) {
+            labels = next;
+        }
+    };
+    if (labels[0] === "www") {
+        drop(0);
+    }
+    if (MOBILE_LABELS.has(labels[0])) {
+        drop(0);
+    }
+    else if (labels.length > 3 && MOBILE_LABELS.has(labels[1])) {
+        drop(1);
+    }
+    const host = labels.join(".");
+    return HOST_ALIASES[host] ?? host;
+}
 export function analyzeUrl(rawUrl) {
     const originalUrl = rawUrl.trim();
     const flags = new Set();
@@ -236,6 +285,15 @@ export function analyzeUrl(rawUrl) {
         // The same page can arrive with its query parameters in a different order.
         // Sorting is stable, so repeated keys keep their relative order.
         parsed.searchParams.sort();
+        // Providers disagree on scheme and on www/mobile host spellings of the
+        // same page; the dedupe key ignores both. The display URL keeps them.
+        // An explicit port can serve a different site per scheme, so keep it.
+        if (parsed.protocol === "http:" && parsed.port === "") {
+            parsed.protocol = "https:";
+        }
+        if (parsed.protocol === "https:") {
+            parsed.hostname = canonicalDedupeHost(parsed.hostname);
+        }
         return {
             url,
             canonicalUrl: parsed.toString(),

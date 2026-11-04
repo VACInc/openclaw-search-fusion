@@ -831,6 +831,11 @@ function mergeResults(
       }
 
       existing.variants.push(item);
+      // Variants share a dedupe key but may differ in scheme. Upgrade only the
+      // scheme so the displayed host stays the first provider's spelling.
+      if (existing.url.startsWith("http://") && item.url.startsWith("https://")) {
+        existing.url = `https://${existing.url.slice("http://".length)}`;
+      }
       if (!existing.providers.includes(item.providerId)) {
         existing.providers.push(item.providerId);
       }

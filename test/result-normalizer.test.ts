@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { normalizeProviderPayload } from "../src/result-normalizer.js";
+import { canonicalDedupeHost, canonicalizeUrl } from "../src/text.js";
 
 test("normalizeProviderPayload maps structured results", () => {
   const normalized = normalizeProviderPayload({
@@ -322,4 +323,60 @@ test("normalizeProviderPayload sorts query parameters only in the canonical URL"
   assert.equal(result?.url, "https://example.com/page?z=1&a=2&a=1");
   // Stable sort: repeated keys keep their relative order.
   assert.equal(result?.canonicalUrl, "https://example.com/page?a=2&a=1&z=1");
+});
+
+test("canonical URLs ignore scheme and www/mobile host spellings of the same page", () => {
+  const variants = [
+    "https://realpython.com/python-virtual-environments-a-primer/",
+    "https://www.realpython.com/python-virtual-environments-a-primer",
+    "http://realpython.com/python-virtual-environments-a-primer/",
+    "http://www.realpython.com/python-virtual-environments-a-primer/?utm_source=x",
+    "https://m.realpython.com/python-virtual-environments-a-primer/",
+  ];
+  const keys = new Set(variants.map(canonicalizeUrl));
+  assert.deepEqual([...keys], ["https://realpython.com/python-virtual-environments-a-primer"]);
+
+  assert.equal(
+    canonicalizeUrl("https://en.m.wikipedia.org/wiki/Jaguar"),
+    canonicalizeUrl("https://en.wikipedia.org/wiki/Jaguar"),
+  );
+  assert.equal(
+    canonicalizeUrl("https://old.reddit.com/r/rust/comments/abc/title/"),
+    canonicalizeUrl("https://www.reddit.com/r/rust/comments/abc/title"),
+  );
+
+  // The display URL keeps the provider's scheme and host.
+  const normalized = normalizeProviderPayload({
+    providerId: "brave",
+    payload: { results: [{ title: "Primer", url: variants[3] }] },
+  });
+  assert.equal(normalized.results[0]?.url, "http://www.realpython.com/python-virtual-environments-a-primer");
+  assert.equal(normalized.results[0]?.canonicalUrl, "https://realpython.com/python-virtual-environments-a-primer");
+});
+
+test("canonicalDedupeHost keeps distinct sites and registrable domains apart", () => {
+  assert.equal(canonicalDedupeHost("www.example.com"), "example.com");
+  assert.equal(canonicalDedupeHost("m.example.com"), "example.com");
+  assert.equal(canonicalDedupeHost("mobile.twitter.com"), "twitter.com");
+  assert.equal(canonicalDedupeHost("en.m.wikipedia.org"), "en.wikipedia.org");
+  // Never reduce a host to a bare public suffix or merge different subdomains.
+  assert.equal(canonicalDedupeHost("www.co"), "www.co");
+  assert.equal(canonicalDedupeHost("m.co"), "m.co");
+  assert.equal(canonicalDedupeHost("m.co.uk"), "m.co.uk");
+  assert.equal(canonicalDedupeHost("www.com.au"), "www.com.au");
+  assert.equal(canonicalDedupeHost("www.bbc.co.uk"), "bbc.co.uk");
+  assert.equal(canonicalDedupeHost("docs.example.com"), "docs.example.com");
+  assert.equal(canonicalDedupeHost("news.ycombinator.com"), "news.ycombinator.com");
+  assert.equal(canonicalDedupeHost("www.example.com."), "example.com");
+  assert.equal(canonicalDedupeHost("www.co.uk."), "www.co.uk");
+  assert.equal(canonicalDedupeHost("www.gob.mx"), "www.gob.mx");
+  assert.equal(canonicalDedupeHost("m.github.io"), "m.github.io");
+  assert.equal(canonicalDedupeHost("www.blogspot.com"), "www.blogspot.com");
+  assert.equal(canonicalDedupeHost("www.someone.github.io"), "someone.github.io");
+  // An explicit port may be a different service per scheme.
+  assert.notEqual(canonicalizeUrl("http://h.example:8443/a"), canonicalizeUrl("https://h.example:8443/a"));
+  assert.equal(canonicalizeUrl("http://h.example:80/a"), canonicalizeUrl("https://h.example/a"));
+  // Different paths and non-web schemes are untouched.
+  assert.notEqual(canonicalizeUrl("https://example.com/a"), canonicalizeUrl("https://example.com/b"));
+  assert.equal(canonicalizeUrl("ftp://www.example.com/file"), "ftp://www.example.com/file");
 });

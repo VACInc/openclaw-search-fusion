@@ -876,6 +876,78 @@ test("runSearchFusion merges the same page when query parameters arrive in a dif
   assert.equal(evidence?.answerCitationSupport.count, 1);
 });
 
+test("runSearchFusion merges scheme and www/mobile variants of one page and shows the https URL", async () => {
+  const resultsByProvider: Record<string, unknown> = {
+    brave: { results: [{ title: "Primer", url: "http://www.example.com/primer/" }] },
+    duckduckgo: { results: [{ title: "Primer", url: "https://m.example.com/primer" }] },
+    tavily: {
+      results: [
+        { title: "Primer", url: "https://example.com/primer" },
+        { title: "Other", url: "https://docs.example.com/primer" },
+      ],
+    },
+  };
+  const payload = await runSearchFusion({
+    runtime: createRuntime({
+      search: async ({ providerId }) => ({
+        provider: providerId ?? "brave",
+        result: resultsByProvider[providerId ?? "brave"] as Record<string, unknown>,
+      }),
+    }) as never,
+    config: {},
+    pluginConfig: {},
+    request: { query: "host variants", providers: ["brave", "duckduckgo", "tavily"] },
+  });
+
+  assert.equal(payload.results.length, 2);
+  const primer = payload.results.find((result) => result.canonicalUrl === "https://example.com/primer");
+  assert.deepEqual(primer?.providers, ["brave", "duckduckgo", "tavily"]);
+  // Only the scheme is upgraded; the host keeps the first provider's spelling.
+  assert.equal(primer?.url, "https://www.example.com/primer");
+  assert.deepEqual(
+    primer?.variants.map((variant) => variant.originalUrl).sort(),
+    ["http://www.example.com/primer/", "https://example.com/primer", "https://m.example.com/primer"],
+  );
+  // A different subdomain is a different site.
+  assert.ok(payload.results.some((result) => result.canonicalUrl === "https://docs.example.com/primer"));
+});
+
+test("runSearchFusion flags mobile and alias spellings like the host they merge with", async () => {
+  const resultsByProvider: Record<string, unknown> = {
+    brave: {
+      results: [
+        { title: "Video", url: "https://www.youtube.com/watch?v=abc" },
+        { title: "Thread", url: "https://www.reddit.com/r/x/comments/1/t" },
+      ],
+    },
+    duckduckgo: {
+      results: [
+        { title: "Video", url: "https://m.youtube.com/watch?v=abc" },
+        { title: "Thread", url: "https://np.reddit.com/r/x/comments/1/t" },
+      ],
+    },
+  };
+  const payload = await runSearchFusion({
+    runtime: createRuntime({
+      search: async ({ providerId }) => ({
+        provider: providerId ?? "brave",
+        result: resultsByProvider[providerId ?? "brave"] as Record<string, unknown>,
+      }),
+    }) as never,
+    config: {},
+    pluginConfig: {},
+    request: { query: "mobile flags", providers: ["brave", "duckduckgo"] },
+  });
+
+  assert.equal(payload.results.length, 2);
+  for (const result of payload.results) {
+    assert.equal(result.providerCount, 2);
+    // No unflagged copy lifts the merged page out of the low tier.
+    assert.equal(result.bestSourceTier, "low");
+    for (const variant of result.variants) assert.equal(variant.sourceTier, "low");
+  }
+});
+
 test("runSearchFusion prefers a page's own snippet over a longer answer-digest copy", async () => {
   const answer =
     "A long synthesized answer that every citation inherits as its fallback snippet, which is much longer than the page's own snippet text.";
