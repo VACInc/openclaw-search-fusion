@@ -21,6 +21,6 @@
     "domains@5": 4.1429,
     "snippetFallback": 0,
     "falseMerge": 0,
-    "answerRecall": 0.9667
+    "answerRecall": 1
   }
 }

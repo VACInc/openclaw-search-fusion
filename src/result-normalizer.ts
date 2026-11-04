@@ -15,6 +15,9 @@ import {
 import { analyzeUrl, canonicalDedupeHost, cleanProviderText, resolveSiteName, truncate } from "./text.js";
 
 const DEFAULT_MAX_SNIPPET_LENGTH = 500;
+/** Answer digests are whole synthesized answers, so they get a larger cap than per-page snippets. */
+export const DEFAULT_MAX_ANSWER_LENGTH = 2000;
+export const MAX_ANSWER_LENGTH_LIMIT = 10000;
 
 function limitText(
   value: string | undefined,
@@ -258,12 +261,12 @@ function buildCitationDetails(citationsRaw: unknown[]): ProviderAnswerCitation[]
 export function extractProviderAnswer(
   payload: Record<string, unknown>,
   providerId: string,
-  maxSnippetLength = DEFAULT_MAX_SNIPPET_LENGTH,
+  maxAnswerLength = DEFAULT_MAX_ANSWER_LENGTH,
 ): ProviderAnswerDigest | undefined {
   const rawFullContent = firstCleanText(payload, ["content", "answer"]);
   if (!rawFullContent) return undefined;
-  const fullContent = truncate(rawFullContent, maxSnippetLength);
-  const summaryMaxLength = Math.min(320, maxSnippetLength);
+  const fullContent = truncate(rawFullContent, maxAnswerLength);
+  const summaryMaxLength = Math.min(320, maxAnswerLength);
 
   const citationsRaw = Array.isArray(payload.citations) ? payload.citations : [];
   const citationDetails = buildCitationDetails(citationsRaw);
@@ -273,7 +276,7 @@ export function extractProviderAnswer(
     summary: truncate(rawFullContent, summaryMaxLength),
     fullContent,
     summaryTruncated: rawFullContent.length > summaryMaxLength,
-    ...(rawFullContent.length > maxSnippetLength ? { truncated: true as const } : {}),
+    ...(rawFullContent.length > maxAnswerLength ? { truncated: true as const } : {}),
     citations: citationDetails.map((entry) => entry.url),
     citationDetails,
   };
@@ -284,6 +287,7 @@ export function normalizeProviderPayload(params: {
   payload: Record<string, unknown>;
   sourceTierMode?: SourceTierMode;
   maxSnippetLength?: number;
+  maxAnswerLength?: number;
 }): {
   results: NormalizedSearchResult[];
   discardedResults: DiscardedSearchResult[];
@@ -295,7 +299,11 @@ export function normalizeProviderPayload(params: {
     100,
     Math.min(5000, params.maxSnippetLength ?? DEFAULT_MAX_SNIPPET_LENGTH),
   );
-  const answer = extractProviderAnswer(payload, params.providerId, maxSnippetLength);
+  const maxAnswerLength = Math.max(
+    100,
+    Math.min(MAX_ANSWER_LENGTH_LIMIT, params.maxAnswerLength ?? DEFAULT_MAX_ANSWER_LENGTH),
+  );
+  const answer = extractProviderAnswer(payload, params.providerId, maxAnswerLength);
   const sourceTierMode = coerceSourceTierMode(params.sourceTierMode);
 
   const resultArrays: NormalizedSearchResult[] = [];

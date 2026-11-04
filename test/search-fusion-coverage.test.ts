@@ -881,7 +881,7 @@ function summaryPayload(overrides: Partial<FusionSearchPayload> = {}): FusionSea
       dropped: [],
     },
     evidenceTable: { version: 1, columns: [], rowCount: 0, rows: [] },
-    output: { includeRawPayloads: false, includeDiscarded: false, maxSnippetLength: 500 },
+    output: { includeRawPayloads: false, includeDiscarded: false, maxSnippetLength: 500, maxAnswerLength: 2000 },
     externalContent: { untrusted: true, source: "web_search", provider: "search-fusion", aggregated: true },
     ...overrides,
   };

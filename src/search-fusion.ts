@@ -20,7 +20,11 @@ import type {
 } from "./types.js";
 import { discoverProviders, resolveSelectedProviders } from "./provider-discovery.js";
 import { KNOWN_PROVIDERS } from "./provider-catalog.js";
-import { normalizeProviderPayload } from "./result-normalizer.js";
+import {
+  DEFAULT_MAX_ANSWER_LENGTH,
+  MAX_ANSWER_LENGTH_LIMIT,
+  normalizeProviderPayload,
+} from "./result-normalizer.js";
 import {
   compareSourceTierDesc,
   coerceSourceTierMode,
@@ -1066,6 +1070,7 @@ async function runProvider(params: {
   provider: ResolvedProvider;
   sourceTierMode: SourceTierMode;
   maxSnippetLength: number;
+  maxAnswerLength: number;
   signal: AbortSignal;
   deadlineAt: number;
   agentDir?: string;
@@ -1137,6 +1142,7 @@ async function runProvider(params: {
         payload: response.result,
         sourceTierMode: params.sourceTierMode,
         maxSnippetLength: params.maxSnippetLength,
+        maxAnswerLength: params.maxAnswerLength,
       });
 
       if (normalized.error) {
@@ -1253,7 +1259,14 @@ export async function runSearchFusion(params: {
     100,
     5000,
   );
-  const output = { includeRawPayloads, includeDiscarded, maxSnippetLength };
+  // Answers were once capped by maxSnippetLength; never cut them shorter than
+  // a configured snippet cap unless maxAnswerLength says so explicitly.
+  const maxAnswerLength = clamp(
+    brokerConfig.maxAnswerLength ?? Math.max(DEFAULT_MAX_ANSWER_LENGTH, maxSnippetLength),
+    100,
+    MAX_ANSWER_LENGTH_LIMIT,
+  );
+  const output = { includeRawPayloads, includeDiscarded, maxSnippetLength, maxAnswerLength };
   const runtimeConfigSnapshot = getRuntimeConfigSnapshot();
   const runtimeConfig = applySearchConfigContext(
     runtimeConfigSnapshot ?? params.contextConfig ?? params.config,
@@ -1343,6 +1356,7 @@ export async function runSearchFusion(params: {
             provider,
             sourceTierMode,
             maxSnippetLength,
+            maxAnswerLength,
             signal: runController.signal,
             deadlineAt,
             agentDir: params.agentDir,

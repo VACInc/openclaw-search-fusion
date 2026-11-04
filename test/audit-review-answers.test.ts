@@ -24,7 +24,7 @@ function reviewWithAnswer(content: string): string {
     results: [],
     ranking: { strategy: "merged-score-v1", sortOrder: [], consideredCount: 0, returnedCount: 0, droppedCount: 0, dropped: [] },
     evidenceTable: { version: 1, columns: [], rowCount: 0, rows: [] },
-    output: { includeRawPayloads: false, includeDiscarded: false, maxSnippetLength: 500 },
+    output: { includeRawPayloads: false, includeDiscarded: false, maxSnippetLength: 500, maxAnswerLength: 2000 },
     externalContent: { untrusted: true, source: "web_search", provider: "search-fusion", aggregated: true },
   } satisfies FusionSearchPayload;
   return renderAuditReview(createAuditRecord({ payload, request: { query: "q" } }));
@@ -63,7 +63,7 @@ test("hand-built records flagged as truncated without an ellipsis still get one"
     results: [],
     ranking: { strategy: "merged-score-v1", sortOrder: [], consideredCount: 0, returnedCount: 0, droppedCount: 0, dropped: [] },
     evidenceTable: { version: 1, columns: [], rowCount: 0, rows: [] },
-    output: { includeRawPayloads: false, includeDiscarded: false, maxSnippetLength: 500 },
+    output: { includeRawPayloads: false, includeDiscarded: false, maxSnippetLength: 500, maxAnswerLength: 2000 },
     externalContent: { untrusted: true, source: "web_search", provider: "search-fusion", aggregated: true },
   } satisfies FusionSearchPayload;
   assert.match(renderAuditReview(createAuditRecord({ payload, request: { query: "q" } })), /\n {2}Cut short…\n/);

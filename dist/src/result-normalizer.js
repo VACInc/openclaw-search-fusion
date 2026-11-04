@@ -1,6 +1,9 @@
 import { classifySourceTier, coerceSourceTierMode, sourceTierMultiplier, } from "./source-tier.js";
 import { analyzeUrl, canonicalDedupeHost, cleanProviderText, resolveSiteName, truncate } from "./text.js";
 const DEFAULT_MAX_SNIPPET_LENGTH = 500;
+/** Answer digests are whole synthesized answers, so they get a larger cap than per-page snippets. */
+export const DEFAULT_MAX_ANSWER_LENGTH = 2000;
+export const MAX_ANSWER_LENGTH_LIMIT = 10000;
 function limitText(value, maxLength) {
     if (!value)
         return { truncated: false };
@@ -203,12 +206,12 @@ function buildCitationDetails(citationsRaw) {
         ];
     });
 }
-export function extractProviderAnswer(payload, providerId, maxSnippetLength = DEFAULT_MAX_SNIPPET_LENGTH) {
+export function extractProviderAnswer(payload, providerId, maxAnswerLength = DEFAULT_MAX_ANSWER_LENGTH) {
     const rawFullContent = firstCleanText(payload, ["content", "answer"]);
     if (!rawFullContent)
         return undefined;
-    const fullContent = truncate(rawFullContent, maxSnippetLength);
-    const summaryMaxLength = Math.min(320, maxSnippetLength);
+    const fullContent = truncate(rawFullContent, maxAnswerLength);
+    const summaryMaxLength = Math.min(320, maxAnswerLength);
     const citationsRaw = Array.isArray(payload.citations) ? payload.citations : [];
     const citationDetails = buildCitationDetails(citationsRaw);
     return {
@@ -216,7 +219,7 @@ export function extractProviderAnswer(payload, providerId, maxSnippetLength = DE
         summary: truncate(rawFullContent, summaryMaxLength),
         fullContent,
         summaryTruncated: rawFullContent.length > summaryMaxLength,
-        ...(rawFullContent.length > maxSnippetLength ? { truncated: true } : {}),
+        ...(rawFullContent.length > maxAnswerLength ? { truncated: true } : {}),
         citations: citationDetails.map((entry) => entry.url),
         citationDetails,
     };
@@ -224,7 +227,8 @@ export function extractProviderAnswer(payload, providerId, maxSnippetLength = DE
 export function normalizeProviderPayload(params) {
     const payload = params.payload;
     const maxSnippetLength = Math.max(100, Math.min(5000, params.maxSnippetLength ?? DEFAULT_MAX_SNIPPET_LENGTH));
-    const answer = extractProviderAnswer(payload, params.providerId, maxSnippetLength);
+    const maxAnswerLength = Math.max(100, Math.min(MAX_ANSWER_LENGTH_LIMIT, params.maxAnswerLength ?? DEFAULT_MAX_ANSWER_LENGTH));
+    const answer = extractProviderAnswer(payload, params.providerId, maxAnswerLength);
     const sourceTierMode = coerceSourceTierMode(params.sourceTierMode);
     const resultArrays = [];
     const discardedArrays = [];

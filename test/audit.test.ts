@@ -113,6 +113,7 @@ function minimalPayload(overrides: Partial<FusionSearchPayload> = {}): FusionSea
       includeRawPayloads: false,
       includeDiscarded: false,
       maxSnippetLength: 500,
+      maxAnswerLength: 2000,
     },
     results: [
       {

@@ -60,6 +60,8 @@ export type SearchFusionConfig = {
     includeRawPayloads?: boolean;
     includeDiscarded?: boolean;
     maxSnippetLength?: number;
+    /** Cap for provider answer digests (`answers[].fullContent`). Defaults to max(2000, maxSnippetLength). */
+    maxAnswerLength?: number;
     retry?: SearchFusionRetryConfig;
     providerConfig?: Record<string, SearchFusionProviderConfig>;
     providerRetries?: Record<string, SearchFusionRetryConfig>;
@@ -365,6 +367,7 @@ export type FusionSearchPayload = {
         includeRawPayloads: boolean;
         includeDiscarded: boolean;
         maxSnippetLength: number;
+        maxAnswerLength: number;
     };
     externalContent: {
         untrusted: true;
