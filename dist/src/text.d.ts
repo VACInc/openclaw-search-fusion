@@ -32,5 +32,7 @@ export declare function cleanProviderText(value: unknown): string;
  */
 export declare function canonicalDedupeHost(hostname: string): string;
 export declare function analyzeUrl(rawUrl: string): UrlAnalysis;
+/** True only for an absolute http(s) URL with a host. */
+export declare function isWebUrl(value: string): boolean;
 export declare function canonicalizeUrl(rawUrl: string): string;
 export declare function resolveSiteName(rawUrl: string): string | undefined;

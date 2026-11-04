@@ -145,7 +145,7 @@ Status codes count only as standalone numbers: digits inside a longer number or 
 Model-visible output is compact by default:
 
 - `includeRawPayloads` (default `false`) controls provider `rawPayload` data and raw normalized items.
-- `includeDiscarded` (default `false`) controls missing-URL items preserved outside the merged results.
+- `includeDiscarded` (default `false`) controls items preserved outside the merged results: `reason: "missing-url"` for items without a URL and `reason: "unsupported-url"` for URLs that are not absolute `http(s)` URLs (for example `javascript:`, `data:`, `file:`, or free text, including such targets unwrapped from a redirect link). Answer citations with such URLs are dropped.
 - `maxSnippetLength` (default `500`, range `100`–`5000`) caps result snippets, variant snippets, and evidence snippets, including answer text reused as a citation's fallback snippet. Affected objects carry `truncated: true`.
 - `maxAnswerLength` (default the larger of `2000` and `maxSnippetLength`, range `100`–`10000`) caps provider answer digests (`answers[].fullContent`). Answer-style providers often return more than 500 characters, and the last sentences frequently carry the specifics. Truncated answers carry `truncated: true`. Earlier releases capped answers with `maxSnippetLength`; set `maxAnswerLength` to the same value to keep that bound.
 

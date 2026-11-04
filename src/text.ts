@@ -243,15 +243,6 @@ function unwrapKnownRedirectUrl(rawUrl: string): { url: string; unwrapped: boole
   return { url: rawUrl.trim(), unwrapped: false };
 }
 
-function isWebUrl(value: string): boolean {
-  try {
-    const protocol = new URL(value).protocol;
-    return protocol === "http:" || protocol === "https:";
-  } catch {
-    return false;
-  }
-}
-
 // Alternate front ends that serve the same page as the bare host.
 const HOST_ALIASES: Readonly<Record<string, string>> = {
   "old.reddit.com": "reddit.com",
@@ -363,6 +354,16 @@ export function analyzeUrl(rawUrl: string): UrlAnalysis {
       originalUrl,
       flags: [...flags].sort(),
     };
+  }
+}
+
+/** True only for an absolute http(s) URL with a host. */
+export function isWebUrl(value: string): boolean {
+  try {
+    const parsed = new URL(value);
+    return (parsed.protocol === "http:" || parsed.protocol === "https:") && parsed.hostname.length > 0;
+  } catch {
+    return false;
   }
 }
 

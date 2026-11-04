@@ -43,7 +43,7 @@ const SearchFusionParameters = Type.Object({
     ui_lang: Type.Optional(Type.String({ description: "Locale code for UI elements when supported." })),
     includeFailures: Type.Optional(Type.Boolean({ description: "Include provider failures in the human-readable summary." })),
     includeRawPayloads: Type.Optional(Type.Boolean({ description: "Include full provider payloads and raw normalized items. Defaults to false." })),
-    includeDiscarded: Type.Optional(Type.Boolean({ description: "Include missing-URL items discarded from merging. Defaults to false." })),
+    includeDiscarded: Type.Optional(Type.Boolean({ description: "Include items discarded from merging (missing URL, or a URL that is not http(s)). Defaults to false." })),
 }, { additionalProperties: false });
 function asJsonResult(payload) {
     return {
