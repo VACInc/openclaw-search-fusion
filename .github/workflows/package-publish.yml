@@ -8,12 +8,15 @@ on:
     tags:
       - "v*"
 
-permissions:
-  contents: read
-  id-token: write
+permissions: {}
 
 jobs:
   publish:
+    # Granted to the reusable workflow's job: read the source and mint the
+    # OIDC token ClawHub uses to verify the workflow source. Nothing else.
+    permissions:
+      contents: read
+      id-token: write
     uses: openclaw/clawhub/.github/workflows/package-publish.yml@ecf09b868a986751137f4272283f84967a16c765 # v0.12.0
     with:
       dry_run: false
