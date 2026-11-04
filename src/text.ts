@@ -142,19 +142,31 @@ export function neutralizeUntrustedText(value: string): string {
 }
 
 // Named credential fields: redact after "=" or ":" (query strings, headers, JSON).
+// A quoted value is redacted up to its closing quote, spaces and escaped
+// quotes included; an unquoted value ends at the next delimiter.
 const SECRET_FIELD_PATTERN =
-  /\b((?:api[_-]?key|access[_-]?token|refresh[_-]?token|auth[_-]?token|id[_-]?token|client[_-]?secret|secret[_-]?key|private[_-]?key|password|passwd|x-api-key|x-goog-api-key|subscription-key)["']?\s*[=:]\s*)(["']?)(?!\[REDACTED\])[^\s&"',;)}\]]+/gi;
+  /\b((?:api[_-]?key|access[_-]?token|refresh[_-]?token|auth[_-]?token|id[_-]?token|client[_-]?secret|secret[_-]?key|private[_-]?key|password|passwd|x-api-key|x-goog-api-key|subscription[_-]?(?:key|token))["']?\s*[=:]\s*)(?:"(?!\[REDACTED\]")(?:[^"\\\n]|\\.)*"|'(?!\[REDACTED\]')(?:[^'\\\n]|\\.)*'|(?!\[REDACTED\]|["'])[^\s&"',;)}\]]+)/gi;
 // Generic names are common words, so only redact the query-string form.
 const SECRET_QUERY_PATTERN = /\b((?:key|token|secret|sig|signature|apikey|auth)=)(?!\[REDACTED\])[^\s&"',;)}\]]+/gi;
 const BEARER_PATTERN = /\b(bearer|basic)\s+[A-Za-z0-9._~+/=-]{8,}/gi;
-const AUTH_HEADER_PATTERN = /\b(authorization\s*[:=]\s*)[^\s,;]+(?:\s+[^\s,;]+)?/gi;
+// Header form ("Authorization: Bearer x") and quoted-key form ('"Authorization": "x"').
+const AUTH_HEADER_PATTERN = /\b(authorization["']?\s*[:=]\s*["']?)(?!\[REDACTED\])[^\s,;"']+(?:\s+[^\s,;"']+)?/gi;
+// user:password@ or token@ in any scheme://authority.
+const URL_USERINFO_PATTERN = /\b([a-z][a-z0-9+.-]*:\/\/)(?!\[REDACTED\]@)[^\s/?#@"'<>]+@/gi;
+
+function redactFieldValue(match: string, prefix: string): string {
+  const value = match.slice(prefix.length);
+  const quote = value[0] === '"' || value[0] === "'" ? value[0] : "";
+  return `${prefix}${quote}[REDACTED]${quote}`;
+}
 
 /** Redact credential values that providers sometimes echo in error text. */
 export function redactSecrets(value: string): string {
   return value
+    .replace(URL_USERINFO_PATTERN, "$1[REDACTED]@")
     .replace(AUTH_HEADER_PATTERN, "$1[REDACTED]")
     .replace(BEARER_PATTERN, "$1 [REDACTED]")
-    .replace(SECRET_FIELD_PATTERN, "$1$2[REDACTED]")
+    .replace(SECRET_FIELD_PATTERN, redactFieldValue)
     .replace(SECRET_QUERY_PATTERN, "$1[REDACTED]");
 }
 
