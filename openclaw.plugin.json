@@ -450,6 +450,17 @@
               "type": "string"
             },
             "description": "Hosts (and subdomains) never fetched. Defaults to video and social sites."
+          },
+          "blockedTlds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "TLDs never resolved or fetched. Default: su."
+          },
+          "skipGithubCopies": {
+            "type": "boolean",
+            "description": "Skip known GitHub copy pages. Default true. Raw-IP HTTP pages are always skipped."
           }
         }
       }

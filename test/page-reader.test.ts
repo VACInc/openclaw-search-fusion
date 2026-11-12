@@ -120,9 +120,9 @@ test("readTopPages attaches passages, skips skip-listed hosts, and records per-p
   assert.equal(results[0].passages, undefined);
   assert.match(results[1].passages?.[0] ?? "", /service_healthy/);
   assert.equal(results[2].passages, undefined);
-  assert.deepEqual(outcomes.map((o) => o.ok), [true, false, false]);
-  assert.match(outcomes[1].error ?? "", /HTTP 503/);
-  assert.match(outcomes[2].error ?? "", /unsupported content type/);
+  assert.deepEqual(outcomes.filter((o) => !o.skipped).map((o) => o.ok), [true, false, false]);
+  assert.match(outcomes[2].error ?? "", /HTTP 503/);
+  assert.match(outcomes[3].error ?? "", /unsupported content type/);
 });
 
 test("readTopPages stops at its budget and keeps fast pages", async () => {
@@ -285,4 +285,26 @@ test("readTopPages neutralizes boundary and role lookalikes in page passages", a
   assert.doesNotMatch(text, /EXTERNAL[\s_]*UNTRUSTED[\s_]*CONTENT/i);
   assert.doesNotMatch(text, /<<<|>>>/);
   assert.doesNotMatch(text, /\bSYSTEM\s*:/);
+});
+
+test("blocked TLDs, copies and resolver sinkholes never reach fetch and refill topK", async () => {
+  const good = Array.from({ length: 6 }, (_, i) => `https://github.com/owner/repo${i}`);
+  const urls = ["https://tvwatch.su/owner/repo", "https://foo.su./doc", "http://192.0.2.1:8088/owner/repo", "https://blocked.example/doc", ...good];
+  const { deps, fetched } = fakeDeps(Object.fromEntries(good.map((u) => [u, { body: ANSWER_HTML }])));
+  const resolved: string[] = [];
+  const outcomes = await readTopPages({ query: "compose healthcheck", results: urls.map((url) => ({ url })), config: resolveReadPagesConfig({ enabled: true, topK: 6 }), deps: { ...deps, resolveHost: async (host) => { resolved.push(host); return host === "blocked.example" ? ["0.0.0.0"] : ["192.0.2.2"]; } } });
+  assert.deepEqual(fetched, good);
+  assert.ok(!resolved.some((h) => h.includes(".su")));
+  assert.equal(outcomes.filter((o) => o.skipped).length, 4);
+  assert.equal(outcomes.find((o) => o.url.includes("tvwatch"))?.skipped, "github-copy");
+  assert.equal(outcomes.find((o) => o.url.includes("blocked.example"))?.skipped, "resolver-blocked");
+});
+
+test("configurable TLD policy is label bounded and resolver refusal never fetches", async () => {
+  const { deps, fetched } = fakeDeps({ "https://notsu.example/doc": { body: ANSWER_HTML } });
+  const results = ["https://x.bad/doc", "https://refused.example/doc", "https://notsu.example/doc"].map((url) => ({ url }));
+  const outcomes = await readTopPages({ query: "compose healthcheck", results, config: resolveReadPagesConfig({ enabled: true, blockedTlds: [".BAD."] }), deps: { ...deps, resolveHost: async (host) => { if (host.startsWith("refused")) throw Object.assign(new Error("REFUSED"), { code: "EREFUSED" }); return ["192.0.2.2"]; } } });
+  assert.deepEqual(fetched, ["https://notsu.example/doc"]);
+  assert.equal(outcomes[0].skipped, "blocked-tld");
+  assert.equal(outcomes[1].skipped, "resolver-blocked");
 });
