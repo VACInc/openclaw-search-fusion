@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { validateJsonSchemaValue } from "openclaw/plugin-sdk/config-schema";
+import { validateJsonSchemaValue } from "openclaw/plugin-sdk/json-schema-runtime";
 
 const manifestPath = path.resolve(import.meta.dirname, "..", "openclaw.plugin.json");
 const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8")) as {
@@ -125,7 +125,8 @@ test("manifest requires a curve when fixed calibration is selected", () => {
   if (!fixedWithoutCurve.ok) {
     assert.match(
       fixedWithoutCurve.errors.map((error) => error.text).join("\n"),
-      /scoreCalibration\.curve: must have required property 'curve'/,
+      // Older validators name the missing property; 2026.11 reports the failed if/then branch.
+      /scoreCalibration(?:\.curve: must have required property 'curve'|: must match "then" schema)/,
     );
   }
   assert.equal(fixedWithCurve.ok, true);

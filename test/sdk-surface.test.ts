@@ -30,9 +30,12 @@ function importedSdkSubpaths(): string[] {
 
 const requiredRuntimeExports: Record<string, string[]> = {
   "openclaw/plugin-sdk/runtime-config-snapshot": ["getRuntimeConfigSnapshot"],
-  "openclaw/plugin-sdk/config-runtime": ["resolveConfiguredSecretInputString"],
+  "openclaw/plugin-sdk/secret-input-runtime": ["resolveConfiguredSecretInputString"],
   "openclaw/plugin-sdk/provider-web-search": ["wrapWebContent"],
 };
+
+// Imported only as a fallback for OpenClaw SDKs before 2026.10.
+const LEGACY_OPTIONAL = new Set(["openclaw/plugin-sdk/config-runtime"]);
 
 test("plugin source imports a known set of openclaw SDK subpaths", () => {
   assert.deepEqual(importedSdkSubpaths(), [
@@ -48,7 +51,7 @@ test("plugin source imports a known set of openclaw SDK subpaths", () => {
 });
 
 test("installed openclaw still exports every SDK subpath the plugin imports", async () => {
-  for (const specifier of importedSdkSubpaths()) {
+  for (const specifier of importedSdkSubpaths().filter((s) => !LEGACY_OPTIONAL.has(s))) {
     await assert.doesNotReject(import(specifier), `${specifier} must resolve in the installed openclaw`);
   }
 });

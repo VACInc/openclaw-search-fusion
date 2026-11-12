@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { clearRuntimeConfigSnapshot } from "openclaw/plugin-sdk/config-runtime";
+import { clearRuntimeConfigSnapshot } from "openclaw/plugin-sdk/runtime-config-snapshot";
 import plugin from "../index.js";
 import { wrapModelVisibleSearchPayload } from "../src/external-content.js";
 import { extractProviderAnswer, normalizeProviderPayload } from "../src/result-normalizer.js";

@@ -1,18 +1,24 @@
 import test, { mock } from "node:test";
 import assert from "node:assert/strict";
+import { sdkSubpathResolves } from "./sdk-resolves.js";
 
 // Older OpenClaw SDKs expose config-runtime without source snapshots. Search
 // Fusion must then treat the plugin's own config as the source config.
-mock.module("openclaw/plugin-sdk/config-runtime", {
-  cache: true,
-  namedExports: {
-    resolveConfiguredSecretInputString: async () => ({ unresolvedRefReason: "unused" }),
-  },
-});
+// The legacy facade only exists in OpenClaw SDKs before 2026.10; a module mock
+// needs a resolvable specifier, so this path is only testable on those SDKs.
+const legacySdk = sdkSubpathResolves("openclaw/plugin-sdk/config-runtime");
+if (legacySdk) {
+  mock.module("openclaw/plugin-sdk/config-runtime", {
+    cache: true,
+    namedExports: {
+      resolveConfiguredSecretInputString: async () => ({ unresolvedRefReason: "unused" }),
+    },
+  });
+}
 
 const { runSearchFusion } = await import("../src/search-fusion.js");
 
-test("without source snapshots the plugin config is used for discovery and delegation", async () => {
+test("without source snapshots the plugin config is used for discovery and delegation", { skip: legacySdk ? false : "installed OpenClaw SDK has no config-runtime facade" }, async () => {
   const config = { plugins: { entries: { legacy: { config: { webSearch: { apiKey: "legacy-key" } } } } } };
   const seen: unknown[] = [];
   const payload = await runSearchFusion({

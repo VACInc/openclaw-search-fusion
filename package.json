@@ -55,7 +55,7 @@
     "@openclaw/plugin-inspector": "0.4.5",
     "@sinclair/typebox": "0.34.52",
     "@types/node": "^22.15.30",
-    "openclaw": "2026.9.36",
+    "openclaw": "2026.11.2",
     "tsx": "^4.23.15",
     "typescript": "^5.9.3",
     "yaml": "2.9.1"

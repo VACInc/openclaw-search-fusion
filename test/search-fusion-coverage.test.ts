@@ -6,6 +6,7 @@ import {
   setRuntimeConfigSnapshot,
 } from "openclaw/plugin-sdk/runtime-config-snapshot";
 import type { FusionSearchPayload, RuntimeWebSearchProvider } from "../src/types.js";
+import { sdkSubpathResolves } from "./sdk-resolves.js";
 
 type SecretResolverParams = {
   config: unknown;
@@ -27,13 +28,17 @@ const resolveConfiguredSecretInputString = mock.fn(async (params: SecretResolver
   return { unresolvedRefReason: `${params.path} could not be resolved (test).` };
 });
 
-mock.module("openclaw/plugin-sdk/config-runtime", {
-  cache: true,
-  namedExports: {
-    getRuntimeConfigSourceSnapshot,
-    resolveConfiguredSecretInputString,
-  },
-});
+// OpenClaw 2026.10+ no longer exports the config-runtime facade, and a module
+// mock needs a resolvable specifier. Mock the legacy facade only where it exists.
+if (sdkSubpathResolves("openclaw/plugin-sdk/config-runtime")) {
+  mock.module("openclaw/plugin-sdk/config-runtime", {
+    cache: true,
+    namedExports: {
+      getRuntimeConfigSourceSnapshot,
+      resolveConfiguredSecretInputString,
+    },
+  });
+}
 
 const { renderFusionSummary, resetProviderHealthForTests, runSearchFusion } = await import("../src/search-fusion.js");
 
