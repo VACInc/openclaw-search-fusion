@@ -20,6 +20,8 @@ export type SearchFusionReadPagesConfig = {
     maxBytes?: number;
     /** Hosts (and their subdomains) never fetched: video, social, and login walls. */
     skipDomains?: string[];
+    blockedTlds?: string[];
+    skipGithubCopies?: boolean;
 };
 export type ResolvedReadPagesConfig = {
     enabled: boolean;
@@ -29,6 +31,8 @@ export type ResolvedReadPagesConfig = {
     passageChars: number;
     maxBytes: number;
     skipDomains: string[];
+    blockedTlds: string[];
+    skipGithubCopies: boolean;
 };
 export type PageReadOutcome = {
     url: string;
@@ -36,6 +40,7 @@ export type PageReadOutcome = {
     tookMs: number;
     passages: number;
     error?: string;
+    skipped?: string;
 };
 export type FetchedPage = {
     status: number;
@@ -44,11 +49,15 @@ export type FetchedPage = {
     finalUrl: string;
 };
 export type PageReaderDeps = {
+    /** `blockedTlds` must also refuse redirect hops into those TLDs, before any DNS lookup. */
     fetchPage: (url: string, opts: {
         timeoutMs: number;
         maxBytes: number;
         signal: AbortSignal;
+        blockedTlds?: string[];
     }) => Promise<FetchedPage>;
+    /** Pre-read resolver check. Omit to skip it (static policy still applies). */
+    resolveHost?: (hostname: string) => Promise<string[]>;
     htmlToText: (html: string, url: string) => Promise<string>;
 };
 export declare const DEFAULT_SKIP_DOMAINS: string[];
@@ -72,6 +81,8 @@ export declare function focusSnippet(text: string, query: string, maxLength: num
 export declare function stripMarkupNoise(text: string): string;
 export declare function stripBoilerplateHtml(html: string): string;
 export declare function fallbackHtmlToText(html: string): string;
+/** True when `host` is a blocked TLD or under one (label bounded: `notsu.example` is not `.su`). */
+export declare function hostHasBlockedTld(host: string, blockedTlds: string[]): boolean;
 /** Charset from the Content-Type header, else from a <meta> tag near the top of the page; utf-8 otherwise. */
 export declare function decodePageBytes(bytes: Uint8Array, contentType: string): string;
 /** Default deps: OpenClaw's SSRF-guarded fetch (blocks private and internal addresses). */
@@ -92,3 +103,8 @@ export declare function readTopPages(params: {
     deps?: PageReaderDeps;
     deadlineAt?: number;
 }): Promise<PageReadOutcome[]>;
+/**
+ * One log line per search: how many pages were read and which hits were skipped
+ * (host and reason only; no paths or query strings).
+ */
+export declare function summarizePageReads(reads: PageReadOutcome[] | undefined): string | undefined;

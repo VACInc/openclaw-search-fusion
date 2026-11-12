@@ -1,1 +1,1 @@
-{"name":"search-page-policy","sources":["src/page-reader.ts"],"test_cmd":"node --test --experimental-test-module-mocks --import tsx test/page-reader.test.ts","timeout_s":45,"language":"ts","exclude_lines":[],"baseline_score":0.8}
+{"name":"search-page-policy","sources":["src/page-reader.ts"],"test_cmd":"node --test --experimental-test-module-mocks --import tsx test/page-reader.test.ts test/page-reader-redirects.test.ts","timeout_s":45,"language":"ts","exclude_lines":[],"baseline_score":0.8}

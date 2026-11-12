@@ -13,6 +13,7 @@ const {
   stripMarkupNoise,
   queryTerms,
   readTopPages,
+  summarizePageReads,
   resolveReadPagesConfig,
   selectPassages,
   splitPassages,
@@ -307,4 +308,63 @@ test("configurable TLD policy is label bounded and resolver refusal never fetche
   assert.deepEqual(fetched, ["https://notsu.example/doc"]);
   assert.equal(outcomes[0].skipped, "blocked-tld");
   assert.equal(outcomes[1].skipped, "resolver-blocked");
+});
+
+test("resolver checks run in parallel only for free slots and refill after a blocked host", async () => {
+  const urls = ["https://a.example/1", "https://sink.example/2", "https://b.example/3", "https://c.example/4", "https://d.example/5"];
+  const { deps, fetched } = fakeDeps(Object.fromEntries(urls.map((u) => [u, { body: ANSWER_HTML }])));
+  const resolved: string[] = [];
+  let inFlight = 0;
+  let maxInFlight = 0;
+  const resolveHost = async (host: string) => {
+    resolved.push(host);
+    maxInFlight = Math.max(maxInFlight, ++inFlight);
+    await new Promise((r) => setTimeout(r, 20));
+    inFlight--;
+    return host === "sink.example" ? ["0.0.0.0"] : ["192.0.2.2"];
+  };
+  const outcomes = await readTopPages({ query: "compose healthcheck", results: urls.map((url) => ({ url })), config: resolveReadPagesConfig({ enabled: true, topK: 3 }), deps: { ...deps, resolveHost } });
+  // Round one checks three hosts at once; the sinkhole frees one slot; round two checks one more.
+  assert.deepEqual(resolved, ["a.example", "sink.example", "b.example", "c.example"]);
+  assert.equal(maxInFlight, 3);
+  assert.deepEqual(fetched, ["https://a.example/1", "https://b.example/3", "https://c.example/4"]);
+  assert.equal(outcomes.find((o) => o.url.includes("sink"))?.skipped, "resolver-blocked");
+});
+
+test("a hung resolver uses at most half the budget and its hosts are never fetched", async () => {
+  const urls = ["https://hang.example/1", "https://ok.example/2"];
+  const { deps, fetched } = fakeDeps(Object.fromEntries(urls.map((u) => [u, { body: ANSWER_HTML }])));
+  const started = Date.now();
+  const outcomes = await readTopPages({
+    query: "compose healthcheck",
+    results: urls.map((url) => ({ url })),
+    config: resolveReadPagesConfig({ enabled: true, topK: 2, timeoutMs: 1000 }),
+    deps: { ...deps, resolveHost: (host: string) => (host.startsWith("hang") ? new Promise<string[]>(() => {}) : Promise.resolve(["192.0.2.2"])) },
+  });
+  assert.ok(Date.now() - started < 900, "lookups must not consume the whole read budget");
+  assert.deepEqual(fetched, ["https://ok.example/2"]);
+  assert.equal(outcomes.find((o) => o.url.includes("hang"))?.skipped, "resolver-unavailable");
+  assert.equal(outcomes.find((o) => o.url.includes("ok.example"))?.ok, true);
+});
+
+test("https IPv6 literals are resolved without brackets; http raw IPv6 is never resolved or fetched", async () => {
+  const urls = ["http://[2001:db8::7]:8088/owner/repo", "https://[2001:db8::8]/doc"];
+  const { deps, fetched } = fakeDeps({ "https://[2001:db8::8]/doc": { body: ANSWER_HTML } });
+  const resolved: string[] = [];
+  const outcomes = await readTopPages({ query: "compose healthcheck", results: urls.map((url) => ({ url })), config: resolveReadPagesConfig({ enabled: true }), deps: { ...deps, resolveHost: async (host: string) => { resolved.push(host); return [host]; } } });
+  assert.deepEqual(resolved, ["2001:db8::8"]);
+  assert.deepEqual(fetched, ["https://[2001:db8::8]/doc"]);
+  assert.equal(outcomes[0].skipped, "raw-ip-http");
+});
+
+test("summarizePageReads names skipped hosts and reasons without paths", () => {
+  assert.equal(summarizePageReads(undefined), undefined);
+  assert.equal(summarizePageReads([]), undefined);
+  const line = summarizePageReads([
+    { url: "https://tvwatch.su/owner/repo?token=abc", ok: false, tookMs: 0, passages: 0, skipped: "github-copy" },
+    { url: "http://192.0.2.1:8088/owner/repo", ok: false, tookMs: 0, passages: 0, skipped: "raw-ip-http" },
+    { url: "https://a.example/1", ok: true, tookMs: 5, passages: 2 },
+    { url: "https://b.example/2", ok: false, tookMs: 5, passages: 0, error: "HTTP 503" },
+  ]);
+  assert.equal(line, "search-fusion: page reader fetched 2 (1 with passages), skipped 2: tvwatch.su github-copy, 192.0.2.1 raw-ip-http");
 });

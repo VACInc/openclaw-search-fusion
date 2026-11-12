@@ -14,6 +14,7 @@ import {
 import { renderFusionSummary, runSearchFusion } from "./src/search-fusion.js";
 import { wrapModelVisibleSearchPayload } from "./src/external-content.js";
 import { buildModelVisibleSearchPayload } from "./src/model-output.js";
+import { summarizePageReads } from "./src/page-reader.js";
 import type { ProviderSelectionRequest, RuntimeWebSearchProvider, SearchRuntime } from "./src/types.js";
 
 // Re-export the capability taxonomy so consumers can import directly from the
@@ -206,6 +207,7 @@ function createSearchFusionProvider(api: SearchFusionPluginApi): SearchFusionWeb
           runtimeMetadata: ctx.runtimeMetadata,
           agentDir: ctx.agentDir,
         });
+        logPageReads(api, payload.pageReads);
         // web_search output is size-capped by OpenClaw: send the compact view.
         return {
           content: await wrapModelVisibleSearchPayload(buildModelVisibleSearchPayload(payload), 0),
@@ -214,6 +216,12 @@ function createSearchFusionProvider(api: SearchFusionPluginApi): SearchFusionWeb
       },
     }),
   };
+}
+
+/** Page-reader skips are otherwise invisible: the model view omits pageReads. */
+function logPageReads(api: { logger?: { info?: (message: string) => void } }, reads: Parameters<typeof summarizePageReads>[0]) {
+  const line = summarizePageReads(reads);
+  if (line) api.logger?.info?.(line);
 }
 
 const plugin = {
@@ -238,6 +246,7 @@ const plugin = {
           request: params as SearchFusionRequest,
           signal,
         });
+        logPageReads(searchApi, payload.pageReads);
 
         return await asWrappedJsonResult({
           summary: renderFusionSummary(payload, Boolean((params as { includeFailures?: boolean }).includeFailures)),

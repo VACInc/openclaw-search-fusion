@@ -54,7 +54,12 @@ export type PageReadOutcome = {
 export type FetchedPage = { status: number; contentType: string; body: string; finalUrl: string };
 
 export type PageReaderDeps = {
-  fetchPage: (url: string, opts: { timeoutMs: number; maxBytes: number; signal: AbortSignal }) => Promise<FetchedPage>;
+  /** `blockedTlds` must also refuse redirect hops into those TLDs, before any DNS lookup. */
+  fetchPage: (
+    url: string,
+    opts: { timeoutMs: number; maxBytes: number; signal: AbortSignal; blockedTlds?: string[] },
+  ) => Promise<FetchedPage>;
+  /** Pre-read resolver check. Omit to skip it (static policy still applies). */
   resolveHost?: (hostname: string) => Promise<string[]>;
   htmlToText: (html: string, url: string) => Promise<string>;
 };
@@ -256,15 +261,62 @@ export function fallbackHtmlToText(html: string): string {
   );
 }
 
-function hostMatches(url: string, domains: string[]): boolean {
-  let host = "";
-  try {
-    host = new URL(url).hostname.toLowerCase();
-  } catch {
-    return true;
-  }
-  return domains.some((d) => host === d || host.endsWith(`.${d}`));
+/** Hostname without IPv6 brackets or a trailing root dot, lowercased. */
+function normalizeHost(hostname: string): string {
+  return hostname.toLowerCase().replace(/^\[|\]$/g, "").replace(/\.$/, "");
 }
+
+/** True when `host` is a blocked TLD or under one (label bounded: `notsu.example` is not `.su`). */
+export function hostHasBlockedTld(host: string, blockedTlds: string[]): boolean {
+  const h = normalizeHost(host);
+  return blockedTlds.some((tld) => h === tld || h.endsWith(`.${tld}`));
+}
+
+// Known GitHub copy sites: `<host>/<owner>/<repo>` pages that mirror a real repo.
+const GITHUB_COPY_HOSTS = ["tvwatch.su"];
+
+// Resolver answers that mean "blocked here": unspecified and loopback sinkholes.
+const SINKHOLE_ADDRESS = /^(?:0\.0\.0\.0|127(?:\.\d+){3}|::|::1|::ffff:(?:0\.0\.0\.0|127(?:\.\d+){3}))$/i;
+
+/** Skip reason decided from the URL alone. Never touches DNS. */
+function staticSkipReason(url: string, config: ResolvedReadPagesConfig): string | undefined {
+  let u: URL;
+  try {
+    u = new URL(url);
+  } catch {
+    return "invalid-url";
+  }
+  if (u.protocol !== "http:" && u.protocol !== "https:") return "unsupported-scheme";
+  const host = normalizeHost(u.hostname);
+  if (u.protocol === "http:" && isIP(host)) return "raw-ip-http";
+  const onHost = (domains: string[]) => domains.some((d) => host === d || host.endsWith(`.${d}`));
+  if (config.skipGithubCopies && onHost(GITHUB_COPY_HOSTS) && u.pathname.split("/").filter(Boolean).length >= 2) {
+    return "github-copy";
+  }
+  if (hostHasBlockedTld(host, config.blockedTlds)) return "blocked-tld";
+  if (onHost(config.skipDomains)) return "skip-domain";
+  return undefined;
+}
+
+/** Skip reason from the local resolver: blocked answers and failures both mean "do not fetch". */
+async function resolverSkipReason(
+  host: string,
+  resolveHost: (hostname: string) => Promise<string[]>,
+  signal: AbortSignal,
+): Promise<string | undefined> {
+  try {
+    const addresses = await raceAbort(resolveHost(host), signal);
+    if (addresses.length === 0 || addresses.some((address) => SINKHOLE_ADDRESS.test(address))) return "resolver-blocked";
+    return undefined;
+  } catch (error) {
+    // NXDOMAIN and REFUSED have the same safe outcome as a block. Other
+    // resolver failures (timeouts included) also keep the hit but never fetch.
+    const code = (error as NodeJS.ErrnoException)?.code;
+    return code && ["ENOTFOUND", "ENODATA", "EREFUSED"].includes(code) ? "resolver-blocked" : "resolver-unavailable";
+  }
+}
+
+type LookupFn = (hostname: string, options: { all: true }) => Promise<Array<{ address: string; family: number }>>;
 
 type SdkFetch = (params: {
   url: string;
@@ -272,6 +324,7 @@ type SdkFetch = (params: {
   signal?: AbortSignal;
   init?: RequestInit;
   maxRedirects?: number;
+  lookupFn?: LookupFn;
 }) => Promise<{ response: Response; finalUrl: string; release: () => Promise<void> }>;
 
 let sdkFetchPromise: Promise<SdkFetch | undefined> | undefined;
@@ -333,11 +386,23 @@ export const defaultPageReaderDeps: PageReaderDeps = {
   async fetchPage(url, opts) {
     const guarded = await loadSdkFetch();
     if (!guarded) throw new Error("guarded fetch unavailable");
+    const blockedTlds = opts.blockedTlds ?? [];
+    const firstHost = normalizeHost(new URL(url).hostname);
     const res = await guarded({
       url,
       timeoutMs: opts.timeoutMs,
       signal: opts.signal,
       maxRedirects: 3,
+      // Called for every hop, redirects included: a redirect into a blocked
+      // TLD fails here without a DNS query, and no hop may jump to a raw IP.
+      lookupFn: async (hostname, options) => {
+        const host = normalizeHost(hostname);
+        if (hostHasBlockedTld(host, blockedTlds)) {
+          throw Object.assign(new Error(`blocked TLD: ${host}`), { code: "ENOTFOUND" });
+        }
+        if (isIP(host) && host !== firstHost) throw new Error("redirect to a raw IP address refused");
+        return await lookup(hostname, options);
+      },
       init: {
         signal: opts.signal,
         headers: {
@@ -402,32 +467,31 @@ export async function readTopPages(params: {
   params.signal?.addEventListener("abort", onAbort, { once: true });
   const timer = setTimeout(() => controller.abort(new Error("read budget exceeded")), budget);
   try {
-    // Check before consuming a page slot. Static policy never invokes DNS.
-    for (const result of params.results) {
-      if (targets.length >= config.topK || controller.signal.aborted) break;
-      let reason: string | undefined;
-      try {
-        const u = new URL(result.url);
-        const host = u.hostname.toLowerCase().replace(/\.$/, "");
-        if (!/^https?:$/.test(u.protocol)) reason = "unsupported-scheme";
-        else if (u.protocol === "http:" && isIP(host.replace(/^\[|\]$/g, ""))) reason = "raw-ip-http";
-        else if (config.skipGithubCopies && hostMatches(result.url, ["tvwatch.su"]) && u.pathname.split("/").filter(Boolean).length >= 2) reason = "github-copy";
-        else if (config.blockedTlds.some((tld) => host === tld || host.endsWith(`.${tld}`))) reason = "blocked-tld";
-        else if (hostMatches(result.url, config.skipDomains)) reason = "skip-domain";
-        else if (deps.resolveHost) {
-          try {
-            const addresses = await raceAbort(deps.resolveHost(host), controller.signal);
-            if (!addresses.length || addresses.some((address) => /^(?:0\.0\.0\.0|127(?:\.\d+){3}|::|::1|::ffff:(?:0\.0\.0\.0|127(?:\.\d+){3}))$/i.test(address))) reason = "resolver-blocked";
-          } catch (error) {
-            // NXDOMAIN and REFUSED have the same safe outcome as a block. Other
-            // resolver failures also keep the hit but never trigger a fetch.
-            const code = (error as NodeJS.ErrnoException)?.code;
-            reason = code && ["ENOTFOUND", "ENODATA", "EREFUSED"].includes(code) ? "resolver-blocked" : "resolver-unavailable";
-          }
-        }
-      } catch { reason = "invalid-url"; }
-      if (reason) skipped.push({ url: result.url, ok: false, tookMs: 0, passages: 0, skipped: reason });
-      else if (!controller.signal.aborted) targets.push(result);
+    // Pick pages before any fetch so skipped hits never consume a slot. Static
+    // policy never invokes DNS. The resolver check runs in parallel for just
+    // enough candidates to fill the free slots, refilling after skips. All
+    // lookups share at most half the budget so a slow resolver cannot starve
+    // the reads; a host not verified in time is skipped, never fetched.
+    const resolveHost = deps.resolveHost;
+    const lookupSignal = AbortSignal.any([controller.signal, AbortSignal.timeout(Math.max(250, Math.floor(budget / 2)))]);
+    const skip = (url: string, reason: string) => skipped.push({ url, ok: false, tookMs: 0, passages: 0, skipped: reason });
+    let next = 0;
+    while (targets.length < config.topK && next < params.results.length && !controller.signal.aborted) {
+      const round: ReadableResult[] = [];
+      while (next < params.results.length && round.length < config.topK - targets.length) {
+        const result = params.results[next++];
+        const reason = staticSkipReason(result.url, config);
+        if (reason) skip(result.url, reason);
+        else round.push(result);
+      }
+      const reasons = resolveHost
+        ? await Promise.all(round.map((r) => resolverSkipReason(normalizeHost(new URL(r.url).hostname), resolveHost, lookupSignal)))
+        : round.map(() => undefined);
+      round.forEach((result, i) => {
+        const reason = reasons[i];
+        if (reason) skip(result.url, reason);
+        else if (!controller.signal.aborted) targets.push(result);
+      });
     }
     const found = new Map<ReadableResult, string[]>();
     const settled = await Promise.all(
@@ -435,7 +499,12 @@ export async function readTopPages(params: {
         const started = Date.now();
         try {
           const page = await raceAbort(
-            deps.fetchPage(result.url, { timeoutMs: budget, maxBytes: config.maxBytes, signal: controller.signal }),
+            deps.fetchPage(result.url, {
+              timeoutMs: budget,
+              maxBytes: config.maxBytes,
+              signal: controller.signal,
+              blockedTlds: config.blockedTlds,
+            }),
             controller.signal,
           );
           if (page.status < 200 || page.status >= 300) throw new Error(`HTTP ${page.status}`);
@@ -477,6 +546,25 @@ export async function readTopPages(params: {
     clearTimeout(timer);
     params.signal?.removeEventListener("abort", onAbort);
   }
+}
+
+/**
+ * One log line per search: how many pages were read and which hits were skipped
+ * (host and reason only; no paths or query strings).
+ */
+export function summarizePageReads(reads: PageReadOutcome[] | undefined): string | undefined {
+  if (!reads || reads.length === 0) return undefined;
+  const fetched = reads.filter((r) => !r.skipped);
+  const skipped = reads.filter((r) => r.skipped);
+  const hostOf = (url: string) => {
+    try {
+      return normalizeHost(new URL(url).hostname) || "invalid-url";
+    } catch {
+      return "invalid-url";
+    }
+  };
+  const detail = skipped.map((r) => `${hostOf(r.url)} ${r.skipped}`).join(", ");
+  return `search-fusion: page reader fetched ${fetched.length} (${fetched.filter((r) => r.ok).length} with passages), skipped ${skipped.length}${detail ? `: ${detail}` : ""}`;
 }
 
 function raceAbort<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
